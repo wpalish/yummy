@@ -1,0 +1,363 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Spasibox — спасай еду, забирай вкусно и дешевле</title>
+<style>
+  :root{
+    --bg:oklch(97% 0.02 95); --surface:oklch(100% 0 0); --ink:oklch(24% 0.03 80);
+    --muted:oklch(52% 0.03 80); --line:oklch(90% 0.02 95);
+    --green:oklch(58% 0.15 150); --green-d:oklch(48% 0.15 150); --green-s:oklch(94% 0.05 150);
+    --amber:oklch(72% 0.16 60); --amber-s:oklch(95% 0.06 70); --red:oklch(58% 0.2 25);
+    --radius:16px; --shadow:0 1px 2px oklch(0% 0 0/.04),0 12px 28px oklch(40% .05 80/.08);
+    --ease:cubic-bezier(.16,1,.3,1);
+    font-family:ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+  }
+  *{box-sizing:border-box;}
+  body{margin:0;background:var(--bg);color:var(--ink);line-height:1.5;}
+  button{font:inherit;cursor:pointer;}
+  .hidden{display:none !important;}
+
+  header{position:sticky;top:0;z-index:10;background:oklch(100% 0 0/.88);backdrop-filter:blur(8px);
+    border-bottom:1px solid var(--line);}
+  .bar{max-width:1080px;margin:0 auto;display:flex;align-items:center;gap:1rem;padding:.7rem 1.2rem;flex-wrap:wrap;}
+  .brand{display:flex;align-items:center;gap:.55rem;font-weight:800;font-size:1.15rem;}
+  .brand .em{width:34px;height:34px;border-radius:10px;display:grid;place-items:center;font-size:1.1rem;
+    background:linear-gradient(135deg,var(--green),oklch(64% .15 130));}
+  .brand small{display:block;font-size:.66rem;font-weight:600;color:var(--muted);}
+  .roles{margin-left:auto;display:flex;gap:.2rem;background:var(--green-s);padding:.25rem;border-radius:12px;}
+  .roles button{border:0;background:transparent;color:var(--green-d);font-weight:700;font-size:.85rem;
+    padding:.4rem .8rem;border-radius:9px;}
+  .roles button.on{background:var(--green);color:#fff;}
+
+  main{max-width:1080px;margin:0 auto;padding:1.3rem 1.2rem 4rem;}
+  h2{font-size:1.3rem;letter-spacing:-.01em;margin:.2rem 0 .2rem;}
+  .sub{color:var(--muted);font-size:.92rem;margin-bottom:1.1rem;}
+
+  .hero{background:linear-gradient(135deg,var(--green-s),oklch(96% .05 110));border:1px solid var(--line);
+    border-radius:var(--radius);padding:1.1rem 1.3rem;margin-bottom:1.2rem;display:flex;align-items:center;gap:1rem;flex-wrap:wrap;}
+  .hero b{font-size:1.05rem;} .hero p{margin:.15rem 0 0;font-size:.86rem;color:var(--muted);}
+  .hero .leaf{font-size:1.8rem;}
+
+  .chips{display:flex;gap:.45rem;flex-wrap:wrap;margin-bottom:1.1rem;}
+  .chip{border:1px solid var(--line);background:var(--surface);color:var(--muted);font-weight:600;font-size:.84rem;
+    padding:.4rem .8rem;border-radius:99px;}
+  .chip.on{background:var(--ink);color:#fff;border-color:transparent;}
+
+  .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:1rem;}
+  .box{background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);overflow:hidden;
+    box-shadow:var(--shadow);cursor:pointer;transition:transform var(--ease) .16s,box-shadow .16s;display:flex;flex-direction:column;}
+  .box:hover{transform:translateY(-3px);}
+  .box .top{height:96px;display:flex;align-items:center;justify-content:center;font-size:2.6rem;position:relative;
+    background:linear-gradient(135deg,var(--green-s),var(--amber-s));}
+  .box .disc{position:absolute;top:.6rem;left:.6rem;background:var(--amber);color:oklch(25% .05 60);font-weight:800;
+    font-size:.78rem;padding:.2rem .55rem;border-radius:8px;}
+  .box .left{position:absolute;top:.6rem;right:.6rem;background:oklch(100% 0 0/.9);color:var(--ink);font-weight:700;
+    font-size:.72rem;padding:.2rem .55rem;border-radius:8px;}
+  .box .left.fomo{background:var(--red);color:#fff;}
+  .box .body{padding:.8rem .9rem 1rem;flex:1;display:flex;flex-direction:column;gap:.25rem;}
+  .box .cat{font-size:.72rem;font-weight:700;color:var(--green-d);text-transform:uppercase;letter-spacing:.04em;}
+  .box .name{font-weight:700;font-size:1.02rem;}
+  .box .meta{font-size:.8rem;color:var(--muted);}
+  .box .price{margin-top:auto;display:flex;align-items:baseline;gap:.5rem;padding-top:.5rem;}
+  .box .price b{font-size:1.25rem;} .box .price s{color:var(--muted);font-size:.85rem;}
+  .box .win{font-size:.78rem;color:var(--green-d);font-weight:600;}
+
+  /* модалка */
+  .modal-bg{position:fixed;inset:0;background:oklch(20% .03 80/.45);display:grid;place-items:center;padding:1rem;z-index:40;}
+  .modal{background:var(--surface);border-radius:20px;max-width:440px;width:100%;max-height:90vh;overflow:auto;box-shadow:var(--shadow);}
+  .modal .mh{height:120px;display:grid;place-items:center;font-size:3.4rem;background:linear-gradient(135deg,var(--green-s),var(--amber-s));position:relative;}
+  .modal .mc{padding:1.2rem 1.3rem 1.4rem;}
+  .modal h3{margin:0 0 .15rem;font-size:1.25rem;}
+  .row{display:flex;justify-content:space-between;gap:1rem;font-size:.9rem;padding:.4rem 0;border-bottom:1px dashed var(--line);}
+  .row span:first-child{color:var(--muted);}
+  .rules{background:var(--green-s);border-radius:12px;padding:.7rem .85rem;font-size:.8rem;color:var(--green-d);margin:.9rem 0;}
+  .rules b{color:var(--ink);}
+  label{display:block;font-size:.8rem;font-weight:600;color:var(--muted);margin:.6rem 0 .25rem;}
+  input,select,textarea{width:100%;font:inherit;padding:.6rem .7rem;border:1px solid var(--line);border-radius:11px;background:var(--surface);color:var(--ink);}
+  input:focus,select:focus,textarea:focus{outline:2px solid var(--green-s);border-color:var(--green);}
+  .btn{border:0;border-radius:12px;font-weight:700;padding:.8rem 1rem;width:100%;background:var(--green);color:#fff;
+    transition:transform var(--ease) .15s;} .btn:hover{transform:translateY(-1px);} .btn:disabled{opacity:.5;}
+  .btn.sec{background:var(--surface);color:var(--ink);border:1px solid var(--line);}
+  .btn.amber{background:var(--amber);color:oklch(25% .05 60);}
+  .x{position:absolute;top:.6rem;right:.7rem;background:oklch(100% 0 0/.85);border:0;width:30px;height:30px;border-radius:50%;font-size:1.1rem;color:var(--ink);}
+
+  /* success */
+  .ok-wrap{text-align:center;}
+  .qr{width:170px;height:170px;margin:.4rem auto .2rem;}
+  .code{font-size:1.6rem;font-weight:800;letter-spacing:.08em;color:var(--green-d);}
+
+  /* списки/таблицы (партнёр/админ) */
+  .card{background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);box-shadow:var(--shadow);padding:1.1rem 1.2rem;margin-bottom:1.1rem;}
+  .card h3{margin:0 0 .8rem;font-size:.78rem;text-transform:uppercase;letter-spacing:.07em;color:var(--muted);}
+  .two{display:grid;grid-template-columns:1fr 1fr;gap:.7rem;}
+  .lrow{display:flex;align-items:center;gap:.7rem;padding:.6rem 0;border-bottom:1px solid var(--line);font-size:.9rem;}
+  .lrow:last-child{border-bottom:0;}
+  .lrow .g{flex:1;min-width:0;}
+  .tag{font-size:.7rem;font-weight:700;padding:.15rem .5rem;border-radius:7px;}
+  .t-paid{background:var(--amber-s);color:var(--amber);} .t-issued{background:var(--green-s);color:var(--green-d);}
+  .t-expired{background:oklch(94% .02 80);color:var(--muted);} .t-refunded,.t-cancelled{background:oklch(95% .05 25);color:var(--red);}
+  .stats{display:grid;grid-template-columns:repeat(4,1fr);gap:.8rem;}
+  @media(max-width:680px){.stats{grid-template-columns:repeat(2,1fr);}}
+  .stat{background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:.9rem;text-align:center;}
+  .stat b{display:block;font-size:1.5rem;color:var(--green-d);} .stat span{font-size:.76rem;color:var(--muted);}
+  .empty{color:var(--muted);text-align:center;padding:1.6rem;font-size:.9rem;}
+  .demo-pay{font-size:.72rem;color:var(--muted);text-align:center;margin-top:.5rem;}
+  #toast{position:fixed;left:50%;bottom:1.4rem;transform:translate(-50%,2rem);background:var(--ink);color:#fff;
+    padding:.6rem 1.1rem;border-radius:12px;font-size:.88rem;opacity:0;pointer-events:none;transition:.25s var(--ease);z-index:60;}
+  #toast.show{opacity:1;transform:translate(-50%,0);} #toast.err{background:var(--red);}
+</style>
+</head>
+<body>
+  <header><div class="bar">
+    <div class="brand"><div class="em">🥐</div><div>Spasibox<small>спасай еду · Астана</small></div></div>
+    <div class="roles">
+      <button data-role="store" class="on">Магазин</button>
+      <button data-role="partner">Партнёр</button>
+      <button data-role="admin">Админ</button>
+    </div>
+  </div></header>
+
+  <main>
+    <!-- ===================== МАГАЗИН ===================== -->
+    <section id="view-store">
+      <div class="hero"><span class="leaf">🌿</span><div>
+        <b>Спасай еду — забирай вкусно и дешевле</b>
+        <p>Свежие боксы из кофеен и пекарен, которые иначе бы списали. Скидка 40–70%, самовывоз сегодня.</p>
+      </div></div>
+      <div class="chips" id="districts"></div>
+      <div class="grid" id="boxes"></div>
+      <div id="myorders" style="margin-top:1.8rem"></div>
+    </section>
+
+    <!-- ===================== ПАРТНЁР ===================== -->
+    <section id="view-partner" class="hidden">
+      <h2>Кабинет партнёра</h2>
+      <p class="sub">Выставляй боксы из вечерних остатков за минуту. Выдавай заказы по коду.</p>
+      <label>Заведение
+        <select id="pSelect"></select></label>
+      <div class="two" style="margin-top:1rem">
+        <div class="card">
+          <h3>Создать бокс</h3>
+          <form id="boxForm">
+            <label>Категория
+              <select id="bCat">
+                <option value="sweet">🍩 Sweet Box</option><option value="bakery">🥐 Bakery Box</option>
+                <option value="mixed">🧺 Mixed Box</option><option value="snack">🥪 Snack Box</option>
+              </select></label>
+            <label>Название <input id="bTitle" placeholder="Вечерний Sweet Box" /></label>
+            <div class="two">
+              <div><label>Цена бокса, ₸ <input id="bPrice" type="number" min="100" value="990" /></label></div>
+              <div><label>Ценность внутри, ₸ <input id="bValue" type="number" min="100" value="2600" /></label></div>
+            </div>
+            <div class="two">
+              <div><label>Количество <input id="bQty" type="number" min="1" max="50" value="5" /></label></div>
+              <div><label>Забрать до (часов от сейчас) <input id="bHours" type="number" min="1" max="12" value="4" /></label></div>
+            </div>
+            <label>Описание <textarea id="bDesc" rows="2" placeholder="Что примерно внутри"></textarea></label>
+            <button class="btn" type="submit" style="margin-top:.7rem">Опубликовать бокс</button>
+          </form>
+        </div>
+        <div>
+          <div class="card">
+            <h3>Выдать заказ по коду</h3>
+            <div style="display:flex;gap:.5rem">
+              <input id="redeemCode" placeholder="SB-XXXX" style="text-transform:uppercase" />
+              <button class="btn amber" style="width:auto;white-space:nowrap" id="redeemBtn">Выдать</button>
+            </div>
+            <div id="redeemRes" style="margin-top:.6rem;font-size:.86rem"></div>
+          </div>
+          <div class="card">
+            <h3>Мои боксы</h3><div id="pBoxes"></div>
+          </div>
+        </div>
+      </div>
+      <div class="card"><h3>Брони и выдачи</h3><div id="pOrders"></div></div>
+    </section>
+
+    <!-- ===================== АДМИН ===================== -->
+    <section id="view-admin" class="hidden">
+      <h2>Админ-панель</h2>
+      <p class="sub">Контроль заказов, возвраты, ключевые метрики пилота.</p>
+      <div class="stats" id="aStats" style="margin-bottom:1.2rem"></div>
+      <div class="card"><h3>Все заказы</h3><div id="aOrders"></div></div>
+    </section>
+  </main>
+  <div id="modal" class="hidden"></div>
+  <div id="toast"></div>
+
+<script>
+const $=s=>document.querySelector(s);
+const esc=s=>String(s??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+const money=n=>Number(n).toLocaleString("ru-RU")+" ₸";
+const hhmm=iso=>{try{return new Date(iso).toLocaleTimeString("ru-RU",{hour:"2-digit",minute:"2-digit"});}catch(e){return "—";}};
+const win=(a,b)=>`сегодня ${hhmm(a)}–${hhmm(b)}`;
+function toast(m,err=false){const t=$("#toast");t.textContent=m;t.className=err?"err show":"show";clearTimeout(t._t);t._t=setTimeout(()=>t.className="",2800);}
+async function api(m,u,b){const r=await fetch(u,{method:m,headers:b?{"Content-Type":"application/json"}:undefined,body:b?JSON.stringify(b):undefined});
+  if(!r.ok){let d;try{d=await r.json();}catch(e){} throw new Error((d&&d.detail)||("Ошибка "+r.status));} return r.status===204?null:r.json();}
+const get=u=>api("GET",u), post=(u,b)=>api("POST",u,b);
+const STATUS_RU={paid:"оплачен",issued:"выдан",expired:"не забран",refunded:"возврат",cancelled:"отменён"};
+
+/* ---- переключение ролей ---- */
+const roleBtns=[...document.querySelectorAll(".roles button")];
+roleBtns.forEach(b=>b.onclick=()=>{
+  roleBtns.forEach(x=>x.classList.toggle("on",x===b));
+  ["store","partner","admin"].forEach(v=>$("#view-"+v).classList.toggle("hidden",v!==b.dataset.role));
+  if(b.dataset.role==="store")loadStore();
+  if(b.dataset.role==="partner")loadPartner();
+  if(b.dataset.role==="admin")loadAdmin();
+});
+
+/* ============ МАГАЗИН ============ */
+let curDistrict="all";
+async function loadStore(){
+  // районы
+  let ds=[];try{ds=await get("/districts");}catch(e){}
+  $("#districts").innerHTML=[`<button class="chip${curDistrict==="all"?" on":""}" data-d="all">Все районы</button>`]
+    .concat(ds.map(d=>`<button class="chip${curDistrict===d?" on":""}" data-d="${esc(d)}">${esc(d)}</button>`)).join("");
+  document.querySelectorAll("#districts .chip").forEach(c=>c.onclick=()=>{curDistrict=c.dataset.d;loadStore();});
+  // боксы
+  let boxes=[];try{boxes=await get("/boxes?district="+encodeURIComponent(curDistrict));}catch(e){}
+  $("#boxes").innerHTML=boxes.length?boxes.map(boxCard).join(""):'<p class="empty">В этом районе пока нет боксов. Загляни позже 🌙</p>';
+  document.querySelectorAll(".box").forEach(el=>el.onclick=()=>openBox(el.dataset.id));
+  renderMyOrders();
+}
+function boxCard(b){
+  const fomo=b.qty_left<=3;
+  return `<article class="box" data-id="${b.id}">
+    <div class="top">${b.emoji}
+      <span class="disc">−${b.discount}%</span>
+      <span class="left${fomo?" fomo":""}">${fomo?"🔥 ":""}осталось ${b.qty_left}</span></div>
+    <div class="body">
+      <div class="cat">${esc(b.category_ru)}</div>
+      <div class="name">${esc(b.title||b.partner_name)}</div>
+      <div class="meta">${esc(b.partner_name)} · ${esc(b.district)} · ★${b.rating}</div>
+      <div class="win">⏱ ${win(b.pickup_from,b.pickup_to)}</div>
+      <div class="price"><b>${money(b.price)}</b><s>${money(b.value_est)}</s></div>
+    </div></article>`;
+}
+async function openBox(id){
+  let b;try{b=await get("/boxes/"+id);}catch(e){toast(e.message,true);return;}
+  showModal(`<div class="mh">${b.emoji}<button class="x" onclick="closeModal()">✕</button></div>
+    <div class="mc">
+      <div class="cat" style="color:var(--green-d);font-size:.74rem;font-weight:700;text-transform:uppercase">${esc(b.category_ru)}</div>
+      <h3>${esc(b.title||b.partner_name)}</h3>
+      <div class="meta" style="color:var(--muted);font-size:.86rem">${esc(b.partner_name)} · ${esc(b.address)} · ★${b.rating}</div>
+      <div class="row"><span>Цена</span><b>${money(b.price)} <s style="color:var(--muted);font-weight:400">${money(b.value_est)}</s> <span style="color:var(--amber)">−${b.discount}%</span></b></div>
+      <div class="row"><span>Ценность внутри</span><span>примерно ${money(b.value_est)}</span></div>
+      <div class="row"><span>Самовывоз</span><span>${win(b.pickup_from,b.pickup_to)}</span></div>
+      <div class="row"><span>Осталось</span><span>${b.qty_left} из ${b.qty_total}</span></div>
+      ${b.description?`<p style="font-size:.86rem;color:var(--muted);margin:.6rem 0 0">${esc(b.description)}</p>`:""}
+      <div class="rules"><b>Surprise box.</b> Точный состав может отличаться — это набор из свежих остатков дня. Забрать нужно в окне самовывоза, иначе заказ сгорает (предоплата не возвращается). Если заведение не выдаст — полный возврат.</div>
+      <label>Ваше имя <input id="oName" placeholder="Имя" /></label>
+      <label>Телефон <input id="oPhone" placeholder="+7 7XX XXX XX XX" /></label>
+      <button class="btn" id="payBtn" style="margin-top:.8rem">Оплатить ${money(b.price)}</button>
+      <div class="demo-pay">💳 Демо-оплата. В проде — Kaspi Pay / Kaspi QR.</div>
+    </div>`);
+  $("#payBtn").onclick=async()=>{
+    const name=$("#oName").value.trim(), phone=$("#oPhone").value.trim();
+    if(!name||phone.length<5){toast("Укажите имя и телефон",true);return;}
+    $("#payBtn").disabled=true;$("#payBtn").textContent="Оплата…";
+    try{
+      const res=await post("/orders",{box_id:b.id,user_name:name,user_phone:phone});
+      saveCode(res.order.code);
+      successScreen(res);
+    }catch(e){toast(e.message,true);$("#payBtn").disabled=false;$("#payBtn").textContent="Оплатить "+money(b.price);}
+  };
+}
+function successScreen(res){
+  const o=res.order;
+  showModal(`<div class="mc ok-wrap" style="padding-top:1.4rem">
+    <div style="font-size:2.4rem">✅</div>
+    <h3>Бокс забронирован!</h3>
+    <p style="color:var(--muted);font-size:.88rem;margin:.2rem 0 0">${esc(o.partner_name)} · ${esc(o.address)}</p>
+    <div class="qr">${res.qr_svg}</div>
+    <div class="code">${esc(o.code)}</div>
+    <p style="font-size:.85rem;color:var(--muted);margin:.5rem 0">Покажите код или QR на кассе.<br>Забрать: <b style="color:var(--green-d)">${win(o.pickup_from,o.pickup_to)}</b></p>
+    <button class="btn sec" onclick="closeModal()">Готово</button>
+  </div>`);
+}
+/* мои заказы (localStorage кодов) */
+function myCodes(){try{return JSON.parse(localStorage.getItem("sb_codes")||"[]");}catch(e){return [];}}
+function saveCode(c){const a=myCodes();if(!a.includes(c)){a.unshift(c);localStorage.setItem("sb_codes",JSON.stringify(a.slice(0,20)));}}
+async function renderMyOrders(){
+  const codes=myCodes(); const el=$("#myorders");
+  if(!codes.length){el.innerHTML="";return;}
+  const orders=(await Promise.all(codes.map(c=>get("/orders/"+c).catch(()=>null)))).filter(Boolean);
+  el.innerHTML=`<div class="card"><h3>Мои заказы</h3>${orders.map(o=>`<div class="lrow">
+    <div style="font-size:1.4rem">${o.emoji}</div>
+    <div class="g"><b>${esc(o.code)}</b> · ${esc(o.partner_name)}<div style="font-size:.78rem;color:var(--muted)">${win(o.pickup_from,o.pickup_to)} · ${money(o.price)}</div></div>
+    <span class="tag t-${o.status}">${STATUS_RU[o.status]}</span></div>`).join("")}</div>`;
+}
+
+/* ============ ПАРТНЁР ============ */
+async function loadPartner(){
+  let ps=[];try{ps=await get("/partners");}catch(e){}
+  if(!$("#pSelect").dataset.filled){
+    $("#pSelect").innerHTML=ps.map(p=>`<option value="${p.id}">${esc(p.name)} · ${esc(p.district)}</option>`).join("");
+    $("#pSelect").dataset.filled="1";
+    $("#pSelect").onchange=loadPartnerData;
+  }
+  loadPartnerData();
+}
+function curPartner(){return $("#pSelect").value;}
+async function loadPartnerData(){
+  const pid=curPartner();
+  let boxes=[],orders=[];
+  try{boxes=await get(`/partners/${pid}/boxes`);}catch(e){}
+  try{orders=await get(`/partners/${pid}/orders`);}catch(e){}
+  $("#pBoxes").innerHTML=boxes.length?boxes.map(b=>`<div class="lrow"><div style="font-size:1.3rem">${b.emoji}</div>
+    <div class="g"><b>${esc(b.title||b.category_ru)}</b><div style="font-size:.78rem;color:var(--muted)">${money(b.price)} · ${win(b.pickup_from,b.pickup_to)}</div></div>
+    <span class="tag ${b.qty_left>0?"t-issued":"t-expired"}">${b.qty_left}/${b.qty_total}</span></div>`).join(""):'<p class="empty">Боксов пока нет.</p>';
+  $("#pOrders").innerHTML=orders.length?orders.map(orderRow).join(""):'<p class="empty">Броней пока нет.</p>';
+}
+function orderRow(o,admin=false){
+  return `<div class="lrow"><div style="font-size:1.3rem">${o.emoji}</div>
+    <div class="g"><b>${esc(o.code)}</b> · ${esc(o.user_name)} <span style="color:var(--muted)">${esc(o.user_phone)}</span>
+      <div style="font-size:.78rem;color:var(--muted)">${admin?esc(o.partner_name)+" · ":""}${money(o.price)} · ${win(o.pickup_from,o.pickup_to)}</div></div>
+    <span class="tag t-${o.status}">${STATUS_RU[o.status]}</span>
+    ${admin&&(o.status==="paid")?`<button class="btn sec" style="width:auto;padding:.3rem .6rem;font-size:.78rem" onclick="refund('${o.id}')">Возврат</button>`:""}</div>`;
+}
+$("#boxForm").addEventListener("submit",async e=>{
+  e.preventDefault();
+  const hours=Math.max(1,+$("#bHours").value||4);
+  const now=new Date(), to=new Date(now.getTime()+hours*3600*1000);
+  const body={partner_id:curPartner(),category:$("#bCat").value,title:$("#bTitle").value.trim(),
+    price:+$("#bPrice").value,value_est:+$("#bValue").value,qty:+$("#bQty").value,
+    pickup_from:now.toISOString(),pickup_to:to.toISOString(),description:$("#bDesc").value.trim()};
+  try{await post("/boxes",body);toast("Бокс опубликован ✓");e.target.reset();$("#bPrice").value=990;$("#bValue").value=2600;$("#bQty").value=5;$("#bHours").value=4;loadPartnerData();}
+  catch(err){toast(err.message,true);}
+});
+$("#redeemBtn").onclick=async()=>{
+  const code=$("#redeemCode").value.trim();if(!code){toast("Введите код",true);return;}
+  try{const r=await post("/redeem",{code});
+    $("#redeemRes").innerHTML=`<span class="tag ${r.ok?"t-issued":"t-expired"}">${r.ok?"✓ ":"✕ "}${esc(r.message)}</span>`+
+      (r.order?` <span style="color:var(--muted)">${esc(r.order.partner_name)} · ${money(r.order.price)}</span>`:"");
+    if(r.ok){toast("Выдано ✓");loadPartnerData();}
+  }catch(e){toast(e.message,true);}
+};
+
+/* ============ АДМИН ============ */
+async function loadAdmin(){
+  let s={},orders=[];
+  try{s=await get("/admin/stats");}catch(e){}
+  try{orders=await get("/admin/orders");}catch(e){}
+  $("#aStats").innerHTML=[
+    [money(s.gmv||0),"GMV (оборот)"],[s.orders_total||0,"заказов"],
+    [(s.fill_rate||0)+"%","выкуплено (fill rate)"],[s.no_show||0,"не забрали (no-show)"],
+    [s.issued||0,"выдано"],[s.active||0,"активных"],[s.refunds||0,"возвратов"],[(s.gmv? Math.round(s.gmv*0.1):0)+" ₸","take 10% (прогноз)"],
+  ].map(([v,l])=>`<div class="stat"><b>${v}</b><span>${l}</span></div>`).join("");
+  $("#aOrders").innerHTML=orders.length?orders.map(o=>orderRow(o,true)).join(""):'<p class="empty">Заказов нет.</p>';
+}
+window.refund=async id=>{try{await post("/admin/refund/"+id);toast("Возврат оформлен");loadAdmin();}catch(e){toast(e.message,true);}};
+
+/* ---- модалка ---- */
+function showModal(html){const m=$("#modal");m.className="modal-bg";m.innerHTML=`<div class="modal">${html}</div>`;
+  m.onclick=e=>{if(e.target===m)closeModal();};}
+window.closeModal=()=>{$("#modal").className="hidden";$("#modal").innerHTML="";if(!$("#view-store").classList.contains("hidden"))loadStore();};
+
+loadStore();
+</script>
+</body>
+</html>
