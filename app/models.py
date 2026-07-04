@@ -4,7 +4,9 @@ from __future__ import annotations
 from datetime import datetime, timezone
 from typing import Literal
 
-from pydantic import BaseModel, Field, computed_field
+import re
+
+from pydantic import BaseModel, Field, computed_field, field_validator, model_validator
 
 # Категории боксов из ТЗ
 BoxCategory = Literal["sweet", "bakery", "mixed", "snack"]
@@ -26,6 +28,9 @@ def _utcnow() -> datetime:
 # --------------------------------------------------------------------------- #
 #  Партнёры
 # --------------------------------------------------------------------------- #
+PHONE_RE = re.compile(r"^\+?[0-9][0-9\s\-()]{9,17}$")
+
+
 class Partner(BaseModel):
     id: str
     name: str
@@ -49,6 +54,19 @@ class BoxCreate(BaseModel):
     pickup_from: str                    # ISO datetime окна самовывоза
     pickup_to: str
     description: str = ""
+
+    @model_validator(mode="after")
+    def _check_window(self) -> "BoxCreate":
+        try:
+            frm = datetime.fromisoformat(self.pickup_from)
+            to = datetime.fromisoformat(self.pickup_to)
+        except ValueError as exc:
+            raise ValueError("Окно самовывоза: ожидается ISO datetime") from exc
+        if to <= frm:
+            raise ValueError("Конец окна самовывоза должен быть позже начала")
+        if to.tzinfo is not None and to <= _utcnow():
+            raise ValueError("Окно самовывоза уже прошло")
+        return self
 
 
 class Box(BaseModel):
@@ -92,13 +110,21 @@ class Box(BaseModel):
 # --------------------------------------------------------------------------- #
 class OrderCreate(BaseModel):
     box_id: str
-    user_name: str = Field(..., min_length=1)
-    user_phone: str = Field(..., min_length=5)
+    user_name: str = Field(..., min_length=1, max_length=80)
+    user_phone: str = Field(..., min_length=10, max_length=18)
+
+    @field_validator("user_phone")
+    @classmethod
+    def _check_phone(cls, v: str) -> str:
+        v = v.strip()
+        if not PHONE_RE.match(v):
+            raise ValueError("Телефон в формате +7 7XX XXX XX XX")
+        return v
 
 
 class Order(BaseModel):
     id: str
-    code: str                           # код выдачи, напр. SB-7F3A
+    code: str                           # код выдачи, напр. SB-7F3A9C
     box_id: str
     partner_id: str
     partner_name: str

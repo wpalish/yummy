@@ -4,6 +4,11 @@
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <title>SaveEat — спасай еду, экономь</title>
+<meta name="description" content="SaveEat — surprise-боксы из кофеен и пекарен Астаны со скидкой 40–70%. Спасай еду, экономь." />
+<meta property="og:title" content="SaveEat — спасай еду, экономь" />
+<meta property="og:description" content="Свежие боксы из кофеен и пекарен Астаны, которые иначе бы списали. Скидка 40–70%." />
+<meta property="og:type" content="website" />
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🌿</text></svg>" />
 <style>
   :root{
     --bg:oklch(95% 0.022 85); --surface:oklch(98.5% 0.012 85); --ink:oklch(26% 0.028 70);
@@ -160,8 +165,7 @@
     <section id="view-partner" class="hidden">
       <h2>Кабинет партнёра</h2>
       <p class="sub">Выставляй боксы из вечерних остатков за минуту. Выдавай заказы по коду.</p>
-      <label>Заведение
-        <select id="pSelect"></select></label>
+      <div class="sub" id="pWho"></div>
       <div class="two" style="margin-top:1rem">
         <div class="card">
           <h3>Создать бокс</h3>
@@ -219,9 +223,23 @@ const money=n=>Number(n).toLocaleString("ru-RU")+" ₸";
 const hhmm=iso=>{try{return new Date(iso).toLocaleTimeString("ru-RU",{hour:"2-digit",minute:"2-digit"});}catch(e){return "—";}};
 const win=(a,b)=>`сегодня ${hhmm(a)}–${hhmm(b)}`;
 function toast(m,err=false){const t=$("#toast");t.textContent=m;t.className=err?"err show":"show";clearTimeout(t._t);t._t=setTimeout(()=>t.className="",2800);}
-async function api(m,u,b){const r=await fetch(u,{method:m,headers:b?{"Content-Type":"application/json"}:undefined,body:b?JSON.stringify(b):undefined});
-  if(!r.ok){let d;try{d=await r.json();}catch(e){} throw new Error((d&&d.detail)||("Ошибка "+r.status));} return r.status===204?null:r.json();}
-const get=u=>api("GET",u), post=(u,b)=>api("POST",u,b);
+async function api(m,u,b,hdrs){const h={...(hdrs||{})};if(b)h["Content-Type"]="application/json";
+  const r=await fetch(u,{method:m,headers:h,body:b?JSON.stringify(b):undefined});
+  if(!r.ok){let d;try{d=await r.json();}catch(e){}
+    const msg=(d&&d.detail)?(typeof d.detail==="string"?d.detail:JSON.stringify(d.detail)):("Ошибка "+r.status);
+    const err=new Error(msg);err.status=r.status;throw err;}
+  return r.status===204?null:r.json();}
+const get=(u,h)=>api("GET",u,null,h), post=(u,b,h)=>api("POST",u,b,h);
+/* ---- токены доступа (партнёр/админ) ---- */
+function askToken(kind,label){
+  let t=localStorage.getItem("sb_token_"+kind);
+  if(!t){t=prompt(label);if(t)localStorage.setItem("sb_token_"+kind,t.trim());}
+  return t?t.trim():null;
+}
+function dropToken(kind){localStorage.removeItem("sb_token_"+kind);}
+const partnerHdr=()=>({"X-Partner-Token":askToken("partner","Токен партнёра (демо: pt-p1-demo … pt-p6-demo)")||""});
+const adminHdr=()=>({"X-Admin-Token":askToken("admin","Токен админа (демо: admin-demo)")||""});
+const PHONE_RE=/^\+?[0-9][0-9\s\-()]{9,17}$/;
 const STATUS_RU={paid:"оплачен",issued:"выдан",expired:"не забран",refunded:"возврат",cancelled:"отменён"};
 
 /* ---- переключение ролей ---- */
@@ -236,6 +254,7 @@ roleBtns.forEach(b=>b.onclick=()=>{
 
 /* ============ МАГАЗИН ============ */
 let curDistrict="all";
+document.addEventListener("keydown",e=>{if(e.key==="Escape")closeModal();});
 async function loadStore(){
   // районы
   let ds=[];try{ds=await get("/districts");}catch(e){}
@@ -274,7 +293,7 @@ function boxCard(b){
 }
 async function openBox(id){
   let b;try{b=await get("/boxes/"+id);}catch(e){toast(e.message,true);return;}
-  showModal(`<div class="mh" style="background-image:url(/static/img/${imgFor(b)})"><button class="x" onclick="closeModal()">✕</button></div>
+  showModal(`<div class="mh" style="background-image:url(/static/img/${imgFor(b)})"><button class="x" data-close aria-label="Закрыть">✕</button></div>
     <div class="mc">
       <div class="cat" style="color:var(--green-d);font-size:.74rem;font-weight:700;text-transform:uppercase">${esc(b.category_ru)}</div>
       <h3>${esc(b.title||b.partner_name)}</h3>
@@ -285,14 +304,15 @@ async function openBox(id){
       <div class="row"><span>Осталось</span><span>${b.qty_left} из ${b.qty_total}</span></div>
       ${b.description?`<p style="font-size:.86rem;color:var(--muted);margin:.6rem 0 0">${esc(b.description)}</p>`:""}
       <div class="rules"><b>Surprise box.</b> Точный состав может отличаться — это набор из свежих остатков дня. Забрать нужно в окне самовывоза, иначе заказ сгорает (предоплата не возвращается). Если заведение не выдаст — полный возврат.</div>
-      <label>Ваше имя <input id="oName" placeholder="Имя" /></label>
-      <label>Телефон <input id="oPhone" placeholder="+7 7XX XXX XX XX" /></label>
+      <label>Ваше имя <input id="oName" placeholder="Имя" autocomplete="name" /></label>
+      <label>Телефон <input id="oPhone" type="tel" placeholder="+7 7XX XXX XX XX" autocomplete="tel" /></label>
       <button class="btn" id="payBtn" style="margin-top:.8rem">Оплатить ${money(b.price)}</button>
       <div class="demo-pay">💳 Демо-оплата. В проде — Kaspi Pay / Kaspi QR.</div>
     </div>`);
   $("#payBtn").onclick=async()=>{
     const name=$("#oName").value.trim(), phone=$("#oPhone").value.trim();
-    if(!name||phone.length<5){toast("Укажите имя и телефон",true);return;}
+    if(!name){toast("Укажите имя",true);return;}
+    if(!PHONE_RE.test(phone)){toast("Телефон в формате +7 7XX XXX XX XX",true);return;}
     $("#payBtn").disabled=true;$("#payBtn").textContent="Оплата…";
     try{
       const res=await post("/orders",{box_id:b.id,user_name:name,user_phone:phone});
@@ -301,17 +321,26 @@ async function openBox(id){
     }catch(e){toast(e.message,true);$("#payBtn").disabled=false;$("#payBtn").textContent="Оплатить "+money(b.price);}
   };
 }
-function successScreen(res){
+function successScreen(res,title="Бокс забронирован!"){
   const o=res.order;
+  const cancellable=o.status==="paid";
   showModal(`<div class="mc ok-wrap" style="padding-top:1.4rem">
-    <div style="font-size:2.4rem">✅</div>
-    <h3>Бокс забронирован!</h3>
-    <p style="color:var(--muted);font-size:.88rem;margin:.2rem 0 0">${esc(o.partner_name)} · ${esc(o.address)}</p>
+    <div style="font-size:2.4rem">${o.status==="paid"?"✅":o.emoji}</div>
+    <h3>${esc(title)}</h3>
+    <p style="color:var(--muted);font-size:.88rem;margin:.2rem 0 0">${esc(o.partner_name)} · ${esc(o.address)} · <span class="tag t-${esc(o.status)}">${STATUS_RU[o.status]||esc(o.status)}</span></p>
     <div class="qr">${res.qr_svg}</div>
     <div class="code">${esc(o.code)}</div>
     <p style="font-size:.85rem;color:var(--muted);margin:.5rem 0">Покажите код или QR на кассе.<br>Забрать: <b style="color:var(--green-d)">${win(o.pickup_from,o.pickup_to)}</b></p>
-    <button class="btn sec" onclick="closeModal()">Готово</button>
+    ${cancellable?`<button class="btn sec" id="cancelBtn" style="margin-bottom:.5rem">Отменить бронь</button>`:""}
+    <button class="btn sec" data-close>Готово</button>
   </div>`);
+  const cb=$("#cancelBtn");
+  if(cb)cb.onclick=async()=>{
+    if(!confirm("Отменить бронь? Бокс вернётся в продажу."))return;
+    try{const r=await post(`/orders/${encodeURIComponent(o.code)}/cancel`);
+      toast(r.message,!r.ok);if(r.ok)closeModal();
+    }catch(e){toast(e.message,true);}
+  };
 }
 /* мои заказы (localStorage кодов) */
 function myCodes(){try{return JSON.parse(localStorage.getItem("sb_codes")||"[]");}catch(e){return [];}}
@@ -320,39 +349,53 @@ async function renderMyOrders(){
   const codes=myCodes(); const el=$("#myorders");
   if(!codes.length){el.innerHTML="";return;}
   const orders=(await Promise.all(codes.map(c=>get("/orders/"+c).catch(()=>null)))).filter(Boolean);
-  el.innerHTML=`<div class="card"><h3>Мои заказы</h3>${orders.map(o=>`<div class="lrow">
+  el.innerHTML=`<div class="card"><h3>Мои заказы</h3>${orders.map(o=>`<div class="lrow" data-code="${esc(o.code)}" style="cursor:pointer" title="Показать QR-код">
     <div style="font-size:1.4rem">${o.emoji}</div>
     <div class="g"><b>${esc(o.code)}</b> · ${esc(o.partner_name)}<div style="font-size:.78rem;color:var(--muted)">${win(o.pickup_from,o.pickup_to)} · ${money(o.price)}</div></div>
-    <span class="tag t-${o.status}">${STATUS_RU[o.status]}</span></div>`).join("")}</div>`;
+    <span class="tag t-${esc(o.status)}">${STATUS_RU[o.status]||esc(o.status)}</span></div>`).join("")}</div>`;
+  el.querySelectorAll("[data-code]").forEach(row=>row.onclick=async()=>{
+    try{successScreen(await get("/orders/"+encodeURIComponent(row.dataset.code)+"/qr"),"Ваш заказ");}
+    catch(e){toast(e.message,true);}
+  });
 }
 
 /* ============ ПАРТНЁР ============ */
+let PARTNER=null;
 async function loadPartner(){
-  let ps=[];try{ps=await get("/partners");}catch(e){}
-  if(!$("#pSelect").dataset.filled){
-    $("#pSelect").innerHTML=ps.map(p=>`<option value="${p.id}">${esc(p.name)} · ${esc(p.district)}</option>`).join("");
-    $("#pSelect").dataset.filled="1";
-    $("#pSelect").onchange=loadPartnerData;
+  try{PARTNER=await get("/partner/me",partnerHdr());}
+  catch(e){
+    if(e.status===401){dropToken("partner");toast("Неверный токен партнёра",true);}
+    else toast(e.message,true);
+    $("#pWho").textContent="Нет доступа — обновите страницу и введите токен партнёра.";
+    return;
   }
+  $("#pWho").textContent=`Заведение: ${PARTNER.name} · ${PARTNER.district}`;
   loadPartnerData();
 }
-function curPartner(){return $("#pSelect").value;}
+function curPartner(){return PARTNER?PARTNER.id:"";}
 async function loadPartnerData(){
-  const pid=curPartner();
+  if(!PARTNER)return;
+  const pid=PARTNER.id;
   let boxes=[],orders=[];
-  try{boxes=await get(`/partners/${pid}/boxes`);}catch(e){}
-  try{orders=await get(`/partners/${pid}/orders`);}catch(e){}
+  try{boxes=await get(`/partners/${pid}/boxes`,partnerHdr());}catch(e){}
+  try{orders=await get(`/partners/${pid}/orders`,partnerHdr());}catch(e){}
   $("#pBoxes").innerHTML=boxes.length?boxes.map(b=>`<div class="lrow"><div style="font-size:1.3rem">${b.emoji}</div>
     <div class="g"><b>${esc(b.title||b.category_ru)}</b><div style="font-size:.78rem;color:var(--muted)">${money(b.price)} · ${win(b.pickup_from,b.pickup_to)}</div></div>
-    <span class="tag ${b.qty_left>0?"t-issued":"t-expired"}">${b.qty_left}/${b.qty_total}</span></div>`).join(""):'<p class="empty">Боксов пока нет.</p>';
-  $("#pOrders").innerHTML=orders.length?orders.map(orderRow).join(""):'<p class="empty">Броней пока нет.</p>';
+    <span class="tag ${b.qty_left>0?"t-issued":"t-expired"}">${b.qty_left}/${b.qty_total}</span>
+    <button class="btn sec" style="width:auto;padding:.3rem .6rem;font-size:.78rem" data-close-box="${esc(b.id)}">Снять</button></div>`).join(""):'<p class="empty">Боксов пока нет.</p>';
+  $("#pBoxes").querySelectorAll("[data-close-box]").forEach(btn=>btn.onclick=async()=>{
+    if(!confirm("Снять бокс с продажи?"))return;
+    try{await post(`/partner/boxes/${btn.dataset.closeBox}/close`,null,partnerHdr());toast("Бокс снят с продажи");loadPartnerData();}
+    catch(e){toast(e.message,true);}
+  });
+  $("#pOrders").innerHTML=orders.length?orders.map(o=>orderRow(o)).join(""):'<p class="empty">Броней пока нет.</p>';
 }
 function orderRow(o,admin=false){
   return `<div class="lrow"><div style="font-size:1.3rem">${o.emoji}</div>
     <div class="g"><b>${esc(o.code)}</b> · ${esc(o.user_name)} <span style="color:var(--muted)">${esc(o.user_phone)}</span>
       <div style="font-size:.78rem;color:var(--muted)">${admin?esc(o.partner_name)+" · ":""}${money(o.price)} · ${win(o.pickup_from,o.pickup_to)}</div></div>
-    <span class="tag t-${o.status}">${STATUS_RU[o.status]}</span>
-    ${admin&&(o.status==="paid")?`<button class="btn sec" style="width:auto;padding:.3rem .6rem;font-size:.78rem" onclick="refund('${o.id}')">Возврат</button>`:""}</div>`;
+    <span class="tag t-${esc(o.status)}">${STATUS_RU[o.status]||esc(o.status)}</span>
+    ${admin&&(o.status==="paid")?`<button class="btn sec" style="width:auto;padding:.3rem .6rem;font-size:.78rem" data-refund="${esc(o.id)}">Возврат</button>`:""}</div>`;
 }
 $("#boxForm").addEventListener("submit",async e=>{
   e.preventDefault();
@@ -361,12 +404,13 @@ $("#boxForm").addEventListener("submit",async e=>{
   const body={partner_id:curPartner(),category:$("#bCat").value,title:$("#bTitle").value.trim(),
     price:+$("#bPrice").value,value_est:+$("#bValue").value,qty:+$("#bQty").value,
     pickup_from:now.toISOString(),pickup_to:to.toISOString(),description:$("#bDesc").value.trim()};
-  try{await post("/boxes",body);toast("Бокс опубликован ✓");e.target.reset();$("#bPrice").value=990;$("#bValue").value=2600;$("#bQty").value=5;$("#bHours").value=4;loadPartnerData();}
+  if(!curPartner()){toast("Нет доступа партнёра",true);return;}
+  try{await post("/boxes",body,partnerHdr());toast("Бокс опубликован ✓");e.target.reset();$("#bPrice").value=990;$("#bValue").value=2600;$("#bQty").value=5;$("#bHours").value=4;loadPartnerData();}
   catch(err){toast(err.message,true);}
 });
 $("#redeemBtn").onclick=async()=>{
   const code=$("#redeemCode").value.trim();if(!code){toast("Введите код",true);return;}
-  try{const r=await post("/redeem",{code});
+  try{const r=await post("/redeem",{code},partnerHdr());
     $("#redeemRes").innerHTML=`<span class="tag ${r.ok?"t-issued":"t-expired"}">${r.ok?"✓ ":"✕ "}${esc(r.message)}</span>`+
       (r.order?` <span style="color:var(--muted)">${esc(r.order.partner_name)} · ${money(r.order.price)}</span>`:"");
     if(r.ok){toast("Выдано ✓");loadPartnerData();}
@@ -376,20 +420,28 @@ $("#redeemBtn").onclick=async()=>{
 /* ============ АДМИН ============ */
 async function loadAdmin(){
   let s={},orders=[];
-  try{s=await get("/admin/stats");}catch(e){}
-  try{orders=await get("/admin/orders");}catch(e){}
+  try{s=await get("/admin/stats",adminHdr());orders=await get("/admin/orders",adminHdr());}
+  catch(e){
+    if(e.status===401){dropToken("admin");toast("Неверный токен админа",true);}
+    else toast(e.message,true);
+  }
   $("#aStats").innerHTML=[
     [money(s.gmv||0),"GMV (оборот)"],[s.orders_total||0,"заказов"],
     [(s.fill_rate||0)+"%","выкуплено (fill rate)"],[s.no_show||0,"не забрали (no-show)"],
     [s.issued||0,"выдано"],[s.active||0,"активных"],[s.refunds||0,"возвратов"],[(s.gmv? Math.round(s.gmv*0.1):0)+" ₸","take 10% (прогноз)"],
   ].map(([v,l])=>`<div class="stat"><b>${v}</b><span>${l}</span></div>`).join("");
   $("#aOrders").innerHTML=orders.length?orders.map(o=>orderRow(o,true)).join(""):'<p class="empty">Заказов нет.</p>';
+  $("#aOrders").querySelectorAll("[data-refund]").forEach(btn=>btn.onclick=async()=>{
+    try{await post("/admin/refund/"+btn.dataset.refund,null,adminHdr());toast("Возврат оформлен");loadAdmin();}
+    catch(e){toast(e.message,true);}
+  });
 }
-window.refund=async id=>{try{await post("/admin/refund/"+id);toast("Возврат оформлен");loadAdmin();}catch(e){toast(e.message,true);}};
 
 /* ---- модалка ---- */
-function showModal(html){const m=$("#modal");m.className="modal-bg";m.innerHTML=`<div class="modal">${html}</div>`;
-  m.onclick=e=>{if(e.target===m)closeModal();};}
+function showModal(html){const m=$("#modal");m.className="modal-bg";
+  m.innerHTML=`<div class="modal" role="dialog" aria-modal="true">${html}</div>`;
+  m.onclick=e=>{if(e.target===m||e.target.closest("[data-close]"))closeModal();};
+  const f=m.querySelector("input,button");if(f)f.focus();}
 window.closeModal=()=>{$("#modal").className="hidden";$("#modal").innerHTML="";if(!$("#view-store").classList.contains("hidden"))loadStore();};
 
 loadStore();
