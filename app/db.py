@@ -57,6 +57,16 @@ class Store:
     def _partner_row(self, c: sqlite3.Connection, pid: str) -> sqlite3.Row | None:
         return c.execute("SELECT * FROM partners WHERE id=?", (pid,)).fetchone()
 
+    def _partner_fields(self, c: sqlite3.Connection, pid: str) -> dict:
+        """Поля партнёра для вложения в бокс/заказ (с заглушками, если партнёр удалён)."""
+        p = self._partner_row(c, pid)
+        return {
+            "partner_name": p["name"] if p else "—",
+            "district": p["district"] if p else "",
+            "address": p["address"] if p else "",
+            "rating": p["rating"] if p else 0.0,
+        }
+
     def upsert_partner(self, p: Partner) -> None:
         with self._lock, self._conn() as c:
             c.execute(
@@ -71,14 +81,13 @@ class Store:
     # ------------------------------------------------------------------ #
     #  Боксы
     # ------------------------------------------------------------------ #
+    def _box_row_by_id(self, c: sqlite3.Connection, box_id: str) -> sqlite3.Row | None:
+        return c.execute("SELECT * FROM boxes WHERE id=?", (box_id,)).fetchone()
+
     def _box_from_row(self, c: sqlite3.Connection, r: sqlite3.Row) -> Box:
-        p = self._partner_row(c, r["partner_id"])
         return Box(
             id=r["id"], partner_id=r["partner_id"],
-            partner_name=p["name"] if p else "—",
-            district=p["district"] if p else "",
-            address=p["address"] if p else "",
-            rating=p["rating"] if p else 0.0,
+            **self._partner_fields(c, r["partner_id"]),
             category=r["category"], title=r["title"], price=r["price"],
             value_est=r["value_est"], qty_total=r["qty_total"], qty_left=r["qty_left"],
             pickup_from=r["pickup_from"], pickup_to=r["pickup_to"],
@@ -95,12 +104,12 @@ class Store:
                  data.value_est, data.qty, data.qty, data.pickup_from, data.pickup_to,
                  data.description, _now_iso()),
             )
-            r = c.execute("SELECT * FROM boxes WHERE id=?", (box_id,)).fetchone()
+            r = self._box_row_by_id(c, box_id)
             return self._box_from_row(c, r)
 
     def box(self, box_id: str) -> Box | None:
         with self._lock, self._conn() as c:
-            r = c.execute("SELECT * FROM boxes WHERE id=?", (box_id,)).fetchone()
+            r = self._box_row_by_id(c, box_id)
             return self._box_from_row(c, r) if r else None
 
     def boxes_available(self, district: str | None = None) -> list[Box]:
@@ -135,17 +144,26 @@ class Store:
     # ------------------------------------------------------------------ #
     #  Заказы
     # ------------------------------------------------------------------ #
+    def _order_row_by_id(self, c: sqlite3.Connection, order_id: str) -> sqlite3.Row | None:
+        return c.execute("SELECT * FROM orders WHERE id=?", (order_id,)).fetchone()
+
     def _order_from_row(self, c: sqlite3.Connection, r: sqlite3.Row) -> Order:
-        p = self._partner_row(c, r["partner_id"])
+        pf = self._partner_fields(c, r["partner_id"])
         status = self._effective_status(r["status"], r["pickup_to"])
         return Order(
             id=r["id"], code=r["code"], box_id=r["box_id"], partner_id=r["partner_id"],
-            partner_name=p["name"] if p else "—", address=p["address"] if p else "",
+            partner_name=pf["partner_name"], address=pf["address"],
             category=r["category"], price=r["price"], user_name=r["user_name"],
             user_phone=r["user_phone"], status=status,
             pickup_from=r["pickup_from"], pickup_to=r["pickup_to"],
             created_at=r["created_at"],
         )
+
+    def _order_row_by_code(self, c: sqlite3.Connection, code: str) -> sqlite3.Row | None:
+        """Найти строку заказа по коду выдачи (регистронезависимо)."""
+        return c.execute(
+            "SELECT * FROM orders WHERE code=?", (code.strip().upper(),)
+        ).fetchone()
 
     @staticmethod
     def _effective_status(stored: str, pickup_to: str) -> str:
@@ -169,12 +187,12 @@ class Store:
                 (order_id, code, box.id, box.partner_id, box.category, box.price,
                  name, phone, box.pickup_from, box.pickup_to, _now_iso()),
             )
-            r = c.execute("SELECT * FROM orders WHERE id=?", (order_id,)).fetchone()
+            r = self._order_row_by_id(c, order_id)
             return self._order_from_row(c, r)
 
     def order_by_code(self, code: str) -> Order | None:
         with self._lock, self._conn() as c:
-            r = c.execute("SELECT * FROM orders WHERE code=?", (code.strip().upper(),)).fetchone()
+            r = self._order_row_by_code(c, code)
             return self._order_from_row(c, r) if r else None
 
     def orders(self) -> list[Order]:
@@ -193,7 +211,7 @@ class Store:
     def redeem(self, code: str) -> tuple[bool, str, Order | None]:
         """Выдать заказ по коду. Возвращает (ок, сообщение, заказ)."""
         with self._lock, self._conn() as c:
-            r = c.execute("SELECT * FROM orders WHERE code=?", (code.strip().upper(),)).fetchone()
+            r = self._order_row_by_code(c, code)
             if not r:
                 return False, "Заказ с таким кодом не найден", None
             eff = self._effective_status(r["status"], r["pickup_to"])
@@ -204,13 +222,13 @@ class Store:
             if eff == "expired":
                 return False, "Окно выдачи истекло (no-show)", self._order_from_row(c, r)
             c.execute("UPDATE orders SET status='issued' WHERE id=?", (r["id"],))
-            r2 = c.execute("SELECT * FROM orders WHERE id=?", (r["id"],)).fetchone()
+            r2 = self._order_row_by_id(c, r["id"])
             return True, "Выдано ✓", self._order_from_row(c, r2)
 
     def refund(self, order_id: str) -> bool:
         """Возврат (вина партнёра): вернуть бокс в наличие, статус refunded."""
         with self._lock, self._conn() as c:
-            r = c.execute("SELECT * FROM orders WHERE id=?", (order_id,)).fetchone()
+            r = self._order_row_by_id(c, order_id)
             if not r or r["status"] in ("issued", "refunded", "cancelled"):
                 return False
             c.execute("UPDATE orders SET status='refunded' WHERE id=?", (order_id,))
