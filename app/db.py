@@ -15,6 +15,16 @@ def _now_iso() -> str:
     return datetime.now(timezone.utc).isoformat()
 
 
+def _is_past(iso: str) -> bool:
+    try:
+        dt = datetime.fromisoformat(iso)
+    except ValueError:
+        return False
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=timezone.utc)
+    return datetime.now(timezone.utc) > dt
+
+
 class Store:
     """Потокобезопасная обёртка над SQLite."""
 
@@ -33,7 +43,8 @@ class Store:
             c.executescript(
                 """
                 CREATE TABLE IF NOT EXISTS partners(
-                    id TEXT PRIMARY KEY, name TEXT, district TEXT, address TEXT, rating REAL);
+                    id TEXT PRIMARY KEY, name TEXT, district TEXT, address TEXT, rating REAL,
+                    token TEXT);
                 CREATE TABLE IF NOT EXISTS boxes(
                     id TEXT PRIMARY KEY, partner_id TEXT, category TEXT, title TEXT,
                     price INTEGER, value_est INTEGER, qty_total INTEGER, qty_left INTEGER,
@@ -45,6 +56,9 @@ class Store:
                     status TEXT, pickup_from TEXT, pickup_to TEXT, created_at TEXT);
                 """
             )
+            cols = {r["name"] for r in c.execute("PRAGMA table_info(partners)")}
+            if "token" not in cols:
+                c.execute("ALTER TABLE partners ADD COLUMN token TEXT")
 
     # ------------------------------------------------------------------ #
     #  Партнёры
@@ -52,21 +66,30 @@ class Store:
     def partners(self) -> list[Partner]:
         with self._lock, self._conn() as c:
             rows = c.execute("SELECT * FROM partners ORDER BY name").fetchall()
-        return [Partner(**dict(r)) for r in rows]
+        return [Partner(**{k: r[k] for k in ("id", "name", "district", "address", "rating")}) for r in rows]
 
     def _partner_row(self, c: sqlite3.Connection, pid: str) -> sqlite3.Row | None:
         return c.execute("SELECT * FROM partners WHERE id=?", (pid,)).fetchone()
 
-    def upsert_partner(self, p: Partner) -> None:
+    def upsert_partner(self, p: Partner, token: str | None = None) -> None:
         with self._lock, self._conn() as c:
             c.execute(
-                """INSERT INTO partners(id,name,district,address,rating)
-                   VALUES(?,?,?,?,?)
+                """INSERT INTO partners(id,name,district,address,rating,token)
+                   VALUES(?,?,?,?,?,?)
                    ON CONFLICT(id) DO UPDATE SET name=excluded.name,
                        district=excluded.district, address=excluded.address,
-                       rating=excluded.rating""",
-                (p.id, p.name, p.district, p.address, p.rating),
+                       rating=excluded.rating,
+                       token=COALESCE(excluded.token, partners.token)""",
+                (p.id, p.name, p.district, p.address, p.rating, token),
             )
+
+    def partner_by_token(self, token: str) -> str | None:
+        """id партнёра по токену доступа (None — неверный токен)."""
+        if not token:
+            return None
+        with self._lock, self._conn() as c:
+            r = c.execute("SELECT id FROM partners WHERE token=?", (token,)).fetchone()
+        return r["id"] if r else None
 
     # ------------------------------------------------------------------ #
     #  Боксы
@@ -109,7 +132,7 @@ class Store:
                 "SELECT * FROM boxes WHERE status='active' AND qty_left>0 "
                 "ORDER BY created_at DESC"
             ).fetchall()
-            boxes = [self._box_from_row(c, r) for r in rows]
+            boxes = [self._box_from_row(c, r) for r in rows if not _is_past(r["pickup_to"])]
         if district and district != "all":
             boxes = [b for b in boxes if b.district == district]
         return boxes
@@ -121,6 +144,15 @@ class Store:
                 (partner_id,),
             ).fetchall()
             return [self._box_from_row(c, r) for r in rows]
+
+    def close_box(self, box_id: str, partner_id: str) -> bool:
+        """Снять бокс с продажи (только свой). Уже оплаченные брони остаются в силе."""
+        with self._lock, self._conn() as c:
+            cur = c.execute(
+                "UPDATE boxes SET status='closed' WHERE id=? AND partner_id=? AND status='active'",
+                (box_id, partner_id),
+            )
+            return cur.rowcount > 0
 
     def _take_one(self, c: sqlite3.Connection, box_id: str) -> bool:
         """Атомарно уменьшить остаток бокса на 1 (если есть). True — успех."""
@@ -150,25 +182,32 @@ class Store:
     @staticmethod
     def _effective_status(stored: str, pickup_to: str) -> str:
         """Заказ со статусом paid, чьё окно выдачи прошло, считается просроченным."""
-        if stored == "paid":
-            try:
-                if datetime.now(timezone.utc) > datetime.fromisoformat(pickup_to):
-                    return "expired"
-            except ValueError:
-                pass
+        if stored == "paid" and _is_past(pickup_to):
+            return "expired"
         return stored
 
-    def create_order(self, order_id: str, code: str, box: Box, name: str, phone: str) -> Order | None:
+    def create_order(self, order_id: str, code: str, box: Box, name: str, phone: str,
+                     code_factory=None) -> Order | None:
+        """Создать заказ; при коллизии кода берёт новый из code_factory."""
+        if _is_past(box.pickup_to):
+            return None                     # окно самовывоза уже закрылось
         with self._lock, self._conn() as c:
             if not self._take_one(c, box.id):
                 return None                 # боксы закончились
-            c.execute(
-                """INSERT INTO orders(id,code,box_id,partner_id,category,price,
-                       user_name,user_phone,status,pickup_from,pickup_to,created_at)
-                   VALUES(?,?,?,?,?,?,?,?, 'paid', ?,?,?)""",
-                (order_id, code, box.id, box.partner_id, box.category, box.price,
-                 name, phone, box.pickup_from, box.pickup_to, _now_iso()),
-            )
+            for _ in range(5):
+                try:
+                    c.execute(
+                        """INSERT INTO orders(id,code,box_id,partner_id,category,price,
+                               user_name,user_phone,status,pickup_from,pickup_to,created_at)
+                           VALUES(?,?,?,?,?,?,?,?, 'paid', ?,?,?)""",
+                        (order_id, code, box.id, box.partner_id, box.category, box.price,
+                         name, phone, box.pickup_from, box.pickup_to, _now_iso()),
+                    )
+                    break
+                except sqlite3.IntegrityError:
+                    if code_factory is None:
+                        raise
+                    code = code_factory()
             r = c.execute("SELECT * FROM orders WHERE id=?", (order_id,)).fetchone()
             return self._order_from_row(c, r)
 
@@ -214,8 +253,23 @@ class Store:
             if not r or r["status"] in ("issued", "refunded", "cancelled"):
                 return False
             c.execute("UPDATE orders SET status='refunded' WHERE id=?", (order_id,))
-            self._return_one(c, r["box_id"])
+            # бокс возвращается в наличие только пока окно самовывоза не закрылось
+            if not _is_past(r["pickup_to"]):
+                self._return_one(c, r["box_id"])
             return True
+
+    def cancel(self, code: str) -> tuple[bool, str]:
+        """Отмена брони покупателем: доступна пока заказ оплачен и окно не истекло."""
+        with self._lock, self._conn() as c:
+            r = c.execute("SELECT * FROM orders WHERE code=?", (code.strip().upper(),)).fetchone()
+            if not r:
+                return False, "Заказ не найден"
+            eff = self._effective_status(r["status"], r["pickup_to"])
+            if eff != "paid":
+                return False, "Отменить можно только активный оплаченный заказ"
+            c.execute("UPDATE orders SET status='cancelled' WHERE id=?", (r["id"],))
+            self._return_one(c, r["box_id"])
+            return True, "Заказ отменён, бокс вернулся в продажу"
 
     # ------------------------------------------------------------------ #
     #  Статистика и сервис

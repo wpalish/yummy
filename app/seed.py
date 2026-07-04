@@ -5,6 +5,7 @@
 """
 from __future__ import annotations
 
+import os
 from datetime import datetime, timedelta, timezone
 
 from .db import Store
@@ -31,10 +32,15 @@ _BOXES = [
 ]
 
 
+def _partner_token(pid: str) -> str:
+    """Токен кабинета партнёра: в проде задаётся через PARTNER_TOKEN_<ID>."""
+    return os.environ.get(f"PARTNER_TOKEN_{pid.upper()}", f"pt-{pid}-demo")
+
+
 def seed(store: Store) -> None:
     store.reset()
     for p in PARTNERS:
-        store.upsert_partner(p)
+        store.upsert_partner(p, token=_partner_token(p.id))
 
     now = datetime.now(timezone.utc)
     pickup_from = (now - timedelta(minutes=30)).isoformat()
