@@ -1,0 +1,10 @@
+# Деплой SaveEat в один клик:
+#   render.com → New → Blueprint → выбрать репозиторий spasibox → Apply
+#   через ~2 мин будет https://saveeat.onrender.com  (магазин/партнёр/админ, /docs)
+services:
+  - type: web
+    name: saveeat
+    runtime: python
+    plan: free
+    buildCommand: pip install -r requirements.txt
+    startCommand: uvicorn app.main:app --host 0.0.0.0 --port $PORT
