@@ -132,16 +132,23 @@ def create_box(payload: BoxCreate) -> Box:
     """Партнёр публикует бокс."""
     if payload.value_est < payload.price:
         raise HTTPException(400, "Ценность содержимого должна быть не ниже цены бокса")
-    return store.create_box(_new("b"), payload)
+    try:
+        return store.create_box(_new("b"), payload)
+    except LookupError:
+        raise HTTPException(404, "Партнёр не найден")
 
 
 @app.get("/partners/{partner_id}/boxes", response_model=list[Box], tags=["Partner"])
 def partner_boxes(partner_id: str) -> list[Box]:
+    if store.partner(partner_id) is None:
+        raise HTTPException(404, "Партнёр не найден")
     return store.partner_boxes(partner_id)
 
 
 @app.get("/partners/{partner_id}/orders", response_model=list[Order], tags=["Partner"])
 def partner_orders(partner_id: str) -> list[Order]:
+    if store.partner(partner_id) is None:
+        raise HTTPException(404, "Партнёр не найден")
     return store.partner_orders(partner_id)
 
 
@@ -149,7 +156,10 @@ def partner_orders(partner_id: str) -> list[Order]:
 def redeem(payload: RedeemInput) -> dict:
     """Выдать заказ по коду (сотрудник партнёра)."""
     ok, message, order = store.redeem(payload.code)
-    return {"ok": ok, "message": message, "order": order.model_dump() if order else None}
+    if not ok:
+        status = 404 if order is None else 409
+        raise HTTPException(status, detail=message)
+    return {"ok": ok, "message": message, "order": order.model_dump()}
 
 
 # --------------------------------------------------------------------------- #
@@ -167,7 +177,12 @@ def admin_orders() -> list[Order]:
 
 @app.post("/admin/refund/{order_id}", tags=["Admin"])
 def admin_refund(order_id: str) -> dict:
-    return {"refunded": store.refund(order_id)}
+    success, reason = store.refund(order_id)
+    if not success:
+        if reason == "not_found":
+            raise HTTPException(404, "Заказ не найден")
+        raise HTTPException(409, f"Возврат невозможен: {reason}")
+    return {"refunded": True}
 
 
 @app.post("/admin/seed", tags=["Dev"], dependencies=[Depends(local_only)])
