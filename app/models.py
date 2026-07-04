@@ -17,10 +17,27 @@ CATEGORY_RU = {
     "snack": "Snack Box",
 }
 CATEGORY_EMOJI = {"sweet": "🍩", "bakery": "🥐", "mixed": "🧺", "snack": "🥪"}
+_DEFAULT_EMOJI = "🧺"
 
 
 def _utcnow() -> datetime:
     return datetime.now(timezone.utc)
+
+
+class CategoryLabeled(BaseModel):
+    """Общие лейблы категории (RU-название и эмодзи) для боксов и заказов."""
+
+    category: BoxCategory
+
+    @computed_field
+    @property
+    def category_ru(self) -> str:
+        return CATEGORY_RU.get(self.category, self.category)
+
+    @computed_field
+    @property
+    def emoji(self) -> str:
+        return CATEGORY_EMOJI.get(self.category, _DEFAULT_EMOJI)
 
 
 # --------------------------------------------------------------------------- #
@@ -51,14 +68,13 @@ class BoxCreate(BaseModel):
     description: str = ""
 
 
-class Box(BaseModel):
+class Box(CategoryLabeled):
     id: str
     partner_id: str
     partner_name: str
     district: str
     address: str
     rating: float
-    category: BoxCategory
     title: str
     price: int
     value_est: int
@@ -76,16 +92,6 @@ class Box(BaseModel):
             return 0
         return round((1 - self.price / self.value_est) * 100)
 
-    @computed_field
-    @property
-    def category_ru(self) -> str:
-        return CATEGORY_RU.get(self.category, self.category)
-
-    @computed_field
-    @property
-    def emoji(self) -> str:
-        return CATEGORY_EMOJI.get(self.category, "🧺")
-
 
 # --------------------------------------------------------------------------- #
 #  Заказы
@@ -96,14 +102,13 @@ class OrderCreate(BaseModel):
     user_phone: str = Field(..., min_length=5)
 
 
-class Order(BaseModel):
+class Order(CategoryLabeled):
     id: str
     code: str                           # код выдачи, напр. SB-7F3A
     box_id: str
     partner_id: str
     partner_name: str
     address: str
-    category: BoxCategory
     price: int
     user_name: str
     user_phone: str
@@ -111,16 +116,6 @@ class Order(BaseModel):
     pickup_from: str
     pickup_to: str
     created_at: datetime = Field(default_factory=_utcnow)
-
-    @computed_field
-    @property
-    def category_ru(self) -> str:
-        return CATEGORY_RU.get(self.category, self.category)
-
-    @computed_field
-    @property
-    def emoji(self) -> str:
-        return CATEGORY_EMOJI.get(self.category, "🧺")
 
 
 class OrderResult(BaseModel):

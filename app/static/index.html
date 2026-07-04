@@ -222,6 +222,7 @@ function toast(m,err=false){const t=$("#toast");t.textContent=m;t.className=err?
 async function api(m,u,b){const r=await fetch(u,{method:m,headers:b?{"Content-Type":"application/json"}:undefined,body:b?JSON.stringify(b):undefined});
   if(!r.ok){let d;try{d=await r.json();}catch(e){} throw new Error((d&&d.detail)||("Ошибка "+r.status));} return r.status===204?null:r.json();}
 const get=u=>api("GET",u), post=(u,b)=>api("POST",u,b);
+const getSafe=(u,fallback=[])=>get(u).catch(()=>fallback);   // GET, не падающий на ошибке
 const STATUS_RU={paid:"оплачен",issued:"выдан",expired:"не забран",refunded:"возврат",cancelled:"отменён"};
 
 /* ---- переключение ролей ---- */
@@ -238,12 +239,12 @@ roleBtns.forEach(b=>b.onclick=()=>{
 let curDistrict="all";
 async function loadStore(){
   // районы
-  let ds=[];try{ds=await get("/districts");}catch(e){}
+  const ds=await getSafe("/districts");
   $("#districts").innerHTML=[`<button class="chip${curDistrict==="all"?" on":""}" data-d="all">Все районы</button>`]
     .concat(ds.map(d=>`<button class="chip${curDistrict===d?" on":""}" data-d="${esc(d)}">${esc(d)}</button>`)).join("");
   document.querySelectorAll("#districts .chip").forEach(c=>c.onclick=()=>{curDistrict=c.dataset.d;loadStore();});
   // боксы
-  let boxes=[];try{boxes=await get("/boxes?district="+encodeURIComponent(curDistrict));}catch(e){}
+  const boxes=await getSafe("/boxes?district="+encodeURIComponent(curDistrict));
   $("#boxes").innerHTML=boxes.length?boxes.map(boxCard).join(""):'<p class="empty">В этом районе пока нет боксов. Загляни позже 🌙</p>';
   document.querySelectorAll(".box").forEach(el=>el.onclick=()=>openBox(el.dataset.id));
   renderMyOrders();
@@ -328,7 +329,7 @@ async function renderMyOrders(){
 
 /* ============ ПАРТНЁР ============ */
 async function loadPartner(){
-  let ps=[];try{ps=await get("/partners");}catch(e){}
+  const ps=await getSafe("/partners");
   if(!$("#pSelect").dataset.filled){
     $("#pSelect").innerHTML=ps.map(p=>`<option value="${p.id}">${esc(p.name)} · ${esc(p.district)}</option>`).join("");
     $("#pSelect").dataset.filled="1";
@@ -339,9 +340,8 @@ async function loadPartner(){
 function curPartner(){return $("#pSelect").value;}
 async function loadPartnerData(){
   const pid=curPartner();
-  let boxes=[],orders=[];
-  try{boxes=await get(`/partners/${pid}/boxes`);}catch(e){}
-  try{orders=await get(`/partners/${pid}/orders`);}catch(e){}
+  const boxes=await getSafe(`/partners/${pid}/boxes`);
+  const orders=await getSafe(`/partners/${pid}/orders`);
   $("#pBoxes").innerHTML=boxes.length?boxes.map(b=>`<div class="lrow"><div style="font-size:1.3rem">${b.emoji}</div>
     <div class="g"><b>${esc(b.title||b.category_ru)}</b><div style="font-size:.78rem;color:var(--muted)">${money(b.price)} · ${win(b.pickup_from,b.pickup_to)}</div></div>
     <span class="tag ${b.qty_left>0?"t-issued":"t-expired"}">${b.qty_left}/${b.qty_total}</span></div>`).join(""):'<p class="empty">Боксов пока нет.</p>';
@@ -375,9 +375,8 @@ $("#redeemBtn").onclick=async()=>{
 
 /* ============ АДМИН ============ */
 async function loadAdmin(){
-  let s={},orders=[];
-  try{s=await get("/admin/stats");}catch(e){}
-  try{orders=await get("/admin/orders");}catch(e){}
+  const s=await getSafe("/admin/stats",{});
+  const orders=await getSafe("/admin/orders");
   $("#aStats").innerHTML=[
     [money(s.gmv||0),"GMV (оборот)"],[s.orders_total||0,"заказов"],
     [(s.fill_rate||0)+"%","выкуплено (fill rate)"],[s.no_show||0,"не забрали (no-show)"],
