@@ -15,6 +15,7 @@ from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
 from . import __version__
+from .auth import require_admin, require_partner
 from .db import Store
 from .models import (
     Box,
@@ -127,7 +128,13 @@ def list_partners() -> list[Partner]:
     return store.partners()
 
 
-@app.post("/boxes", response_model=Box, status_code=201, tags=["Partner"])
+@app.post(
+    "/boxes",
+    response_model=Box,
+    status_code=201,
+    tags=["Partner"],
+    dependencies=[Depends(require_partner)],
+)
 def create_box(payload: BoxCreate) -> Box:
     """Партнёр публикует бокс."""
     if payload.value_est < payload.price:
@@ -140,12 +147,17 @@ def partner_boxes(partner_id: str) -> list[Box]:
     return store.partner_boxes(partner_id)
 
 
-@app.get("/partners/{partner_id}/orders", response_model=list[Order], tags=["Partner"])
+@app.get(
+    "/partners/{partner_id}/orders",
+    response_model=list[Order],
+    tags=["Partner"],
+    dependencies=[Depends(require_partner)],
+)
 def partner_orders(partner_id: str) -> list[Order]:
     return store.partner_orders(partner_id)
 
 
-@app.post("/redeem", tags=["Partner"])
+@app.post("/redeem", tags=["Partner"], dependencies=[Depends(require_partner)])
 def redeem(payload: RedeemInput) -> dict:
     """Выдать заказ по коду (сотрудник партнёра)."""
     ok, message, order = store.redeem(payload.code)
@@ -155,17 +167,26 @@ def redeem(payload: RedeemInput) -> dict:
 # --------------------------------------------------------------------------- #
 #  Админка
 # --------------------------------------------------------------------------- #
-@app.get("/admin/stats", tags=["Admin"])
+@app.get("/admin/stats", tags=["Admin"], dependencies=[Depends(require_admin)])
 def admin_stats() -> dict:
     return store.stats()
 
 
-@app.get("/admin/orders", response_model=list[Order], tags=["Admin"])
+@app.get(
+    "/admin/orders",
+    response_model=list[Order],
+    tags=["Admin"],
+    dependencies=[Depends(require_admin)],
+)
 def admin_orders() -> list[Order]:
     return store.orders()
 
 
-@app.post("/admin/refund/{order_id}", tags=["Admin"])
+@app.post(
+    "/admin/refund/{order_id}",
+    tags=["Admin"],
+    dependencies=[Depends(require_admin)],
+)
 def admin_refund(order_id: str) -> dict:
     return {"refunded": store.refund(order_id)}
 

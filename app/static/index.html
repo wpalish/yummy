@@ -219,8 +219,15 @@ const money=n=>Number(n).toLocaleString("ru-RU")+" ₸";
 const hhmm=iso=>{try{return new Date(iso).toLocaleTimeString("ru-RU",{hour:"2-digit",minute:"2-digit"});}catch(e){return "—";}};
 const win=(a,b)=>`сегодня ${hhmm(a)}–${hhmm(b)}`;
 function toast(m,err=false){const t=$("#toast");t.textContent=m;t.className=err?"err show":"show";clearTimeout(t._t);t._t=setTimeout(()=>t.className="",2800);}
-async function api(m,u,b){const r=await fetch(u,{method:m,headers:b?{"Content-Type":"application/json"}:undefined,body:b?JSON.stringify(b):undefined});
-  if(!r.ok){let d;try{d=await r.json();}catch(e){} throw new Error((d&&d.detail)||("Ошибка "+r.status));} return r.status===204?null:r.json();}
+/* токены привилегированных ролей (partner/admin) хранятся локально */
+const tok=k=>localStorage.getItem(k)||"";
+const setTok=(k,v)=>{if(v)localStorage.setItem(k,v);else localStorage.removeItem(k);};
+function ensureToken(key,label){if(!tok(key)){const v=prompt(label);if(v)setTok(key,v.trim());}}
+function authHeaders(){const h={};const a=tok("sb_admin_token");if(a)h["X-Admin-Token"]=a;const p=tok("sb_partner_token");if(p)h["X-Partner-Token"]=p;return h;}
+async function api(m,u,b){const headers=authHeaders();if(b)headers["Content-Type"]="application/json";
+  const r=await fetch(u,{method:m,headers,body:b?JSON.stringify(b):undefined});
+  if(!r.ok){if(r.status===401){setTok("sb_admin_token","");setTok("sb_partner_token","");}
+    let d;try{d=await r.json();}catch(e){} throw new Error((d&&d.detail)||("Ошибка "+r.status));} return r.status===204?null:r.json();}
 const get=u=>api("GET",u), post=(u,b)=>api("POST",u,b);
 const STATUS_RU={paid:"оплачен",issued:"выдан",expired:"не забран",refunded:"возврат",cancelled:"отменён"};
 
@@ -230,8 +237,8 @@ roleBtns.forEach(b=>b.onclick=()=>{
   roleBtns.forEach(x=>x.classList.toggle("on",x===b));
   ["store","partner","admin"].forEach(v=>$("#view-"+v).classList.toggle("hidden",v!==b.dataset.role));
   if(b.dataset.role==="store")loadStore();
-  if(b.dataset.role==="partner")loadPartner();
-  if(b.dataset.role==="admin")loadAdmin();
+  if(b.dataset.role==="partner"){ensureToken("sb_partner_token","Токен партнёра (задаётся на сервере в PARTNER_TOKEN)");loadPartner();}
+  if(b.dataset.role==="admin"){ensureToken("sb_admin_token","Токен администратора (задаётся на сервере в ADMIN_TOKEN)");loadAdmin();}
 });
 
 /* ============ МАГАЗИН ============ */
