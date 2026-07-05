@@ -33,7 +33,8 @@ class Store:
             c.executescript(
                 """
                 CREATE TABLE IF NOT EXISTS partners(
-                    id TEXT PRIMARY KEY, name TEXT, district TEXT, address TEXT, rating REAL);
+                    id TEXT PRIMARY KEY, name TEXT, district TEXT, address TEXT,
+                    rating REAL, lat REAL, lng REAL);
                 CREATE TABLE IF NOT EXISTS boxes(
                     id TEXT PRIMARY KEY, partner_id TEXT, category TEXT, title TEXT,
                     price INTEGER, value_est INTEGER, qty_total INTEGER, qty_left INTEGER,
@@ -60,12 +61,12 @@ class Store:
     def upsert_partner(self, p: Partner) -> None:
         with self._lock, self._conn() as c:
             c.execute(
-                """INSERT INTO partners(id,name,district,address,rating)
-                   VALUES(?,?,?,?,?)
+                """INSERT INTO partners(id,name,district,address,rating,lat,lng)
+                   VALUES(?,?,?,?,?,?,?)
                    ON CONFLICT(id) DO UPDATE SET name=excluded.name,
                        district=excluded.district, address=excluded.address,
-                       rating=excluded.rating""",
-                (p.id, p.name, p.district, p.address, p.rating),
+                       rating=excluded.rating, lat=excluded.lat, lng=excluded.lng""",
+                (p.id, p.name, p.district, p.address, p.rating, p.lat, p.lng),
             )
 
     # ------------------------------------------------------------------ #

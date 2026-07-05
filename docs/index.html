@@ -3,179 +3,230 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>Yummy — спасай еду, экономь</title>
+<title>Yummy — сюрприз-боксы из кофеен Астаны со скидкой до 70%</title>
+<meta name="description" content="Yummy — сервис спасения еды в Астане: кофейни и пекарни продают свежие остатки дня сюрприз-боксами со скидкой 40–70%. Бронируй онлайн, забирай рядом." />
+<meta name="theme-color" content="#FDC620" />
+<meta property="og:title" content="Yummy — спасай еду, экономь" />
+<meta property="og:description" content="Сюрприз-боксы из кофеен и пекарен Астаны со скидкой до 70%. Бронируй и забирай сегодня." />
+<meta property="og:image" content="img/hero.jpg" />
+<meta property="og:type" content="website" />
+<link rel="icon" type="image/png" href="img/favicon.png" />
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
 <style>
   :root{
-    --bg:#F5EFE3; --card:#FFFFFF; --brown:#653624; --brown-l:#8B5E3C;
+    --bg:#F5EFE3; --card:#FFFFFF; --brown:#653624; --brown-l:#7E5233;
     --yellow:#FDC620; --yellow-h:#F0B800; --yellow-l:#FFF5D6;
     --cream:#FAF6EA; --cream-d:#F0E8D4; --border:#E8DCCB;
-    --txt:#653624; --txt2:#9B8575; --red:#E84855; --green:#4CAF50;
+    --txt:#4A2A1B; --txt2:#7E6A5A; --red:#E84855; --green:#3E9142;
     --ease:cubic-bezier(.16,1,.3,1);
     font-family:ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
   }
   *{box-sizing:border-box;}
-  body{margin:0;background:var(--bg);color:var(--txt);line-height:1.5;}
+  body{margin:0;background:var(--bg);color:var(--txt);line-height:1.55;}
   button{font:inherit;cursor:pointer;}
   .hidden{display:none !important;}
   img{display:block;}
+  a{color:var(--brown);}
 
   /* ===== HEADER ===== */
   header{position:sticky;top:0;z-index:50;background:var(--card);box-shadow:0 1px 0 var(--border);}
   .topline{height:6px;background:var(--brown);}
-  .hwrap{max-width:1024px;margin:0 auto;padding:.6rem .9rem;}
-  .hrow{display:flex;align-items:center;gap:.7rem;}
-  .logo{display:flex;align-items:center;gap:.5rem;flex:none;}
-  .logo img{width:36px;height:36px;border-radius:9px;}
-  .logo .nm{font-weight:800;font-size:1.05rem;line-height:1.1;}
+  .hwrap{max-width:1024px;margin:0 auto;padding:.65rem 1rem;}
+  .hrow{display:flex;align-items:center;gap:.75rem;}
+  .logo{display:flex;align-items:center;gap:.55rem;flex:none;}
+  .logo img{width:38px;height:38px;border-radius:10px;}
+  .logo .nm{font-weight:800;font-size:1.08rem;line-height:1.1;color:var(--brown);}
   .logo .tg{font-size:.62rem;font-weight:600;color:var(--txt2);}
   .loc{display:flex;align-items:center;gap:.35rem;background:var(--cream);border:0;border-radius:12px;
-    padding:.45rem .7rem;font-size:.82rem;font-weight:600;color:var(--txt);white-space:nowrap;}
+    padding:.5rem .75rem;font-size:.84rem;font-weight:700;color:var(--brown);white-space:nowrap;}
   .loc:hover{background:var(--cream-d);}
   .search{flex:1;min-width:0;}
-  .search input{width:100%;height:38px;border:0;border-radius:12px;background:var(--cream);color:var(--txt);
-    font:inherit;font-size:.88rem;padding:0 .9rem 0 2.2rem;outline:none;box-shadow:0 0 0 1px var(--border) inset;
-    background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%239B8575' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Ccircle cx='11' cy='11' r='8'/%3E%3Cline x1='21' y1='21' x2='16.65' y2='16.65'/%3E%3C/svg%3E");
+  .search input{width:100%;height:40px;border:0;border-radius:12px;background:var(--cream);color:var(--txt);
+    font:inherit;font-size:.9rem;padding:0 .9rem 0 2.2rem;outline:none;box-shadow:0 0 0 1px var(--border) inset;
+    background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%237E6A5A' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Ccircle cx='11' cy='11' r='8'/%3E%3Cline x1='21' y1='21' x2='16.65' y2='16.65'/%3E%3C/svg%3E");
     background-repeat:no-repeat;background-position:11px center;}
   .search input::placeholder{color:var(--txt2);}
   .search input:focus{box-shadow:0 0 0 2px var(--yellow) inset;}
-  .hbtn{position:relative;width:38px;height:38px;border:0;background:transparent;border-radius:12px;font-size:1.15rem;flex:none;}
+  .hbtn{position:relative;width:40px;height:40px;border:0;background:transparent;border-radius:12px;font-size:1.15rem;flex:none;}
   .hbtn:hover{background:var(--cream);}
   .hbtn .cnt{position:absolute;top:-2px;right:-2px;background:var(--red);color:#fff;font-size:.6rem;font-weight:800;
     min-width:15px;height:15px;border-radius:99px;display:grid;place-items:center;padding:0 3px;}
   .roles{display:none;gap:.2rem;background:var(--cream);padding:.22rem;border-radius:12px;flex:none;}
-  .roles button{border:0;background:transparent;color:var(--txt2);font-weight:700;font-size:.8rem;padding:.4rem .75rem;border-radius:9px;}
+  .roles button{border:0;background:transparent;color:var(--txt2);font-weight:700;font-size:.8rem;padding:.42rem .8rem;border-radius:9px;}
   .roles button.on{background:var(--brown);color:#fff;}
-  .msearch{margin-top:.55rem;}
+  .msearch{margin-top:.6rem;}
   @media(min-width:760px){ .roles{display:flex;} .msearch{display:none;} }
   @media(max-width:759px){ .search.desk{display:none;} .logo .txt{display:none;} }
 
-  main{max-width:1024px;margin:0 auto;padding:0 .9rem 5.5rem;}
-  @media(min-width:760px){ main{padding-bottom:2.5rem;} }
+  main{max-width:1024px;margin:0 auto;padding:0 1rem 6rem;}
+  @media(min-width:760px){ main{padding-bottom:3rem;} }
 
   /* ===== ЧИПЫ ===== */
-  .cats{display:flex;gap:.45rem;overflow-x:auto;padding:.8rem 0 .2rem;scrollbar-width:none;}
+  .cats{display:flex;gap:.55rem;overflow-x:auto;padding:.9rem 0 .25rem;scrollbar-width:none;}
   .cats::-webkit-scrollbar{display:none;}
-  .cat{display:flex;flex-direction:column;align-items:center;gap:.15rem;border:0;background:var(--card);
-    box-shadow:0 0 0 1px var(--border) inset;border-radius:14px;padding:.5rem .85rem;min-width:64px;flex:none;
-    font-size:.72rem;font-weight:600;color:var(--txt2);transition:transform .15s var(--ease);}
-  .cat .ic{font-size:1.25rem;}
-  .cat.on{background:var(--yellow);color:var(--brown);box-shadow:none;font-weight:800;}
+  .cat{display:flex;flex-direction:column;align-items:center;gap:.18rem;border:0;background:var(--card);
+    box-shadow:0 0 0 1px var(--border) inset;border-radius:14px;padding:.55rem .95rem;min-width:70px;flex:none;
+    font-size:.74rem;font-weight:600;color:var(--txt2);transition:transform .15s var(--ease);}
+  .cat .ic{font-size:1.3rem;}
+  .cat.on{background:var(--yellow);color:var(--brown);box-shadow:0 0 0 2px var(--brown) inset;font-weight:800;}
   .cat:hover{transform:translateY(-1px);}
-  .dists{display:flex;gap:.4rem;overflow-x:auto;padding:.55rem 0 .1rem;scrollbar-width:none;}
+  .dists{display:flex;gap:.45rem;overflow-x:auto;padding:.65rem 0 .15rem;scrollbar-width:none;}
   .dists::-webkit-scrollbar{display:none;}
   .dist{border:0;background:var(--card);box-shadow:0 0 0 1px var(--border) inset;color:var(--txt2);
-    font-size:.78rem;font-weight:600;padding:.38rem .8rem;border-radius:99px;white-space:nowrap;flex:none;}
+    font-size:.8rem;font-weight:600;padding:.42rem .85rem;border-radius:99px;white-space:nowrap;flex:none;}
   .dist.on{background:var(--brown);color:#fff;box-shadow:none;}
 
-  /* ===== PROMO ===== */
-  .promo{margin-top:.8rem;border-radius:18px;overflow:hidden;display:flex;align-items:center;justify-content:space-between;
-    background:linear-gradient(90deg,rgba(253,198,32,.25),rgba(101,54,36,.08) 55%,rgba(253,198,32,.10));padding:1.1rem 1.2rem;}
-  .promo h2{margin:0;font-size:1.35rem;font-weight:800;color:var(--brown);line-height:1.15;}
-  .promo .sub{margin-top:.15rem;font-size:.8rem;font-weight:600;color:var(--txt2);}
-  .pills{display:flex;flex-wrap:wrap;gap:.35rem;margin-top:.7rem;}
-  .pill{background:rgba(255,255,255,.8);border-radius:99px;padding:.22rem .65rem;font-size:.7rem;font-weight:700;color:var(--brown);}
-  .promo .ph{width:120px;height:96px;border-radius:16px;overflow:hidden;flex:none;margin-left:1rem;display:none;}
+  /* ===== HERO ===== */
+  .promo{margin-top:.9rem;border-radius:18px;overflow:hidden;display:flex;align-items:center;justify-content:space-between;
+    background:linear-gradient(90deg,rgba(253,198,32,.28),rgba(101,54,36,.08) 55%,rgba(253,198,32,.10));padding:1.3rem 1.4rem;}
+  .promo h1{margin:0;font-size:1.45rem;font-weight:800;color:var(--brown);line-height:1.18;}
+  .promo .sub{margin-top:.3rem;font-size:.86rem;font-weight:600;color:var(--brown-l);max-width:430px;}
+  .cta-row{display:flex;align-items:center;gap:.7rem;margin-top:.9rem;flex-wrap:wrap;}
+  .cta{border:0;border-radius:13px;font-weight:800;padding:.7rem 1.3rem;background:var(--yellow);color:var(--brown);
+    transition:background .15s,transform .15s var(--ease);}
+  .cta:hover{background:var(--yellow-h);transform:translateY(-1px);}
+  .cta-note{font-size:.76rem;font-weight:700;color:var(--brown-l);}
+  .promo .ph{width:130px;height:104px;border-radius:16px;overflow:hidden;flex:none;margin-left:1rem;display:none;position:relative;}
   .promo .ph img{width:100%;height:100%;object-fit:cover;}
-  @media(min-width:640px){ .promo .ph{display:block;} .promo h2{font-size:1.6rem;} }
+  @media(min-width:640px){ .promo .ph{display:block;} .promo h1{font-size:1.75rem;} }
 
-  .sechead{display:flex;align-items:baseline;justify-content:space-between;margin:1.2rem 0 .7rem;}
-  .sechead h3{margin:0;font-size:1.05rem;font-weight:800;color:var(--brown);}
-  .sechead span{font-size:.75rem;color:var(--txt2);font-weight:600;}
+  .sechead{display:flex;align-items:center;justify-content:space-between;margin:1.4rem 0 .8rem;gap:.8rem;}
+  .sechead h2{margin:0;font-size:1.1rem;font-weight:800;color:var(--brown);}
+  .viewtgl{display:flex;gap:.2rem;background:var(--cream);padding:.2rem;border-radius:10px;}
+  .viewtgl button{border:0;background:transparent;color:var(--txt2);font-weight:700;font-size:.76rem;padding:.32rem .7rem;border-radius:8px;}
+  .viewtgl button.on{background:var(--card);color:var(--brown);box-shadow:0 1px 3px rgba(101,54,36,.15);}
+  #map{height:380px;border-radius:16px;box-shadow:0 0 0 1px var(--border) inset;z-index:1;}
 
   /* ===== КАРТОЧКИ ===== */
-  .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(250px,1fr));gap:.9rem;}
-  @media(max-width:560px){ .grid{grid-template-columns:repeat(2,1fr);gap:.6rem;} }
+  .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(255px,1fr));gap:1.1rem;}
+  @media(max-width:560px){ .grid{grid-template-columns:repeat(2,1fr);gap:.75rem;} }
   .boxc{display:flex;flex-direction:column;overflow:hidden;border-radius:16px;background:var(--card);
     box-shadow:0 0 0 1px var(--border) inset;transition:box-shadow .15s,transform .15s var(--ease);cursor:pointer;}
   .boxc:hover{box-shadow:0 8px 22px rgba(101,54,36,.14);transform:translateY(-2px);}
   .boxc .top{position:relative;aspect-ratio:4/3;background:var(--cream) center/cover no-repeat;}
-  .bdg{position:absolute;border-radius:9px;font-weight:700;padding:.15rem .5rem;font-size:.7rem;}
-  .b-disc{top:.5rem;left:.5rem;background:var(--green);color:#fff;font-weight:800;font-size:.74rem;}
-  .b-left{top:.5rem;right:.5rem;background:rgba(255,255,255,.92);color:var(--brown);font-size:.64rem;}
+  .bdg{position:absolute;border-radius:9px;font-weight:700;padding:.18rem .55rem;font-size:.72rem;}
+  .b-disc{top:.55rem;left:.55rem;background:var(--green);color:#fff;font-weight:800;font-size:.76rem;}
+  .b-left{top:.55rem;right:.55rem;background:rgba(255,255,255,.94);color:var(--brown);font-size:.66rem;}
   .b-left.fomo{background:var(--red);color:#fff;}
-  .b-cat{bottom:.5rem;left:.5rem;background:rgba(101,54,36,.72);color:#fff;font-size:.64rem;}
-  .boxc .body{display:flex;flex-direction:column;gap:.28rem;padding:.7rem .8rem .85rem;flex:1;}
-  .boxc h4{margin:0;font-size:.92rem;font-weight:800;color:var(--brown);line-height:1.25;}
-  .boxc .meta{font-size:.72rem;color:var(--txt2);}
+  .b-cat{bottom:.55rem;left:.55rem;background:rgba(74,42,27,.78);color:#fff;font-size:.66rem;}
+  .boxc .body{display:flex;flex-direction:column;gap:.32rem;padding:.85rem .95rem 1rem;flex:1;}
+  .boxc h3{margin:0;font-size:.95rem;font-weight:800;color:var(--brown);line-height:1.28;}
+  .boxc .meta{font-size:.76rem;color:var(--txt2);}
   .boxc .meta b{color:var(--brown-l);font-weight:700;}
-  .boxc .time{font-size:.7rem;color:var(--txt2);}
-  .boxc .price{margin-top:auto;display:flex;align-items:baseline;gap:.45rem;padding-top:.35rem;}
-  .boxc .price b{font-size:1.05rem;color:var(--brown);}
-  .boxc .price s{font-size:.75rem;color:var(--txt2);}
-  .empty{grid-column:1/-1;color:var(--txt2);text-align:center;padding:2rem 1rem;font-size:.9rem;}
+  .boxc .time{font-size:.74rem;color:var(--txt2);font-weight:600;}
+  .boxc .price{margin-top:auto;display:flex;align-items:baseline;gap:.5rem;padding-top:.4rem;}
+  .boxc .price b{font-size:1.1rem;color:var(--brown);}
+  .boxc .price s{font-size:.8rem;color:#A08D7D;}
+  .empty{grid-column:1/-1;color:var(--txt2);text-align:center;padding:2.2rem 1rem;font-size:.92rem;}
 
-  /* ===== BOTTOM NAV (mobile) ===== */
+  /* skeleton */
+  .sk{border-radius:16px;overflow:hidden;background:var(--card);box-shadow:0 0 0 1px var(--border) inset;}
+  .sk .a{aspect-ratio:4/3;} .sk .b{height:14px;margin:.85rem .95rem .4rem;border-radius:7px;}
+  .sk .c{height:11px;margin:0 .95rem .9rem;width:60%;border-radius:7px;}
+  .sk .a,.sk .b,.sk .c{background:linear-gradient(90deg,var(--cream) 25%,var(--cream-d) 50%,var(--cream) 75%);
+    background-size:200% 100%;animation:shimmer 1.1s infinite;}
+  @keyframes shimmer{to{background-position:-200% 0;}}
+
+  /* ===== BOTTOM NAV ===== */
   .bnav{position:fixed;left:0;right:0;bottom:0;z-index:50;background:var(--card);border-top:1px solid var(--border);
     display:flex;justify-content:space-around;padding:.35rem .5rem calc(.35rem + env(safe-area-inset-bottom));}
   .bnav button{display:flex;flex-direction:column;align-items:center;gap:.1rem;border:0;background:transparent;
-    color:var(--txt2);font-size:.6rem;font-weight:600;padding:.3rem .8rem;border-radius:12px;}
+    color:var(--txt2);font-size:.62rem;font-weight:600;padding:.3rem .8rem;border-radius:12px;}
   .bnav button.on{color:var(--brown);font-weight:800;}
   .bnav .ic{font-size:1.2rem;}
   @media(min-width:760px){ .bnav{display:none;} }
 
   /* ===== МОДАЛКА ===== */
-  .modal-bg{position:fixed;inset:0;background:rgba(70,40,25,.45);display:grid;place-items:center;padding:1rem;z-index:80;}
-  .modal{background:var(--card);border-radius:20px;max-width:440px;width:100%;max-height:92vh;overflow:auto;}
-  .modal .mh{height:160px;background:var(--cream) center/cover no-repeat;position:relative;}
-  .modal .mc{padding:1.1rem 1.2rem 1.3rem;}
-  .modal h3{margin:.1rem 0 .1rem;font-size:1.25rem;font-weight:800;color:var(--brown);}
-  .x{position:absolute;top:.6rem;right:.7rem;background:rgba(255,255,255,.9);border:0;width:30px;height:30px;border-radius:50%;font-size:1rem;color:var(--brown);}
-  .row{display:flex;justify-content:space-between;gap:1rem;font-size:.88rem;padding:.4rem 0;border-bottom:1px dashed var(--border);}
+  .modal-bg{position:fixed;inset:0;background:rgba(70,40,25,.45);display:grid;place-items:center;padding:1rem;z-index:80;
+    animation:fade .18s var(--ease);}
+  .modal{background:var(--card);border-radius:20px;max-width:450px;width:100%;max-height:92vh;overflow:auto;
+    animation:pop .28s var(--ease);}
+  @keyframes fade{from{opacity:0;}}
+  @keyframes pop{from{opacity:0;transform:translateY(18px) scale(.97);}}
+  .modal .mh{height:165px;background:var(--cream) center/cover no-repeat;position:relative;}
+  .modal .mc{padding:1.15rem 1.25rem 1.35rem;}
+  .modal h3{margin:.1rem 0 .15rem;font-size:1.28rem;font-weight:800;color:var(--brown);}
+  .x{position:absolute;top:.6rem;right:.7rem;background:rgba(255,255,255,.92);border:0;width:31px;height:31px;border-radius:50%;font-size:1rem;color:var(--brown);}
+  .row{display:flex;justify-content:space-between;gap:1rem;font-size:.9rem;padding:.45rem 0;border-bottom:1px dashed var(--border);}
   .row span:first-child{color:var(--txt2);}
-  .rules{background:var(--yellow-l);border-radius:12px;padding:.7rem .85rem;font-size:.78rem;color:var(--brown-l);margin:.85rem 0;}
+  .inside{background:var(--cream);border-radius:12px;padding:.7rem .85rem;font-size:.82rem;color:var(--txt);margin:.7rem 0 0;}
+  .inside b{color:var(--brown);}
+  .rules{background:var(--yellow-l);border-radius:12px;padding:.75rem .9rem;font-size:.79rem;color:var(--brown-l);margin:.85rem 0;}
   .rules b{color:var(--brown);}
-  label{display:block;font-size:.78rem;font-weight:700;color:var(--txt2);margin:.55rem 0 .25rem;}
-  input,select,textarea{width:100%;font:inherit;padding:.6rem .7rem;border:1px solid var(--border);border-radius:11px;background:var(--card);color:var(--txt);}
+  label{display:block;font-size:.79rem;font-weight:700;color:var(--txt2);margin:.6rem 0 .28rem;}
+  input,select,textarea{width:100%;font:inherit;padding:.62rem .72rem;border:1px solid var(--border);border-radius:11px;background:var(--card);color:var(--txt);}
   input:focus,select:focus,textarea:focus{outline:2px solid var(--yellow);border-color:var(--yellow);}
-  .btn{border:0;border-radius:13px;font-weight:800;padding:.8rem 1rem;width:100%;background:var(--yellow);color:var(--brown);
+  .btn{border:0;border-radius:13px;font-weight:800;padding:.82rem 1rem;width:100%;background:var(--yellow);color:var(--brown);
     transition:background .15s,transform .15s var(--ease);}
   .btn:hover{background:var(--yellow-h);transform:translateY(-1px);}
   .btn:disabled{opacity:.55;}
   .btn.sec{background:var(--cream);color:var(--brown);}
-  .btn.dark{background:var(--brown);color:#fff;}
-  .demo-pay{font-size:.7rem;color:var(--txt2);text-align:center;margin-top:.5rem;}
+  .demo-pay{font-size:.71rem;color:var(--txt2);text-align:center;margin-top:.55rem;}
   .ok-wrap{text-align:center;}
-  .qr{width:168px;height:168px;margin:.4rem auto .2rem;}
+  .ok-ic{font-size:2.6rem;animation:pop .5s var(--ease);}
+  .qr{width:170px;height:170px;margin:.45rem auto .25rem;}
   .qr svg{width:100%;height:100%;}
-  .code{font-size:1.55rem;font-weight:800;letter-spacing:.08em;color:var(--brown);}
+  .code{font-size:1.6rem;font-weight:800;letter-spacing:.08em;color:var(--brown);}
+  .rev{padding:.55rem 0;border-bottom:1px dashed var(--border);font-size:.86rem;}
+  .rev b{color:var(--brown);} .rev .st{color:#E0A800;}
 
   /* ===== ПАРТНЁР/АДМИН ===== */
-  h2.pageh{font-size:1.3rem;font-weight:800;color:var(--brown);margin:1.1rem 0 .2rem;}
-  .sub{color:var(--txt2);font-size:.88rem;margin-bottom:1rem;}
-  .cardp{background:var(--card);border-radius:16px;box-shadow:0 0 0 1px var(--border) inset;padding:1rem 1.1rem;margin-bottom:1rem;}
-  .cardp h3{margin:0 0 .7rem;font-size:.74rem;text-transform:uppercase;letter-spacing:.07em;color:var(--txt2);}
-  .two{display:grid;grid-template-columns:1fr 1fr;gap:.7rem;}
+  h2.pageh{font-size:1.3rem;font-weight:800;color:var(--brown);margin:1.2rem 0 .2rem;}
+  .sub{color:var(--txt2);font-size:.88rem;margin-bottom:1.1rem;}
+  .cardp{background:var(--card);border-radius:16px;box-shadow:0 0 0 1px var(--border) inset;padding:1.05rem 1.15rem;margin-bottom:1.1rem;}
+  .cardp h3{margin:0 0 .75rem;font-size:.74rem;text-transform:uppercase;letter-spacing:.07em;color:var(--txt2);}
+  .two{display:grid;grid-template-columns:1fr 1fr;gap:.8rem;}
   @media(max-width:700px){ .two{grid-template-columns:1fr;} }
-  .lrow{display:flex;align-items:center;gap:.6rem;padding:.55rem 0;border-bottom:1px solid var(--border);font-size:.86rem;}
+  .lrow{display:flex;align-items:center;gap:.65rem;padding:.6rem 0;border-bottom:1px solid var(--border);font-size:.87rem;}
   .lrow:last-child{border-bottom:0;}
   .lrow .g{flex:1;min-width:0;}
   .lrow b{color:var(--brown);}
-  .tag{font-size:.68rem;font-weight:800;padding:.16rem .5rem;border-radius:8px;flex:none;}
-  .t-paid{background:var(--yellow-l);color:#B98A00;}
-  .t-issued{background:#E8F5E9;color:var(--green);}
+  .tag{font-size:.68rem;font-weight:800;padding:.18rem .52rem;border-radius:8px;flex:none;}
+  .t-paid{background:var(--yellow-l);color:#A67C00;}
+  .t-issued{background:#E4F3E5;color:var(--green);}
   .t-expired{background:var(--cream-d);color:var(--txt2);}
   .t-refunded,.t-cancelled{background:#FDEBED;color:var(--red);}
-  .stats{display:grid;grid-template-columns:repeat(4,1fr);gap:.7rem;margin-bottom:1rem;}
+  .stats{display:grid;grid-template-columns:repeat(4,1fr);gap:.75rem;margin-bottom:1.1rem;}
   @media(max-width:680px){ .stats{grid-template-columns:repeat(2,1fr);} }
-  .stat{background:var(--card);box-shadow:0 0 0 1px var(--border) inset;border-radius:14px;padding:.85rem;text-align:center;}
+  .stat{background:var(--card);box-shadow:0 0 0 1px var(--border) inset;border-radius:14px;padding:.9rem;text-align:center;}
   .stat b{display:block;font-size:1.35rem;color:var(--brown);}
   .stat span{font-size:.72rem;color:var(--txt2);font-weight:600;}
-  #toast{position:fixed;left:50%;bottom:calc(4.4rem + env(safe-area-inset-bottom));transform:translate(-50%,2rem);
-    background:var(--brown);color:#fff;padding:.6rem 1.1rem;border-radius:12px;font-size:.86rem;font-weight:600;
-    opacity:0;pointer-events:none;transition:.25s var(--ease);z-index:90;}
+  .linkbtn{background:0;border:0;color:var(--brown-l);font-size:.74rem;font-weight:700;text-decoration:underline;padding:0;}
+
+  /* ===== ФУТЕР ===== */
+  footer{background:var(--card);border-top:1px solid var(--border);margin-top:2.5rem;}
+  .fwrap{max-width:1024px;margin:0 auto;padding:1.8rem 1rem 2.2rem;}
+  .fgrid{display:grid;grid-template-columns:1.2fr 1fr 1fr;gap:1.6rem;}
+  @media(max-width:760px){ .fgrid{grid-template-columns:1fr;} }
+  footer h4{margin:0 0 .6rem;font-size:.8rem;text-transform:uppercase;letter-spacing:.06em;color:var(--txt2);}
+  footer details{margin-bottom:.5rem;font-size:.85rem;}
+  footer summary{cursor:pointer;font-weight:700;color:var(--brown);}
+  footer details p{margin:.35rem 0 0;color:var(--txt2);font-size:.82rem;}
+  .flinks{display:flex;flex-direction:column;gap:.45rem;font-size:.85rem;}
+  .flinks button,.flinks a{background:0;border:0;padding:0;text-align:left;color:var(--brown);font-weight:600;font-size:.85rem;text-decoration:none;cursor:pointer;}
+  .flinks button:hover,.flinks a:hover{text-decoration:underline;}
+  .copy{margin-top:1.4rem;padding-top:1rem;border-top:1px solid var(--border);font-size:.75rem;color:var(--txt2);
+    display:flex;justify-content:space-between;gap:1rem;flex-wrap:wrap;}
+  .legal-txt{font-size:.84rem;color:var(--txt);} .legal-txt p{margin:.5rem 0;}
+
+  #toast{position:fixed;left:50%;bottom:calc(4.6rem + env(safe-area-inset-bottom));transform:translate(-50%,2rem);
+    background:var(--brown);color:#fff;padding:.62rem 1.15rem;border-radius:12px;font-size:.87rem;font-weight:600;
+    opacity:0;pointer-events:none;transition:.25s var(--ease);z-index:90;max-width:90vw;}
   @media(min-width:760px){ #toast{bottom:1.4rem;} }
   #toast.show{opacity:1;transform:translate(-50%,0);}
   #toast.err{background:var(--red);}
+  .noscript-bar{background:var(--red);color:#fff;text-align:center;padding:.7rem 1rem;font-weight:700;}
 </style>
 </head>
 <body>
+  <noscript><div class="noscript-bar">Для работы Yummy нужен включённый JavaScript.</div></noscript>
   <header>
     <div class="topline"></div>
     <div class="hwrap">
       <div class="hrow">
-        <div class="logo"><img src="img/logo.png" alt="Yummy" />
+        <div class="logo"><img src="img/logo.png" alt="Yummy — спасай еду" />
           <div class="txt"><div class="nm">Yummy</div><div class="tg">Спасай еду</div></div></div>
-        <button class="loc">📍 Астана <span style="font-size:.6rem;color:var(--txt2)">▾</span></button>
+        <button class="loc" title="Город">📍 Астана <span style="font-size:.6rem;color:var(--txt2)">▾</span></button>
         <div class="search desk"><input id="q" placeholder="Поиск боксов и заведений" /></div>
         <div class="roles">
           <button data-role="store" class="on">Магазин</button>
@@ -183,7 +234,6 @@
           <button data-role="admin">Админ</button>
         </div>
         <button class="hbtn" title="Мои заказы" onclick="gotoOrders()">🛒<span class="cnt hidden" id="cartCnt"></span></button>
-        <button class="hbtn">👤</button>
       </div>
       <div class="msearch search"><input id="qm" placeholder="Поиск боксов и заведений" /></div>
     </div>
@@ -191,22 +241,29 @@
 
   <main>
     <div style="background:var(--yellow-l);border:1px solid var(--border);border-radius:12px;padding:.6rem 1rem;margin:.8rem 0 0;font-size:.78rem;color:var(--brown-l);font-weight:600">
-      ⚡ Демо-версия (данные в браузере). Полный код с бэкендом (FastAPI) — <a href="https://github.com/wpalish/spasibox" style="color:var(--brown)">на GitHub</a>.</div>
+      ⚡ Демо-версия (данные в браузере). Полный код с бэкендом (FastAPI) — <a href="https://github.com/wpalish/yummy" style="color:var(--brown)">на GitHub</a>.</div>
     <!-- ===================== МАГАЗИН ===================== -->
     <section id="view-store">
       <div class="cats" id="cats"></div>
       <div class="promo">
         <div>
-          <h2>Спасай еду. Экономь.</h2>
-          <div class="sub">Save Food. Save Money.</div>
-          <div class="pills"><span class="pill">🥗 Surprise Box</span><span class="pill">🌿 Green Deal</span><span class="pill">♻ Eco solution</span></div>
+          <h1>Свежая еда со скидкой до −70%</h1>
+          <div class="sub">Кофейни и пекарни Астаны продают вечерние излишки сюрприз-боксами. Ты экономишь — еда не отправляется на списание.</div>
+          <div class="cta-row">
+            <button class="cta" onclick="scrollToBoxes()">Смотреть боксы</button>
+            <span class="cta-note" id="heroCnt"></span>
+          </div>
         </div>
-        <div class="ph"><img src="img/hero.jpg" alt="Surprise box" /></div>
+        <div class="ph"><img src="img/hero.jpg" alt="Сюрприз-бокс Yummy" loading="eager" /></div>
       </div>
       <div class="dists" id="districts"></div>
-      <div class="sechead"><h3>Боксы рядом</h3><span id="cntBoxes"></span></div>
+      <div class="sechead">
+        <h2 id="listTitle">Боксы рядом</h2>
+        <div class="viewtgl"><button id="vList" class="on">Список</button><button id="vMap">Карта</button></div>
+      </div>
+      <div id="map" class="hidden"></div>
       <div class="grid" id="boxes"></div>
-      <div id="myorders" style="margin-top:1.6rem"></div>
+      <div id="myorders" style="margin-top:1.8rem"></div>
     </section>
 
     <!-- ===================== ПАРТНЁР ===================== -->
@@ -220,10 +277,10 @@
           <form id="boxForm">
             <label>Категория
               <select id="bCat">
-                <option value="sweet">🍩 Sweet Box</option><option value="bakery">🥐 Bakery Box</option>
-                <option value="mixed">🧺 Mixed Box</option><option value="snack">🥪 Snack Box</option>
+                <option value="sweet">🍩 Сладкий бокс</option><option value="bakery">🥐 Бокс выпечки</option>
+                <option value="mixed">🧺 Микс-бокс</option><option value="snack">🥪 Снек-бокс</option>
               </select></label>
-            <label>Название <input id="bTitle" placeholder="Вечерний Sweet Box" /></label>
+            <label>Название <input id="bTitle" placeholder="Вечерний сладкий бокс" /></label>
             <div class="two">
               <div><label>Цена бокса, ₸ <input id="bPrice" type="number" min="100" value="990" /></label></div>
               <div><label>Ценность внутри, ₸ <input id="bValue" type="number" min="100" value="2600" /></label></div>
@@ -232,7 +289,7 @@
               <div><label>Количество <input id="bQty" type="number" min="1" max="50" value="5" /></label></div>
               <div><label>Забрать до (часов от сейчас) <input id="bHours" type="number" min="1" max="12" value="4" /></label></div>
             </div>
-            <label>Описание <textarea id="bDesc" rows="2" placeholder="Что примерно внутри"></textarea></label>
+            <label>Что обычно внутри <textarea id="bDesc" rows="2" placeholder="Например: 2 круассана, маффин, печенье"></textarea></label>
             <button class="btn" type="submit" style="margin-top:.7rem">Опубликовать бокс</button>
           </form>
         </div>
@@ -241,7 +298,7 @@
             <h3>Выдать заказ по коду</h3>
             <div style="display:flex;gap:.5rem">
               <input id="redeemCode" placeholder="YM-XXXX" style="text-transform:uppercase" />
-              <button class="btn dark" style="width:auto;white-space:nowrap" id="redeemBtn">Выдать</button>
+              <button class="btn" style="width:auto;white-space:nowrap" id="redeemBtn">Выдать</button>
             </div>
             <div id="redeemRes" style="margin-top:.6rem;font-size:.84rem"></div>
           </div>
@@ -260,6 +317,41 @@
     </section>
   </main>
 
+  <footer>
+    <div class="fwrap">
+      <div class="fgrid">
+        <div>
+          <h4>Частые вопросы</h4>
+          <details><summary>Что внутри бокса?</summary><p>Это сюрприз-бокс из свежих остатков дня. В карточке каждого бокса есть примерный состав, но точное наполнение меняется — в этом и смысл выгодной цены.</p></details>
+          <details><summary>Пришёл, а заведение закрыто или бокса нет?</summary><p>Нажми «Вернуть деньги» в «Моих заказах» или напиши в поддержку — если заказ не выдан по вине заведения, мы возвращаем полную сумму.</p></details>
+          <details><summary>Не успел забрать в окно выдачи?</summary><p>Бронь сгорает, предоплата не возвращается — заведение резервировало бокс под тебя. Пожалуйста, приходи вовремя.</p></details>
+          <details><summary>Насколько это безопасно?</summary><p>Продаётся только свежая еда текущего дня в допустимом окне реализации. Партнёры проходят проверку при подключении и отвечают за качество по стандартам сервиса; самовывоз — только день в день.</p></details>
+        </div>
+        <div>
+          <h4>Документы</h4>
+          <div class="flinks">
+            <button onclick="showLegal('offer')">Публичная оферта</button>
+            <button onclick="showLegal('privacy')">Политика конфиденциальности</button>
+            <button onclick="showLegal('quality')">Стандарты качества еды</button>
+          </div>
+        </div>
+        <div>
+          <h4>Контакты</h4>
+          <div class="flinks">
+            <a href="mailto:hello@yummy.kz">✉️ hello@yummy.kz</a>
+            <a href="https://t.me/yummy_astana" target="_blank" rel="noopener">💬 Telegram-поддержка</a>
+            <button onclick="toast('Instagram скоро запустим 📸')">📸 Instagram</button>
+            <button onclick="toast('TikTok скоро запустим 🎬')">🎬 TikTok</button>
+          </div>
+        </div>
+      </div>
+      <div class="copy">
+        <span>© Yummy, Астана · 2026. Демо-версия MVP: оплата тестовая, в продакшене — Kaspi Pay / Kaspi QR.</span>
+        <a href="https://github.com/wpalish/yummy" style="font-weight:700">Код на GitHub</a>
+      </div>
+    </div>
+  </footer>
+
   <nav class="bnav" id="bnav">
     <button data-nav="store" class="on"><span class="ic">🏠</span>Главная</button>
     <button data-nav="orders"><span class="ic">📦</span>Заказы</button>
@@ -270,6 +362,7 @@
   <div id="modal" class="hidden"></div>
   <div id="toast"></div>
 
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/qrcode-generator@1.4.4/qrcode.js"></script>
 <script>
 const $=s=>document.querySelector(s);
@@ -279,35 +372,42 @@ const hhmm=iso=>{try{return new Date(iso).toLocaleTimeString("ru-RU",{hour:"2-di
 const win=(a,b)=>`сегодня ${hhmm(a)}–${hhmm(b)}`;
 function toast(m,err=false){const t=$("#toast");t.textContent=m;t.className=err?"err show":"show";clearTimeout(t._t);t._t=setTimeout(()=>t.className="",2800);}
 /* ===== CLIENT-SIDE STORE (GitHub Pages, без бэкенда) — имитирует REST API ===== */
-const CAT_RU={sweet:"Sweet Box",bakery:"Bakery Box",mixed:"Mixed Box",snack:"Snack Box"};
+const CAT_RU={sweet:"Сладкий бокс",bakery:"Бокс выпечки",mixed:"Микс-бокс",snack:"Снек-бокс"};
 const CAT_EM={sweet:"🍩",bakery:"🥐",mixed:"🧺",snack:"🥪"};
 const PARTNERS=[
- {id:"p1",name:"Coffee Point",district:"Левый берег",address:"пр. Мангилик Ел, 55",rating:4.8},
- {id:"p2",name:"Bake House",district:"Левый берег",address:"ул. Достык, 12",rating:4.7},
- {id:"p3",name:"Donut Lab",district:"Левый берег",address:"ТРЦ Mega Silk Way",rating:4.6},
- {id:"p4",name:"Сдоба",district:"Алматинский р-н",address:"ул. Кенесары, 40",rating:4.5},
- {id:"p5",name:"Sweet Corner",district:"Есильский р-н",address:"пр. Кабанбай батыра, 7",rating:4.9},
- {id:"p6",name:"Утром Кофе",district:"Есильский р-н",address:"ул. Сауран, 3",rating:4.6}];
+ {id:"p1",name:"Coffee Point",district:"Есильский р-н",address:"пр. Мангилик Ел, 55",rating:4.8,lat:51.090,lng:71.416},
+ {id:"p2",name:"Bake House",district:"Сарыарка р-н",address:"ул. Бейбитшилик, 33",rating:4.7,lat:51.180,lng:71.408},
+ {id:"p3",name:"Donut Lab",district:"Есильский р-н",address:"ТРЦ Mega Silk Way",rating:4.6,lat:51.089,lng:71.402},
+ {id:"p4",name:"Сдоба",district:"Алматинский р-н",address:"ул. Кенесары, 40",rating:4.5,lat:51.165,lng:71.419},
+ {id:"p5",name:"Sweet Corner",district:"Есильский р-н",address:"пр. Кабанбай батыра, 7",rating:4.9,lat:51.132,lng:71.437},
+ {id:"p6",name:"Утром Кофе",district:"Алматинский р-н",address:"ул. Богенбай батыра, 23",rating:4.6,lat:51.166,lng:71.446}];
+/* [id,pid,cat,title,price,value,qty,start_off_min,dur_h,desc] */
 const SEED_BOXES=[
- ["b1","p1","sweet","Вечерний Sweet Box",990,2600,5,"Пончики, маффины, печенье — что осталось к вечеру."],
- ["b2","p1","snack","Snack Box",1190,2900,3,"Сэндвич + выпечка дня."],
- ["b3","p2","bakery","Bakery Box",890,2400,6,"Круассаны и булочки из утренней партии."],
- ["b4","p3","sweet","Donut Box",790,2200,8,"6 пончиков ассорти."],
- ["b5","p4","mixed","Mixed Box",1090,2800,4,"Сладкое + несладкое, сюрприз."],
- ["b6","p5","sweet","Dessert Box",1290,3200,3,"Пирожные и десерты дня."],
- ["b7","p6","bakery","Утренняя выпечка",850,2300,5,"Свежая выпечка по вечерней цене."]];
+ ["b1","p1","sweet","Вечерний сладкий бокс",990,2600,5,-20,4,"Обычно внутри: 2 пончика, маффин и печенье. Состав меняется день ко дню."],
+ ["b2","p1","snack","Снек-бокс",1190,2900,3,40,3,"Обычно внутри: сэндвич, круассан и выпечка дня."],
+ ["b3","p2","bakery","Бокс выпечки",890,2400,6,-10,5,"Обычно внутри: 2 круассана, булочка с корицей, багет. Из утренней партии."],
+ ["b4","p3","sweet","Donut Box",790,2200,8,90,4,"Обычно внутри: 6 пончиков ассорти (глазурь, шоколад, посыпка)."],
+ ["b5","p4","mixed","Микс-бокс",1090,2800,4,0,3,"Обычно внутри: сэндвич + 2 позиции сладкой выпечки. Сюрприз дня."],
+ ["b6","p5","sweet","Dessert Box",1290,3200,3,30,2,"Обычно внутри: 2 пирожных и десерт дня (чизкейк или тирамису)."],
+ ["b7","p6","bakery","Утренняя выпечка",850,2300,5,-30,6,"Обычно внутри: 3–4 позиции свежей выпечки по вечерней цене."]];
 const P_BY_ID=Object.fromEntries(PARTNERS.map(p=>[p.id,p]));
-const SKEY="yummy_state_v1";
+const SKEY="yummy_state_v2";
 function freshState(){
   const now=Date.now();
-  const from=new Date(now-30*60000).toISOString(), to=new Date(now+4*3600000).toISOString();
-  return {boxes:SEED_BOXES.map(([id,pid,cat,title,price,val,qty,desc])=>({
-      id,partner_id:pid,category:cat,title,price,value_est:val,qty_total:qty,qty_left:qty,
-      pickup_from:from,pickup_to:to,description:desc,created_at:new Date().toISOString(),status:"active"})),
+  return {boxes:SEED_BOXES.map(([id,pid,cat,title,price,val,qty,off,dur,desc])=>{
+      const from=new Date(now+off*60000), to=new Date(from.getTime()+dur*3600000);
+      return {id,partner_id:pid,category:cat,title,price,value_est:val,qty_total:qty,qty_left:qty,
+        pickup_from:from.toISOString(),pickup_to:to.toISOString(),description:desc,
+        created_at:new Date().toISOString(),status:"active"};}),
     orders:[],seq:100};
 }
 function saveState(s){localStorage.setItem(SKEY,JSON.stringify(s));}
-function loadState(){try{const s=JSON.parse(localStorage.getItem(SKEY));if(s&&s.boxes)return s;}catch(e){} const s=freshState();saveState(s);return s;}
+function loadState(){try{const s=JSON.parse(localStorage.getItem(SKEY));
+  if(s&&s.boxes){ // если все окна выдачи истекли — обновить демо-данные
+    const anyLive=s.boxes.some(b=>Date.parse(b.pickup_to)>Date.now());
+    if(anyLive)return s;
+  }}catch(e){}
+  const s=freshState();saveState(s);return s;}
 let ST=loadState();
 function persist(){saveState(ST);}
 function effStatus(o){if(o.status==="paid"&&Date.now()>Date.parse(o.pickup_to))return "expired";return o.status;}
@@ -363,17 +463,47 @@ async function post(u,body){ let m;
   throw new Error("404 "+u);
 }
 const STATUS_RU={paid:"оплачен",issued:"выдан",expired:"не забран",refunded:"возврат",cancelled:"отменён"};
-const CATS=[["all","Все","🔥"],["sweet","Десерты","🍩"],["bakery","Выпечка","🥐"],["snack","Снеки","🥪"],["mixed","Микс","🧺"]];
-let curDistrict="all", curCat="all", curQuery="";
+const CATS=[["all","Все","🔥"],["sweet","Сладкое","🍩"],["bakery","Выпечка","🥐"],["snack","Снеки","🥪"],["mixed","Микс","🧺"]];
+const REVIEWS={
+ "Coffee Point":[["Айгерим","Бокс превзошёл ожидания — 2 пончика и маффин, всё свежее!",5],["Дамир","Хорошая выгода, но приходите к началу окна выдачи.",4]],
+ "Bake House":[["Салтанат","Круассаны как утром! Беру второй раз.",5],["Ержан","Нормально за свою цену.",4]],
+ "Donut Lab":[["Мария","6 пончиков за 790 — это подарок 🍩",5],["Алექс","Вкусно, глазурь чуть подтаяла.",4]],
+ "Сдоба":[["Гульнара","Микс порадовал: сэндвич + выпечка.",5],["Тимур","Сюрприз есть сюрприз — мне попалось всё сладкое.",4]],
+ "Sweet Corner":[["Дана","Чизкейк в боксе — любовь!",5],["Арман","Десерты свежие, рекомендую.",5]],
+ "Утром Кофе":[["Инкар","Отличная выпечка по вечерней цене.",5],["Санжар","Всё чётко по коду выдали.",4]],
+};
+let curDistrict="all", curCat="all", curQuery="", mapMode=false, mapObj=null;
+/* фильтры переживают перезагрузку */
+try{const f=JSON.parse(localStorage.getItem("ym_filters")||"{}");curDistrict=f.d||"all";curCat=f.c||"all";}catch(e){}
+const saveFilters=()=>localStorage.setItem("ym_filters",JSON.stringify({d:curDistrict,c:curCat}));
 
-/* ---- роли + bottom-nav ---- */
+/* ---- роли + bottom-nav + демо-доступ персонала ---- */
 const roleBtns=[...document.querySelectorAll(".roles button")];
 const navBtns=[...document.querySelectorAll(".bnav button")];
+function requireStaff(cb){
+  if(sessionStorage.getItem("ym_staff")==="1"){cb();return;}
+  showModal(`<div class="mc">
+    <h3>Доступ для персонала</h3>
+    <p style="font-size:.85rem;color:var(--txt2);margin:.3rem 0 .2rem">Раздел доступен сотрудникам заведений и администраторам. <br><b style="color:var(--brown)">Демо-PIN: 1234</b></p>
+    <label>PIN-код <input id="pinInp" type="password" inputmode="numeric" maxlength="4" placeholder="••••" /></label>
+    <button class="btn" id="pinBtn" style="margin-top:.8rem">Войти</button>
+    <button class="btn sec" onclick="closeModal()" style="margin-top:.5rem">Отмена</button>
+  </div>`);
+  $("#pinInp").focus();
+  $("#pinBtn").onclick=()=>{
+    if($("#pinInp").value==="1234"){sessionStorage.setItem("ym_staff","1");closeModal();cb();}
+    else toast("Неверный PIN",true);
+  };
+}
 function switchView(v){
-  roleBtns.forEach(x=>x.classList.toggle("on",x.dataset.role===v));
-  navBtns.forEach(x=>x.classList.toggle("on",x.dataset.nav===v||(v==="store"&&x.dataset.nav==="orders"&&false)));
-  ["store","partner","admin"].forEach(s=>$("#view-"+s).classList.toggle("hidden",s!==v));
-  if(v==="store")loadStore(); if(v==="partner")loadPartner(); if(v==="admin")loadAdmin();
+  const go=()=>{
+    roleBtns.forEach(x=>x.classList.toggle("on",x.dataset.role===v));
+    navBtns.forEach(x=>x.classList.toggle("on",x.dataset.nav===v));
+    ["store","partner","admin"].forEach(s=>$("#view-"+s).classList.toggle("hidden",s!==v));
+    if(v==="store")loadStore(); if(v==="partner")loadPartner(); if(v==="admin")loadAdmin();
+    window.scrollTo({top:0});
+  };
+  (v==="partner"||v==="admin")?requireStaff(go):go();
 }
 roleBtns.forEach(b=>b.onclick=()=>switchView(b.dataset.role));
 navBtns.forEach(b=>b.onclick=()=>{
@@ -383,25 +513,41 @@ navBtns.forEach(b=>b.onclick=()=>{
   switchView(n);
 });
 function gotoOrders(){switchView("store");setTimeout(()=>$("#myorders").scrollIntoView({behavior:"smooth"}),250);}
+function scrollToBoxes(){$("#boxes").scrollIntoView({behavior:"smooth",block:"start"});}
 
 /* ---- поиск ---- */
-["q","qm"].forEach(id=>{const el=$("#"+id);if(el)el.addEventListener("input",()=>{curQuery=el.value.trim().toLowerCase();loadStore();});});
+["q","qm"].forEach(id=>{const el=$("#"+id);if(el)el.addEventListener("input",()=>{curQuery=el.value.trim().toLowerCase();renderBoxes();});});
 
 /* ============ МАГАЗИН ============ */
+let ALL_BOXES=[];
+const skCard=()=>'<div class="sk"><div class="a"></div><div class="b"></div><div class="c"></div></div>';
 async function loadStore(){
-  $("#cats").innerHTML=CATS.map(([id,l,ic])=>`<button class="cat${curCat===id?" on":""}" data-c="${id}"><span class="ic">${ic}</span>${l}</button>`).join("");
-  document.querySelectorAll("#cats .cat").forEach(c=>c.onclick=()=>{curCat=c.dataset.c;loadStore();});
+  $("#cats").innerHTML=CATS.map(([id,l,ic])=>`<button class="cat${curCat===id?" on":""}" data-c="${id}" aria-pressed="${curCat===id}"><span class="ic">${ic}</span>${l}</button>`).join("");
+  document.querySelectorAll("#cats .cat").forEach(c=>c.onclick=()=>{curCat=c.dataset.c;saveFilters();loadStore();});
+  $("#boxes").innerHTML=skCard().repeat(6);
   let ds=[];try{ds=await get("/districts");}catch(e){}
   $("#districts").innerHTML=[`<button class="dist${curDistrict==="all"?" on":""}" data-d="all">Все районы</button>`]
     .concat(ds.map(d=>`<button class="dist${curDistrict===d?" on":""}" data-d="${esc(d)}">${esc(d)}</button>`)).join("");
-  document.querySelectorAll("#districts .dist").forEach(c=>c.onclick=()=>{curDistrict=c.dataset.d;loadStore();});
-  let boxes=[];try{boxes=await get("/boxes?district="+encodeURIComponent(curDistrict));}catch(e){}
-  if(curCat!=="all")boxes=boxes.filter(b=>b.category===curCat);
-  if(curQuery)boxes=boxes.filter(b=>(b.title+" "+b.partner_name).toLowerCase().includes(curQuery));
-  $("#cntBoxes").textContent=boxes.length?boxes.length+" шт":"";
-  $("#boxes").innerHTML=boxes.length?boxes.map(boxCard).join(""):'<p class="empty">Ничего не нашлось. Попробуй другой район или категорию 🌙</p>';
-  document.querySelectorAll(".boxc").forEach(el=>el.onclick=()=>openBox(el.dataset.id));
+  document.querySelectorAll("#districts .dist").forEach(c=>c.onclick=()=>{curDistrict=c.dataset.d;saveFilters();loadStore();});
+  try{ALL_BOXES=await get("/boxes?district=all");}catch(e){ALL_BOXES=[];}
+  const totalLeft=ALL_BOXES.reduce((s,b)=>s+b.qty_left,0);
+  $("#heroCnt").textContent=totalLeft?`Сегодня доступно ${totalLeft} боксов`:"";
+  renderBoxes();
+  if(mapMode)renderMap();
   renderMyOrders();
+}
+function filtered(){
+  let bs=ALL_BOXES;
+  if(curDistrict!=="all")bs=bs.filter(b=>b.district===curDistrict);
+  if(curCat!=="all")bs=bs.filter(b=>b.category===curCat);
+  if(curQuery)bs=bs.filter(b=>(b.title+" "+b.partner_name).toLowerCase().includes(curQuery));
+  return bs;
+}
+function renderBoxes(){
+  const bs=filtered();
+  $("#listTitle").textContent=`Боксы рядом${bs.length?` · ${bs.length}`:""}`;
+  $("#boxes").innerHTML=bs.length?bs.map(boxCard).join(""):'<p class="empty">Ничего не нашлось. Попробуй другой район или категорию 🌙</p>';
+  document.querySelectorAll(".boxc").forEach(el=>el.onclick=()=>openBox(el.dataset.id));
 }
 const IMG={sweet:"sweet.jpg",bakery:"bakery.jpg",mixed:"mixed.jpg",snack:"snack.jpg"};
 const IMG_ALT={sweet:"dessert.jpg",bakery:"bread.jpg"};
@@ -421,12 +567,38 @@ function boxCard(b){
       <span class="bdg b-left${fomo?" fomo":""}">${fomo?"🔥 ":""}осталось ${b.qty_left}</span>
       <span class="bdg b-cat">${esc(b.category_ru)}</span></div>
     <div class="body">
-      <h4>${esc(b.title||b.partner_name)}</h4>
-      <div class="meta"><b>${esc(b.partner_name)}</b> · ${esc(b.district)} · ⭐ ${b.rating}</div>
+      <h3>${esc(b.title||b.partner_name)}</h3>
+      <div class="meta"><b>${esc(b.partner_name)}</b> · ${esc(b.district)} · <button class="linkbtn" data-rev="${esc(b.partner_name)}" onclick="event.stopPropagation();showReviews(this.dataset.rev)">⭐ ${b.rating}</button></div>
       <div class="time">⏱ ${win(b.pickup_from,b.pickup_to)}</div>
       <div class="price"><b>${money(b.price)}</b><s>${money(b.value_est)}</s></div>
     </div></article>`;
 }
+/* карта */
+$("#vList").onclick=()=>{mapMode=false;$("#vList").classList.add("on");$("#vMap").classList.remove("on");$("#map").classList.add("hidden");$("#boxes").classList.remove("hidden");};
+$("#vMap").onclick=()=>{mapMode=true;$("#vMap").classList.add("on");$("#vList").classList.remove("on");$("#boxes").classList.add("hidden");$("#map").classList.remove("hidden");renderMap();};
+async function renderMap(){
+  let ps=[];try{ps=await get("/partners");}catch(e){return;}
+  if(!mapObj){
+    mapObj=L.map("map").setView([51.128,71.43],12);
+    L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png",{attribution:"© OpenStreetMap"}).addTo(mapObj);
+  }
+  setTimeout(()=>mapObj.invalidateSize(),100);
+  if(mapObj._markers)mapObj._markers.forEach(m=>m.remove());
+  mapObj._markers=ps.map(p=>{
+    const n=ALL_BOXES.filter(b=>b.partner_id===p.id).reduce((s,b)=>s+b.qty_left,0);
+    return L.marker([p.lat,p.lng]).addTo(mapObj)
+      .bindPopup(`<b>${esc(p.name)}</b><br>${esc(p.address)}<br>⭐ ${p.rating} · доступно боксов: ${n}`);
+  });
+}
+/* отзывы (демо) */
+window.showReviews=name=>{
+  const rv=REVIEWS[name]||[["Гость","Пока нет отзывов — будь первым!",5]];
+  showModal(`<div class="mc">
+    <h3>${esc(name)}</h3>
+    <p style="font-size:.76rem;color:var(--txt2);margin:.15rem 0 .5rem">Отзывы покупателей (демо-данные)</p>
+    ${rv.map(([n,t,s])=>`<div class="rev"><b>${esc(n)}</b> <span class="st">${"★".repeat(s)}${"☆".repeat(5-s)}</span><br>${esc(t)}</div>`).join("")}
+    <button class="btn sec" onclick="closeModal()" style="margin-top:.9rem">Закрыть</button></div>`);
+};
 async function openBox(id){
   let b;try{b=await get("/boxes/"+id);}catch(e){toast(e.message,true);return;}
   showModal(`<div class="mh" style="background-image:url(img/${imgFor(b)})"><button class="x" onclick="closeModal()">✕</button></div>
@@ -434,16 +606,15 @@ async function openBox(id){
       <div style="color:var(--txt2);font-size:.72rem;font-weight:800;text-transform:uppercase;letter-spacing:.04em">${esc(b.category_ru)}</div>
       <h3>${esc(b.title||b.partner_name)}</h3>
       <div style="color:var(--txt2);font-size:.84rem">${esc(b.partner_name)} · ${esc(b.address)} · ⭐ ${b.rating}</div>
-      <div class="row"><span>Цена</span><b>${money(b.price)} <s style="color:var(--txt2);font-weight:400">${money(b.value_est)}</s> <span style="color:var(--green);font-weight:800">−${b.discount}%</span></b></div>
-      <div class="row"><span>Ценность внутри</span><span>примерно ${money(b.value_est)}</span></div>
+      <div class="row"><span>Цена</span><b>${money(b.price)} <s style="color:#A08D7D;font-weight:400">${money(b.value_est)}</s> <span style="color:var(--green);font-weight:800">−${b.discount}%</span></b></div>
       <div class="row"><span>Самовывоз</span><span>${win(b.pickup_from,b.pickup_to)}</span></div>
       <div class="row"><span>Осталось</span><span>${b.qty_left} из ${b.qty_total}</span></div>
-      ${b.description?`<p style="font-size:.84rem;color:var(--txt2);margin:.6rem 0 0">${esc(b.description)}</p>`:""}
-      <div class="rules"><b>Surprise box.</b> Точный состав может отличаться — это набор из свежих остатков дня. Забрать нужно в окне самовывоза, иначе заказ сгорает (предоплата не возвращается). Если заведение не выдаст — полный возврат.</div>
+      ${b.description?`<div class="inside"><b>Что обычно внутри:</b> ${esc(b.description)}</div>`:""}
+      <div class="rules"><b>Сюрприз-бокс.</b> Точный состав может отличаться — это набор из свежих остатков дня. Забрать нужно в окне самовывоза, иначе заказ сгорает (предоплата не возвращается). Если заведение не выдаст — полный возврат.</div>
       <label>Ваше имя <input id="oName" placeholder="Имя" /></label>
       <label>Телефон <input id="oPhone" placeholder="+7 7XX XXX XX XX" /></label>
       <button class="btn" id="payBtn" style="margin-top:.8rem">Оплатить ${money(b.price)}</button>
-      <div class="demo-pay">💳 Демо-оплата. В проде — Kaspi Pay / Kaspi QR.</div>
+      <div class="demo-pay">💳 Демо-оплата. В продакшене — Kaspi Pay / Kaspi QR.</div>
     </div>`);
   $("#payBtn").onclick=async()=>{
     const name=$("#oName").value.trim(), phone=$("#oPhone").value.trim();
@@ -459,7 +630,7 @@ async function openBox(id){
 function successScreen(res){
   const o=res.order;
   showModal(`<div class="mc ok-wrap" style="padding-top:1.4rem">
-    <div style="font-size:2.4rem">✅</div>
+    <div class="ok-ic">✅</div>
     <h3>Бокс забронирован!</h3>
     <p style="color:var(--txt2);font-size:.86rem;margin:.2rem 0 0">${esc(o.partner_name)} · ${esc(o.address)}</p>
     <div class="qr">${res.qr_svg}</div>
@@ -478,9 +649,16 @@ async function renderMyOrders(){
   const orders=(await Promise.all(codes.map(c=>get("/orders/"+c).catch(()=>null)))).filter(Boolean);
   el.innerHTML=`<div class="cardp"><h3>Мои заказы</h3>${orders.map(o=>`<div class="lrow">
     <div style="font-size:1.3rem">${o.emoji}</div>
-    <div class="g"><b>${esc(o.code)}</b> · ${esc(o.partner_name)}<div style="font-size:.76rem;color:var(--txt2)">${win(o.pickup_from,o.pickup_to)} · ${money(o.price)}</div></div>
+    <div class="g"><b>${esc(o.code)}</b> · ${esc(o.partner_name)}
+      <div style="font-size:.76rem;color:var(--txt2)">${win(o.pickup_from,o.pickup_to)} · ${money(o.price)}</div>
+      ${o.status==="paid"?`<button class="linkbtn" onclick="userRefund('${o.id}')">Не выдали заказ? Вернуть деньги</button>`:""}</div>
     <span class="tag t-${o.status}">${STATUS_RU[o.status]}</span></div>`).join("")}</div>`;
 }
+window.userRefund=async id=>{
+  if(!confirm("Вернуть деньги? Используйте, только если заведение не выдало заказ."))return;
+  try{await post("/admin/refund/"+id);toast("Возврат оформлен — деньги вернутся на карту");renderMyOrders();}
+  catch(e){toast(e.message,true);}
+};
 
 /* ============ ПАРТНЁР ============ */
 async function loadPartner(){
@@ -543,10 +721,20 @@ async function loadAdmin(){
 }
 window.refund=async id=>{try{await post("/admin/refund/"+id);toast("Возврат оформлен");loadAdmin();}catch(e){toast(e.message,true);}};
 
+/* ---- документы (демо-версии) ---- */
+const LEGAL={
+ offer:["Публичная оферта (проект)",`<p>1. Сервис Yummy — платформа бронирования сюрприз-боксов из свежих остатков еды у заведений-партнёров Астаны.</p><p>2. Оплачивая бокс, покупатель принимает правила: состав бокса является сюрпризом; выдача — в указанном окне самовывоза по коду/QR.</p><p>3. Если заказ не забран в окне выдачи по вине покупателя, бронь сгорает и предоплата не возвращается.</p><p>4. Если заведение не выдало заказ, покупателю возвращается полная сумма.</p><p>5. Ответственность за качество и свежесть еды несёт заведение-партнёр в соответствии с законодательством РК.</p><p><i>Это демонстрационная версия документа для MVP.</i></p>`],
+ privacy:["Политика конфиденциальности (проект)",`<p>1. Сервис собирает минимум данных: имя и телефон — только для выдачи заказа заведением.</p><p>2. Данные не передаются третьим лицам, кроме заведения-партнёра по конкретному заказу.</p><p>3. Данные хранятся не дольше, чем необходимо для исполнения заказа и обработки возвратов.</p><p><i>Это демонстрационная версия документа для MVP.</i></p>`],
+ quality:["Стандарты качества еды",`<p>• Продаётся только свежая еда текущего дня в допустимом окне реализации — просрочка запрещена.</p><p>• Самовывоз строго день в день — без переноса на завтра.</p><p>• Партнёр проходит проверку при подключении: санитарные условия, дисциплина выдачи.</p><p>• Жалоба на качество → проверка → возврат средств и, при повторении, отключение партнёра.</p>`],
+};
+window.showLegal=k=>{const [t,body]=LEGAL[k];
+  showModal(`<div class="mc"><h3>${t}</h3><div class="legal-txt">${body}</div>
+  <button class="btn sec" onclick="closeModal()" style="margin-top:.9rem">Закрыть</button></div>`);};
+
 /* ---- модалка ---- */
 function showModal(html){const m=$("#modal");m.className="modal-bg";m.innerHTML=`<div class="modal">${html}</div>`;
   m.onclick=e=>{if(e.target===m)closeModal();};}
-window.closeModal=()=>{$("#modal").className="hidden";$("#modal").innerHTML="";if(!$("#view-store").classList.contains("hidden"))loadStore();};
+window.closeModal=()=>{$("#modal").className="hidden";$("#modal").innerHTML="";if(!$("#view-store").classList.contains("hidden"))renderMyOrders();};
 
 loadStore();
 </script>

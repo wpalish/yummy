@@ -11,10 +11,10 @@ BoxCategory = Literal["sweet", "bakery", "mixed", "snack"]
 OrderStatus = Literal["paid", "issued", "expired", "refunded", "cancelled"]
 
 CATEGORY_RU = {
-    "sweet": "Sweet Box",
-    "bakery": "Bakery Box",
-    "mixed": "Mixed Box",
-    "snack": "Snack Box",
+    "sweet": "Сладкий бокс",
+    "bakery": "Бокс выпечки",
+    "mixed": "Микс-бокс",
+    "snack": "Снек-бокс",
 }
 CATEGORY_EMOJI = {"sweet": "🍩", "bakery": "🥐", "mixed": "🧺", "snack": "🥪"}
 
@@ -32,6 +32,8 @@ class Partner(BaseModel):
     district: str                       # район (для фильтра)
     address: str
     rating: float = 4.7
+    lat: float = 51.128                 # координаты для карты
+    lng: float = 71.430
 
 
 # --------------------------------------------------------------------------- #
