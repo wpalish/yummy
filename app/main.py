@@ -39,7 +39,7 @@ async def lifespan(app: FastAPI):
     yield
 
 
-app = FastAPI(title="SaveEat MVP", version=__version__, lifespan=lifespan)
+app = FastAPI(title="Yummy MVP", version=__version__, lifespan=lifespan)
 app.mount("/static", StaticFiles(directory=str(_STATIC)), name="static")
 
 _LOCAL = {"127.0.0.1", "::1", "testclient", "localhost"}
@@ -56,7 +56,7 @@ def _new(prefix: str, n: int = 8) -> str:
 
 
 def _order_code() -> str:
-    return "SB-" + uuid.uuid4().hex[:4].upper()
+    return "YM-" + uuid.uuid4().hex[:4].upper()
 
 
 # --------------------------------------------------------------------------- #

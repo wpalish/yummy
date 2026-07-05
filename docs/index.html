@@ -3,169 +3,219 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>SaveEat — спасай еду, экономь</title>
+<title>Yummy — спасай еду, экономь</title>
 <style>
   :root{
-    --bg:oklch(95% 0.022 85); --surface:oklch(98.5% 0.012 85); --ink:oklch(26% 0.028 70);
-    --muted:oklch(50% 0.03 70); --line:oklch(89% 0.025 85);
-    --green:oklch(41% 0.085 155); --green-d:oklch(33% 0.07 155); --green-s:oklch(93% 0.035 150);
-    --amber:oklch(66% 0.14 55); --amber-s:oklch(93% 0.05 72); --red:oklch(56% 0.19 25);
-    --radius:16px; --shadow:0 1px 2px oklch(0% 0 0/.04),0 14px 30px oklch(35% .04 70/.10);
+    --bg:#F5EFE3; --card:#FFFFFF; --brown:#653624; --brown-l:#8B5E3C;
+    --yellow:#FDC620; --yellow-h:#F0B800; --yellow-l:#FFF5D6;
+    --cream:#FAF6EA; --cream-d:#F0E8D4; --border:#E8DCCB;
+    --txt:#653624; --txt2:#9B8575; --red:#E84855; --green:#4CAF50;
     --ease:cubic-bezier(.16,1,.3,1);
-    --display:"Georgia","Times New Roman",serif;
     font-family:ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
   }
   *{box-sizing:border-box;}
-  body{margin:0;background:var(--bg);color:var(--ink);line-height:1.5;
-    background-image:radial-gradient(70% 50% at 100% 0%, oklch(92% .05 90/.6), transparent);}
-  h2,.hero b{font-family:var(--display);letter-spacing:-.01em;font-weight:700;}
+  body{margin:0;background:var(--bg);color:var(--txt);line-height:1.5;}
   button{font:inherit;cursor:pointer;}
   .hidden{display:none !important;}
+  img{display:block;}
 
-  header{position:sticky;top:0;z-index:10;background:oklch(100% 0 0/.88);backdrop-filter:blur(8px);
-    border-bottom:1px solid var(--line);}
-  .bar{max-width:1080px;margin:0 auto;display:flex;align-items:center;gap:1rem;padding:.7rem 1.2rem;flex-wrap:wrap;}
-  .brand{display:flex;align-items:center;gap:.55rem;font-weight:800;font-size:1.2rem;font-family:var(--display);}
-  .brand .em{width:34px;height:34px;border-radius:10px;display:grid;place-items:center;font-size:1.1rem;
-    background:linear-gradient(135deg,var(--green),oklch(64% .15 130));}
-  .brand small{display:block;font-size:.66rem;font-weight:600;color:var(--muted);}
-  .roles{margin-left:auto;display:flex;gap:.2rem;background:var(--green-s);padding:.25rem;border-radius:12px;}
-  .roles button{border:0;background:transparent;color:var(--green-d);font-weight:700;font-size:.85rem;
-    padding:.4rem .8rem;border-radius:9px;}
-  .roles button.on{background:var(--green);color:#fff;}
+  /* ===== HEADER ===== */
+  header{position:sticky;top:0;z-index:50;background:var(--card);box-shadow:0 1px 0 var(--border);}
+  .topline{height:6px;background:var(--brown);}
+  .hwrap{max-width:1024px;margin:0 auto;padding:.6rem .9rem;}
+  .hrow{display:flex;align-items:center;gap:.7rem;}
+  .logo{display:flex;align-items:center;gap:.5rem;flex:none;}
+  .logo img{width:36px;height:36px;border-radius:9px;}
+  .logo .nm{font-weight:800;font-size:1.05rem;line-height:1.1;}
+  .logo .tg{font-size:.62rem;font-weight:600;color:var(--txt2);}
+  .loc{display:flex;align-items:center;gap:.35rem;background:var(--cream);border:0;border-radius:12px;
+    padding:.45rem .7rem;font-size:.82rem;font-weight:600;color:var(--txt);white-space:nowrap;}
+  .loc:hover{background:var(--cream-d);}
+  .search{flex:1;min-width:0;}
+  .search input{width:100%;height:38px;border:0;border-radius:12px;background:var(--cream);color:var(--txt);
+    font:inherit;font-size:.88rem;padding:0 .9rem 0 2.2rem;outline:none;box-shadow:0 0 0 1px var(--border) inset;
+    background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%239B8575' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Ccircle cx='11' cy='11' r='8'/%3E%3Cline x1='21' y1='21' x2='16.65' y2='16.65'/%3E%3C/svg%3E");
+    background-repeat:no-repeat;background-position:11px center;}
+  .search input::placeholder{color:var(--txt2);}
+  .search input:focus{box-shadow:0 0 0 2px var(--yellow) inset;}
+  .hbtn{position:relative;width:38px;height:38px;border:0;background:transparent;border-radius:12px;font-size:1.15rem;flex:none;}
+  .hbtn:hover{background:var(--cream);}
+  .hbtn .cnt{position:absolute;top:-2px;right:-2px;background:var(--red);color:#fff;font-size:.6rem;font-weight:800;
+    min-width:15px;height:15px;border-radius:99px;display:grid;place-items:center;padding:0 3px;}
+  .roles{display:none;gap:.2rem;background:var(--cream);padding:.22rem;border-radius:12px;flex:none;}
+  .roles button{border:0;background:transparent;color:var(--txt2);font-weight:700;font-size:.8rem;padding:.4rem .75rem;border-radius:9px;}
+  .roles button.on{background:var(--brown);color:#fff;}
+  .msearch{margin-top:.55rem;}
+  @media(min-width:760px){ .roles{display:flex;} .msearch{display:none;} }
+  @media(max-width:759px){ .search.desk{display:none;} .logo .txt{display:none;} }
 
-  main{max-width:1080px;margin:0 auto;padding:1.3rem 1.2rem 4rem;}
-  h2{font-size:1.3rem;letter-spacing:-.01em;margin:.2rem 0 .2rem;}
-  .sub{color:var(--muted);font-size:.92rem;margin-bottom:1.1rem;}
+  main{max-width:1024px;margin:0 auto;padding:0 .9rem 5.5rem;}
+  @media(min-width:760px){ main{padding-bottom:2.5rem;} }
 
-  .hero{display:grid;grid-template-columns:1.25fr .9fr;gap:1.7rem;align-items:center;
-    background:linear-gradient(135deg,var(--green-s),oklch(96% .04 92));border:1px solid var(--line);
-    border-radius:24px;padding:2.1rem 2.3rem;margin-bottom:1.6rem;}
-  .hero-txt{min-width:0;}
-  .hero b{display:block;font-size:2.6rem;line-height:1.02;}
-  .hero .en{font-family:var(--display);font-style:italic;color:var(--green);font-size:1.25rem;margin-top:.15rem;}
-  .hero p{margin:.75rem 0 0;font-size:.92rem;color:var(--muted);max-width:520px;}
-  .pills{display:flex;gap:.45rem;flex-wrap:wrap;margin-top:1.05rem;}
-  .pill2{font-size:.8rem;font-weight:700;color:var(--green-d);border:1px solid var(--green);
-    border-radius:99px;padding:.34rem .8rem;background:oklch(100% 0 0/.5);}
-  .hero-card{position:relative;border-radius:18px;overflow:hidden;box-shadow:var(--shadow);aspect-ratio:4/3;}
-  .hero-card img{width:100%;height:100%;object-fit:cover;display:block;}
-  .hero-card .tag{position:absolute;right:.75rem;bottom:.75rem;background:oklch(100% 0 0/.95);border-radius:14px;
-    padding:.55rem .9rem;text-align:right;box-shadow:0 6px 18px oklch(20% .03 70/.28);}
-  .hero-card .tag b{display:block;font-size:1.4rem;font-family:var(--display);color:var(--ink);line-height:1.1;}
-  .hero-card .tag s{font-size:.78rem;color:var(--muted);}
-  .hero-card .tag em{font-size:.66rem;color:var(--green-d);font-weight:700;font-style:normal;display:block;margin-top:.1rem;}
-  @media(max-width:760px){.hero{grid-template-columns:1fr;padding:1.5rem 1.6rem;} .hero-card{display:none;} .hero b{font-size:1.9rem;}}
+  /* ===== ЧИПЫ ===== */
+  .cats{display:flex;gap:.45rem;overflow-x:auto;padding:.8rem 0 .2rem;scrollbar-width:none;}
+  .cats::-webkit-scrollbar{display:none;}
+  .cat{display:flex;flex-direction:column;align-items:center;gap:.15rem;border:0;background:var(--card);
+    box-shadow:0 0 0 1px var(--border) inset;border-radius:14px;padding:.5rem .85rem;min-width:64px;flex:none;
+    font-size:.72rem;font-weight:600;color:var(--txt2);transition:transform .15s var(--ease);}
+  .cat .ic{font-size:1.25rem;}
+  .cat.on{background:var(--yellow);color:var(--brown);box-shadow:none;font-weight:800;}
+  .cat:hover{transform:translateY(-1px);}
+  .dists{display:flex;gap:.4rem;overflow-x:auto;padding:.55rem 0 .1rem;scrollbar-width:none;}
+  .dists::-webkit-scrollbar{display:none;}
+  .dist{border:0;background:var(--card);box-shadow:0 0 0 1px var(--border) inset;color:var(--txt2);
+    font-size:.78rem;font-weight:600;padding:.38rem .8rem;border-radius:99px;white-space:nowrap;flex:none;}
+  .dist.on{background:var(--brown);color:#fff;box-shadow:none;}
 
-  .chips{display:flex;gap:.45rem;flex-wrap:wrap;margin-bottom:1.1rem;}
-  .chip{border:1px solid var(--line);background:var(--surface);color:var(--muted);font-weight:600;font-size:.84rem;
-    padding:.4rem .8rem;border-radius:99px;}
-  .chip.on{background:var(--ink);color:#fff;border-color:transparent;}
+  /* ===== PROMO ===== */
+  .promo{margin-top:.8rem;border-radius:18px;overflow:hidden;display:flex;align-items:center;justify-content:space-between;
+    background:linear-gradient(90deg,rgba(253,198,32,.25),rgba(101,54,36,.08) 55%,rgba(253,198,32,.10));padding:1.1rem 1.2rem;}
+  .promo h2{margin:0;font-size:1.35rem;font-weight:800;color:var(--brown);line-height:1.15;}
+  .promo .sub{margin-top:.15rem;font-size:.8rem;font-weight:600;color:var(--txt2);}
+  .pills{display:flex;flex-wrap:wrap;gap:.35rem;margin-top:.7rem;}
+  .pill{background:rgba(255,255,255,.8);border-radius:99px;padding:.22rem .65rem;font-size:.7rem;font-weight:700;color:var(--brown);}
+  .promo .ph{width:120px;height:96px;border-radius:16px;overflow:hidden;flex:none;margin-left:1rem;display:none;}
+  .promo .ph img{width:100%;height:100%;object-fit:cover;}
+  @media(min-width:640px){ .promo .ph{display:block;} .promo h2{font-size:1.6rem;} }
 
-  .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:1rem;}
-  .box{background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);overflow:hidden;
-    box-shadow:var(--shadow);cursor:pointer;transition:transform var(--ease) .16s,box-shadow .16s;display:flex;flex-direction:column;}
-  .box:hover{transform:translateY(-3px);}
-  .box .top{height:160px;position:relative;background-size:cover;background-position:center;background-color:var(--green-s);}
-  .box .top::after{content:"";position:absolute;inset:0;background:linear-gradient(to top,oklch(22% .03 70/.32),transparent 55%);}
-  .box .catchip{position:absolute;left:.6rem;bottom:.55rem;z-index:2;background:oklch(100% 0 0/.93);color:var(--green-d);
-    font-weight:700;font-size:.68rem;text-transform:uppercase;letter-spacing:.04em;padding:.22rem .55rem;border-radius:7px;}
-  .box .disc{position:absolute;z-index:2;top:.6rem;left:.6rem;background:var(--amber);color:oklch(25% .05 60);font-weight:800;
-    font-size:.78rem;padding:.2rem .55rem;border-radius:8px;}
-  .box .left{position:absolute;z-index:2;top:.6rem;right:.6rem;background:oklch(100% 0 0/.92);color:var(--ink);font-weight:700;
-    font-size:.72rem;padding:.2rem .55rem;border-radius:8px;}
-  .box .left.fomo{background:var(--red);color:#fff;}
-  .box .body{padding:.8rem .9rem 1rem;flex:1;display:flex;flex-direction:column;gap:.25rem;}
-  .box .cat{font-size:.72rem;font-weight:700;color:var(--green-d);text-transform:uppercase;letter-spacing:.04em;}
-  .box .name{font-weight:700;font-size:1.02rem;}
-  .box .meta{font-size:.8rem;color:var(--muted);}
-  .box .price{margin-top:auto;display:flex;align-items:baseline;gap:.5rem;padding-top:.5rem;}
-  .box .price b{font-size:1.25rem;} .box .price s{color:var(--muted);font-size:.85rem;}
-  .box .win{font-size:.78rem;color:var(--green-d);font-weight:600;}
+  .sechead{display:flex;align-items:baseline;justify-content:space-between;margin:1.2rem 0 .7rem;}
+  .sechead h3{margin:0;font-size:1.05rem;font-weight:800;color:var(--brown);}
+  .sechead span{font-size:.75rem;color:var(--txt2);font-weight:600;}
 
-  /* модалка */
-  .modal-bg{position:fixed;inset:0;background:oklch(20% .03 80/.45);display:grid;place-items:center;padding:1rem;z-index:40;}
-  .modal{background:var(--surface);border-radius:20px;max-width:440px;width:100%;max-height:90vh;overflow:auto;box-shadow:var(--shadow);}
-  .modal .mh{height:155px;background-size:cover;background-position:center;background-color:var(--green-s);position:relative;}
-  .modal .mc{padding:1.2rem 1.3rem 1.4rem;}
-  .modal h3{margin:0 0 .15rem;font-size:1.25rem;}
-  .row{display:flex;justify-content:space-between;gap:1rem;font-size:.9rem;padding:.4rem 0;border-bottom:1px dashed var(--line);}
-  .row span:first-child{color:var(--muted);}
-  .rules{background:var(--green-s);border-radius:12px;padding:.7rem .85rem;font-size:.8rem;color:var(--green-d);margin:.9rem 0;}
-  .rules b{color:var(--ink);}
-  label{display:block;font-size:.8rem;font-weight:600;color:var(--muted);margin:.6rem 0 .25rem;}
-  input,select,textarea{width:100%;font:inherit;padding:.6rem .7rem;border:1px solid var(--line);border-radius:11px;background:var(--surface);color:var(--ink);}
-  input:focus,select:focus,textarea:focus{outline:2px solid var(--green-s);border-color:var(--green);}
-  .btn{border:0;border-radius:12px;font-weight:700;padding:.8rem 1rem;width:100%;background:var(--green);color:#fff;
-    transition:transform var(--ease) .15s;} .btn:hover{transform:translateY(-1px);} .btn:disabled{opacity:.5;}
-  .btn.sec{background:var(--surface);color:var(--ink);border:1px solid var(--line);}
-  .btn.amber{background:var(--amber);color:oklch(25% .05 60);}
-  .x{position:absolute;top:.6rem;right:.7rem;background:oklch(100% 0 0/.85);border:0;width:30px;height:30px;border-radius:50%;font-size:1.1rem;color:var(--ink);}
+  /* ===== КАРТОЧКИ ===== */
+  .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(250px,1fr));gap:.9rem;}
+  @media(max-width:560px){ .grid{grid-template-columns:repeat(2,1fr);gap:.6rem;} }
+  .boxc{display:flex;flex-direction:column;overflow:hidden;border-radius:16px;background:var(--card);
+    box-shadow:0 0 0 1px var(--border) inset;transition:box-shadow .15s,transform .15s var(--ease);cursor:pointer;}
+  .boxc:hover{box-shadow:0 8px 22px rgba(101,54,36,.14);transform:translateY(-2px);}
+  .boxc .top{position:relative;aspect-ratio:4/3;background:var(--cream) center/cover no-repeat;}
+  .bdg{position:absolute;border-radius:9px;font-weight:700;padding:.15rem .5rem;font-size:.7rem;}
+  .b-disc{top:.5rem;left:.5rem;background:var(--green);color:#fff;font-weight:800;font-size:.74rem;}
+  .b-left{top:.5rem;right:.5rem;background:rgba(255,255,255,.92);color:var(--brown);font-size:.64rem;}
+  .b-left.fomo{background:var(--red);color:#fff;}
+  .b-cat{bottom:.5rem;left:.5rem;background:rgba(101,54,36,.72);color:#fff;font-size:.64rem;}
+  .boxc .body{display:flex;flex-direction:column;gap:.28rem;padding:.7rem .8rem .85rem;flex:1;}
+  .boxc h4{margin:0;font-size:.92rem;font-weight:800;color:var(--brown);line-height:1.25;}
+  .boxc .meta{font-size:.72rem;color:var(--txt2);}
+  .boxc .meta b{color:var(--brown-l);font-weight:700;}
+  .boxc .time{font-size:.7rem;color:var(--txt2);}
+  .boxc .price{margin-top:auto;display:flex;align-items:baseline;gap:.45rem;padding-top:.35rem;}
+  .boxc .price b{font-size:1.05rem;color:var(--brown);}
+  .boxc .price s{font-size:.75rem;color:var(--txt2);}
+  .empty{grid-column:1/-1;color:var(--txt2);text-align:center;padding:2rem 1rem;font-size:.9rem;}
 
-  /* success */
+  /* ===== BOTTOM NAV (mobile) ===== */
+  .bnav{position:fixed;left:0;right:0;bottom:0;z-index:50;background:var(--card);border-top:1px solid var(--border);
+    display:flex;justify-content:space-around;padding:.35rem .5rem calc(.35rem + env(safe-area-inset-bottom));}
+  .bnav button{display:flex;flex-direction:column;align-items:center;gap:.1rem;border:0;background:transparent;
+    color:var(--txt2);font-size:.6rem;font-weight:600;padding:.3rem .8rem;border-radius:12px;}
+  .bnav button.on{color:var(--brown);font-weight:800;}
+  .bnav .ic{font-size:1.2rem;}
+  @media(min-width:760px){ .bnav{display:none;} }
+
+  /* ===== МОДАЛКА ===== */
+  .modal-bg{position:fixed;inset:0;background:rgba(70,40,25,.45);display:grid;place-items:center;padding:1rem;z-index:80;}
+  .modal{background:var(--card);border-radius:20px;max-width:440px;width:100%;max-height:92vh;overflow:auto;}
+  .modal .mh{height:160px;background:var(--cream) center/cover no-repeat;position:relative;}
+  .modal .mc{padding:1.1rem 1.2rem 1.3rem;}
+  .modal h3{margin:.1rem 0 .1rem;font-size:1.25rem;font-weight:800;color:var(--brown);}
+  .x{position:absolute;top:.6rem;right:.7rem;background:rgba(255,255,255,.9);border:0;width:30px;height:30px;border-radius:50%;font-size:1rem;color:var(--brown);}
+  .row{display:flex;justify-content:space-between;gap:1rem;font-size:.88rem;padding:.4rem 0;border-bottom:1px dashed var(--border);}
+  .row span:first-child{color:var(--txt2);}
+  .rules{background:var(--yellow-l);border-radius:12px;padding:.7rem .85rem;font-size:.78rem;color:var(--brown-l);margin:.85rem 0;}
+  .rules b{color:var(--brown);}
+  label{display:block;font-size:.78rem;font-weight:700;color:var(--txt2);margin:.55rem 0 .25rem;}
+  input,select,textarea{width:100%;font:inherit;padding:.6rem .7rem;border:1px solid var(--border);border-radius:11px;background:var(--card);color:var(--txt);}
+  input:focus,select:focus,textarea:focus{outline:2px solid var(--yellow);border-color:var(--yellow);}
+  .btn{border:0;border-radius:13px;font-weight:800;padding:.8rem 1rem;width:100%;background:var(--yellow);color:var(--brown);
+    transition:background .15s,transform .15s var(--ease);}
+  .btn:hover{background:var(--yellow-h);transform:translateY(-1px);}
+  .btn:disabled{opacity:.55;}
+  .btn.sec{background:var(--cream);color:var(--brown);}
+  .btn.dark{background:var(--brown);color:#fff;}
+  .demo-pay{font-size:.7rem;color:var(--txt2);text-align:center;margin-top:.5rem;}
   .ok-wrap{text-align:center;}
-  .qr{width:170px;height:170px;margin:.4rem auto .2rem;}
-  .code{font-size:1.6rem;font-weight:800;letter-spacing:.08em;color:var(--green-d);}
+  .qr{width:168px;height:168px;margin:.4rem auto .2rem;}
+  .qr svg{width:100%;height:100%;}
+  .code{font-size:1.55rem;font-weight:800;letter-spacing:.08em;color:var(--brown);}
 
-  /* списки/таблицы (партнёр/админ) */
-  .card{background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);box-shadow:var(--shadow);padding:1.1rem 1.2rem;margin-bottom:1.1rem;}
-  .card h3{margin:0 0 .8rem;font-size:.78rem;text-transform:uppercase;letter-spacing:.07em;color:var(--muted);}
+  /* ===== ПАРТНЁР/АДМИН ===== */
+  h2.pageh{font-size:1.3rem;font-weight:800;color:var(--brown);margin:1.1rem 0 .2rem;}
+  .sub{color:var(--txt2);font-size:.88rem;margin-bottom:1rem;}
+  .cardp{background:var(--card);border-radius:16px;box-shadow:0 0 0 1px var(--border) inset;padding:1rem 1.1rem;margin-bottom:1rem;}
+  .cardp h3{margin:0 0 .7rem;font-size:.74rem;text-transform:uppercase;letter-spacing:.07em;color:var(--txt2);}
   .two{display:grid;grid-template-columns:1fr 1fr;gap:.7rem;}
-  .lrow{display:flex;align-items:center;gap:.7rem;padding:.6rem 0;border-bottom:1px solid var(--line);font-size:.9rem;}
+  @media(max-width:700px){ .two{grid-template-columns:1fr;} }
+  .lrow{display:flex;align-items:center;gap:.6rem;padding:.55rem 0;border-bottom:1px solid var(--border);font-size:.86rem;}
   .lrow:last-child{border-bottom:0;}
   .lrow .g{flex:1;min-width:0;}
-  .tag{font-size:.7rem;font-weight:700;padding:.15rem .5rem;border-radius:7px;}
-  .t-paid{background:var(--amber-s);color:var(--amber);} .t-issued{background:var(--green-s);color:var(--green-d);}
-  .t-expired{background:oklch(94% .02 80);color:var(--muted);} .t-refunded,.t-cancelled{background:oklch(95% .05 25);color:var(--red);}
-  .stats{display:grid;grid-template-columns:repeat(4,1fr);gap:.8rem;}
-  @media(max-width:680px){.stats{grid-template-columns:repeat(2,1fr);}}
-  .stat{background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:.9rem;text-align:center;}
-  .stat b{display:block;font-size:1.5rem;color:var(--green-d);} .stat span{font-size:.76rem;color:var(--muted);}
-  .empty{color:var(--muted);text-align:center;padding:1.6rem;font-size:.9rem;}
-  .demo-pay{font-size:.72rem;color:var(--muted);text-align:center;margin-top:.5rem;}
-  #toast{position:fixed;left:50%;bottom:1.4rem;transform:translate(-50%,2rem);background:var(--ink);color:#fff;
-    padding:.6rem 1.1rem;border-radius:12px;font-size:.88rem;opacity:0;pointer-events:none;transition:.25s var(--ease);z-index:60;}
-  #toast.show{opacity:1;transform:translate(-50%,0);} #toast.err{background:var(--red);}
+  .lrow b{color:var(--brown);}
+  .tag{font-size:.68rem;font-weight:800;padding:.16rem .5rem;border-radius:8px;flex:none;}
+  .t-paid{background:var(--yellow-l);color:#B98A00;}
+  .t-issued{background:#E8F5E9;color:var(--green);}
+  .t-expired{background:var(--cream-d);color:var(--txt2);}
+  .t-refunded,.t-cancelled{background:#FDEBED;color:var(--red);}
+  .stats{display:grid;grid-template-columns:repeat(4,1fr);gap:.7rem;margin-bottom:1rem;}
+  @media(max-width:680px){ .stats{grid-template-columns:repeat(2,1fr);} }
+  .stat{background:var(--card);box-shadow:0 0 0 1px var(--border) inset;border-radius:14px;padding:.85rem;text-align:center;}
+  .stat b{display:block;font-size:1.35rem;color:var(--brown);}
+  .stat span{font-size:.72rem;color:var(--txt2);font-weight:600;}
+  #toast{position:fixed;left:50%;bottom:calc(4.4rem + env(safe-area-inset-bottom));transform:translate(-50%,2rem);
+    background:var(--brown);color:#fff;padding:.6rem 1.1rem;border-radius:12px;font-size:.86rem;font-weight:600;
+    opacity:0;pointer-events:none;transition:.25s var(--ease);z-index:90;}
+  @media(min-width:760px){ #toast{bottom:1.4rem;} }
+  #toast.show{opacity:1;transform:translate(-50%,0);}
+  #toast.err{background:var(--red);}
 </style>
 </head>
 <body>
-  <header><div class="bar">
-    <div class="brand"><div class="em">🌿</div><div>SaveEat<small>Save Food · Астана</small></div></div>
-    <div class="roles">
-      <button data-role="store" class="on">Магазин</button>
-      <button data-role="partner">Партнёр</button>
-      <button data-role="admin">Админ</button>
+  <header>
+    <div class="topline"></div>
+    <div class="hwrap">
+      <div class="hrow">
+        <div class="logo"><img src="img/logo.png" alt="Yummy" />
+          <div class="txt"><div class="nm">Yummy</div><div class="tg">Спасай еду</div></div></div>
+        <button class="loc">📍 Астана <span style="font-size:.6rem;color:var(--txt2)">▾</span></button>
+        <div class="search desk"><input id="q" placeholder="Поиск боксов и заведений" /></div>
+        <div class="roles">
+          <button data-role="store" class="on">Магазин</button>
+          <button data-role="partner">Партнёр</button>
+          <button data-role="admin">Админ</button>
+        </div>
+        <button class="hbtn" title="Мои заказы" onclick="gotoOrders()">🛒<span class="cnt hidden" id="cartCnt"></span></button>
+        <button class="hbtn">👤</button>
+      </div>
+      <div class="msearch search"><input id="qm" placeholder="Поиск боксов и заведений" /></div>
     </div>
-  </div></header>
+  </header>
 
   <main>
-    <div style="background:var(--green-s);border:1px solid var(--line);border-radius:12px;padding:.6rem 1rem;margin-bottom:1rem;font-size:.82rem;color:var(--green-d);font-weight:600">
-      ⚡ Демо-версия (данные хранятся в браузере). Полный код с бэкендом (FastAPI) — <a href="https://github.com/wpalish/spasibox" style="color:var(--green)">на GitHub</a>.</div>
+    <div style="background:var(--yellow-l);border:1px solid var(--border);border-radius:12px;padding:.6rem 1rem;margin:.8rem 0 0;font-size:.78rem;color:var(--brown-l);font-weight:600">
+      ⚡ Демо-версия (данные в браузере). Полный код с бэкендом (FastAPI) — <a href="https://github.com/wpalish/spasibox" style="color:var(--brown)">на GitHub</a>.</div>
     <!-- ===================== МАГАЗИН ===================== -->
     <section id="view-store">
-      <div class="hero">
-        <div class="hero-txt">
-          <b>Спасай еду. Экономь.</b>
-          <div class="en">Save Food. Save Money.</div>
-          <p>Свежие боксы из кофеен и пекарен Астаны, которые иначе бы списали. Скидка 40–70%, самовывоз сегодня.</p>
-          <div class="pills"><span class="pill2">🥗 Surprise Box</span><span class="pill2">🌿 Green Deal</span><span class="pill2">♻ Eco solution</span></div>
+      <div class="cats" id="cats"></div>
+      <div class="promo">
+        <div>
+          <h2>Спасай еду. Экономь.</h2>
+          <div class="sub">Save Food. Save Money.</div>
+          <div class="pills"><span class="pill">🥗 Surprise Box</span><span class="pill">🌿 Green Deal</span><span class="pill">♻ Eco solution</span></div>
         </div>
-        <div class="hero-card"><img src="img/hero.jpg" alt="Surprise box" loading="eager" />
-          <div class="tag"><b>990 ₸</b><s>2 500 ₸</s><em>ценность внутри</em></div></div>
+        <div class="ph"><img src="img/hero.jpg" alt="Surprise box" /></div>
       </div>
-      <div class="chips" id="districts"></div>
+      <div class="dists" id="districts"></div>
+      <div class="sechead"><h3>Боксы рядом</h3><span id="cntBoxes"></span></div>
       <div class="grid" id="boxes"></div>
-      <div id="myorders" style="margin-top:1.8rem"></div>
+      <div id="myorders" style="margin-top:1.6rem"></div>
     </section>
 
     <!-- ===================== ПАРТНЁР ===================== -->
     <section id="view-partner" class="hidden">
-      <h2>Кабинет партнёра</h2>
+      <h2 class="pageh">Кабинет партнёра</h2>
       <p class="sub">Выставляй боксы из вечерних остатков за минуту. Выдавай заказы по коду.</p>
-      <label>Заведение
-        <select id="pSelect"></select></label>
+      <label>Заведение <select id="pSelect"></select></label>
       <div class="two" style="margin-top:1rem">
-        <div class="card">
+        <div class="cardp">
           <h3>Создать бокс</h3>
           <form id="boxForm">
             <label>Категория
@@ -187,30 +237,36 @@
           </form>
         </div>
         <div>
-          <div class="card">
+          <div class="cardp">
             <h3>Выдать заказ по коду</h3>
             <div style="display:flex;gap:.5rem">
-              <input id="redeemCode" placeholder="SB-XXXX" style="text-transform:uppercase" />
-              <button class="btn amber" style="width:auto;white-space:nowrap" id="redeemBtn">Выдать</button>
+              <input id="redeemCode" placeholder="YM-XXXX" style="text-transform:uppercase" />
+              <button class="btn dark" style="width:auto;white-space:nowrap" id="redeemBtn">Выдать</button>
             </div>
-            <div id="redeemRes" style="margin-top:.6rem;font-size:.86rem"></div>
+            <div id="redeemRes" style="margin-top:.6rem;font-size:.84rem"></div>
           </div>
-          <div class="card">
-            <h3>Мои боксы</h3><div id="pBoxes"></div>
-          </div>
+          <div class="cardp"><h3>Мои боксы</h3><div id="pBoxes"></div></div>
         </div>
       </div>
-      <div class="card"><h3>Брони и выдачи</h3><div id="pOrders"></div></div>
+      <div class="cardp"><h3>Брони и выдачи</h3><div id="pOrders"></div></div>
     </section>
 
     <!-- ===================== АДМИН ===================== -->
     <section id="view-admin" class="hidden">
-      <h2>Админ-панель</h2>
+      <h2 class="pageh">Админ-панель</h2>
       <p class="sub">Контроль заказов, возвраты, ключевые метрики пилота.</p>
-      <div class="stats" id="aStats" style="margin-bottom:1.2rem"></div>
-      <div class="card"><h3>Все заказы</h3><div id="aOrders"></div></div>
+      <div class="stats" id="aStats"></div>
+      <div class="cardp"><h3>Все заказы</h3><div id="aOrders"></div></div>
     </section>
   </main>
+
+  <nav class="bnav" id="bnav">
+    <button data-nav="store" class="on"><span class="ic">🏠</span>Главная</button>
+    <button data-nav="orders"><span class="ic">📦</span>Заказы</button>
+    <button data-nav="partner"><span class="ic">🧑‍🍳</span>Партнёр</button>
+    <button data-nav="admin"><span class="ic">⚙️</span>Админ</button>
+  </nav>
+
   <div id="modal" class="hidden"></div>
   <div id="toast"></div>
 
@@ -241,7 +297,7 @@ const SEED_BOXES=[
  ["b6","p5","sweet","Dessert Box",1290,3200,3,"Пирожные и десерты дня."],
  ["b7","p6","bakery","Утренняя выпечка",850,2300,5,"Свежая выпечка по вечерней цене."]];
 const P_BY_ID=Object.fromEntries(PARTNERS.map(p=>[p.id,p]));
-const SKEY="saveeat_state_v1";
+const SKEY="yummy_state_v1";
 function freshState(){
   const now=Date.now();
   const from=new Date(now-30*60000).toISOString(), to=new Date(now+4*3600000).toISOString();
@@ -262,7 +318,7 @@ function orderView(o){const p=P_BY_ID[o.partner_id]||{};
   return {...o,status:effStatus(o),partner_name:p.name||"—",address:p.address||"",
     category_ru:CAT_RU[o.category]||o.category,emoji:CAT_EM[o.category]||"🧺"};}
 function qrSvg(text){const qr=qrcode(0,"M");qr.addData(text);qr.make();return qr.createSvgTag({cellSize:6,margin:2});}
-function newCode(){return "SB-"+Math.random().toString(16).slice(2,6).toUpperCase();}
+function newCode(){return "YM-"+Math.random().toString(16).slice(2,6).toUpperCase();}
 function statsCalc(){let gmv=0,issued=0,no_show=0,active=0,refunds=0;
   ST.orders.forEach(o=>{const s=effStatus(o);if(s==="paid"||s==="issued")gmv+=o.price;
     if(s==="issued")issued++;else if(s==="expired")no_show++;else if(s==="paid")active++;else if(s==="refunded")refunds++;});
@@ -307,29 +363,44 @@ async function post(u,body){ let m;
   throw new Error("404 "+u);
 }
 const STATUS_RU={paid:"оплачен",issued:"выдан",expired:"не забран",refunded:"возврат",cancelled:"отменён"};
+const CATS=[["all","Все","🔥"],["sweet","Десерты","🍩"],["bakery","Выпечка","🥐"],["snack","Снеки","🥪"],["mixed","Микс","🧺"]];
+let curDistrict="all", curCat="all", curQuery="";
 
-/* ---- переключение ролей ---- */
+/* ---- роли + bottom-nav ---- */
 const roleBtns=[...document.querySelectorAll(".roles button")];
-roleBtns.forEach(b=>b.onclick=()=>{
-  roleBtns.forEach(x=>x.classList.toggle("on",x===b));
-  ["store","partner","admin"].forEach(v=>$("#view-"+v).classList.toggle("hidden",v!==b.dataset.role));
-  if(b.dataset.role==="store")loadStore();
-  if(b.dataset.role==="partner")loadPartner();
-  if(b.dataset.role==="admin")loadAdmin();
+const navBtns=[...document.querySelectorAll(".bnav button")];
+function switchView(v){
+  roleBtns.forEach(x=>x.classList.toggle("on",x.dataset.role===v));
+  navBtns.forEach(x=>x.classList.toggle("on",x.dataset.nav===v||(v==="store"&&x.dataset.nav==="orders"&&false)));
+  ["store","partner","admin"].forEach(s=>$("#view-"+s).classList.toggle("hidden",s!==v));
+  if(v==="store")loadStore(); if(v==="partner")loadPartner(); if(v==="admin")loadAdmin();
+}
+roleBtns.forEach(b=>b.onclick=()=>switchView(b.dataset.role));
+navBtns.forEach(b=>b.onclick=()=>{
+  const n=b.dataset.nav;
+  if(n==="orders"){switchView("store");setTimeout(()=>$("#myorders").scrollIntoView({behavior:"smooth"}),250);
+    navBtns.forEach(x=>x.classList.toggle("on",x===b));return;}
+  switchView(n);
 });
+function gotoOrders(){switchView("store");setTimeout(()=>$("#myorders").scrollIntoView({behavior:"smooth"}),250);}
+
+/* ---- поиск ---- */
+["q","qm"].forEach(id=>{const el=$("#"+id);if(el)el.addEventListener("input",()=>{curQuery=el.value.trim().toLowerCase();loadStore();});});
 
 /* ============ МАГАЗИН ============ */
-let curDistrict="all";
 async function loadStore(){
-  // районы
+  $("#cats").innerHTML=CATS.map(([id,l,ic])=>`<button class="cat${curCat===id?" on":""}" data-c="${id}"><span class="ic">${ic}</span>${l}</button>`).join("");
+  document.querySelectorAll("#cats .cat").forEach(c=>c.onclick=()=>{curCat=c.dataset.c;loadStore();});
   let ds=[];try{ds=await get("/districts");}catch(e){}
-  $("#districts").innerHTML=[`<button class="chip${curDistrict==="all"?" on":""}" data-d="all">Все районы</button>`]
-    .concat(ds.map(d=>`<button class="chip${curDistrict===d?" on":""}" data-d="${esc(d)}">${esc(d)}</button>`)).join("");
-  document.querySelectorAll("#districts .chip").forEach(c=>c.onclick=()=>{curDistrict=c.dataset.d;loadStore();});
-  // боксы
+  $("#districts").innerHTML=[`<button class="dist${curDistrict==="all"?" on":""}" data-d="all">Все районы</button>`]
+    .concat(ds.map(d=>`<button class="dist${curDistrict===d?" on":""}" data-d="${esc(d)}">${esc(d)}</button>`)).join("");
+  document.querySelectorAll("#districts .dist").forEach(c=>c.onclick=()=>{curDistrict=c.dataset.d;loadStore();});
   let boxes=[];try{boxes=await get("/boxes?district="+encodeURIComponent(curDistrict));}catch(e){}
-  $("#boxes").innerHTML=boxes.length?boxes.map(boxCard).join(""):'<p class="empty">В этом районе пока нет боксов. Загляни позже 🌙</p>';
-  document.querySelectorAll(".box").forEach(el=>el.onclick=()=>openBox(el.dataset.id));
+  if(curCat!=="all")boxes=boxes.filter(b=>b.category===curCat);
+  if(curQuery)boxes=boxes.filter(b=>(b.title+" "+b.partner_name).toLowerCase().includes(curQuery));
+  $("#cntBoxes").textContent=boxes.length?boxes.length+" шт":"";
+  $("#boxes").innerHTML=boxes.length?boxes.map(boxCard).join(""):'<p class="empty">Ничего не нашлось. Попробуй другой район или категорию 🌙</p>';
+  document.querySelectorAll(".boxc").forEach(el=>el.onclick=()=>openBox(el.dataset.id));
   renderMyOrders();
 }
 const IMG={sweet:"sweet.jpg",bakery:"bakery.jpg",mixed:"mixed.jpg",snack:"snack.jpg"};
@@ -344,15 +415,15 @@ function imgFor(b){
 }
 function boxCard(b){
   const fomo=b.qty_left<=3;
-  return `<article class="box" data-id="${b.id}">
+  return `<article class="boxc" data-id="${b.id}">
     <div class="top" style="background-image:url(img/${imgFor(b)})">
-      <span class="disc">−${b.discount}%</span>
-      <span class="left${fomo?" fomo":""}">${fomo?"🔥 ":""}осталось ${b.qty_left}</span>
-      <span class="catchip">${esc(b.category_ru)}</span></div>
+      <span class="bdg b-disc">−${b.discount}%</span>
+      <span class="bdg b-left${fomo?" fomo":""}">${fomo?"🔥 ":""}осталось ${b.qty_left}</span>
+      <span class="bdg b-cat">${esc(b.category_ru)}</span></div>
     <div class="body">
-      <div class="name">${esc(b.title||b.partner_name)}</div>
-      <div class="meta">${esc(b.partner_name)} · ${esc(b.district)} · ★${b.rating}</div>
-      <div class="win">⏱ ${win(b.pickup_from,b.pickup_to)}</div>
+      <h4>${esc(b.title||b.partner_name)}</h4>
+      <div class="meta"><b>${esc(b.partner_name)}</b> · ${esc(b.district)} · ⭐ ${b.rating}</div>
+      <div class="time">⏱ ${win(b.pickup_from,b.pickup_to)}</div>
       <div class="price"><b>${money(b.price)}</b><s>${money(b.value_est)}</s></div>
     </div></article>`;
 }
@@ -360,14 +431,14 @@ async function openBox(id){
   let b;try{b=await get("/boxes/"+id);}catch(e){toast(e.message,true);return;}
   showModal(`<div class="mh" style="background-image:url(img/${imgFor(b)})"><button class="x" onclick="closeModal()">✕</button></div>
     <div class="mc">
-      <div class="cat" style="color:var(--green-d);font-size:.74rem;font-weight:700;text-transform:uppercase">${esc(b.category_ru)}</div>
+      <div style="color:var(--txt2);font-size:.72rem;font-weight:800;text-transform:uppercase;letter-spacing:.04em">${esc(b.category_ru)}</div>
       <h3>${esc(b.title||b.partner_name)}</h3>
-      <div class="meta" style="color:var(--muted);font-size:.86rem">${esc(b.partner_name)} · ${esc(b.address)} · ★${b.rating}</div>
-      <div class="row"><span>Цена</span><b>${money(b.price)} <s style="color:var(--muted);font-weight:400">${money(b.value_est)}</s> <span style="color:var(--amber)">−${b.discount}%</span></b></div>
+      <div style="color:var(--txt2);font-size:.84rem">${esc(b.partner_name)} · ${esc(b.address)} · ⭐ ${b.rating}</div>
+      <div class="row"><span>Цена</span><b>${money(b.price)} <s style="color:var(--txt2);font-weight:400">${money(b.value_est)}</s> <span style="color:var(--green);font-weight:800">−${b.discount}%</span></b></div>
       <div class="row"><span>Ценность внутри</span><span>примерно ${money(b.value_est)}</span></div>
       <div class="row"><span>Самовывоз</span><span>${win(b.pickup_from,b.pickup_to)}</span></div>
       <div class="row"><span>Осталось</span><span>${b.qty_left} из ${b.qty_total}</span></div>
-      ${b.description?`<p style="font-size:.86rem;color:var(--muted);margin:.6rem 0 0">${esc(b.description)}</p>`:""}
+      ${b.description?`<p style="font-size:.84rem;color:var(--txt2);margin:.6rem 0 0">${esc(b.description)}</p>`:""}
       <div class="rules"><b>Surprise box.</b> Точный состав может отличаться — это набор из свежих остатков дня. Забрать нужно в окне самовывоза, иначе заказ сгорает (предоплата не возвращается). Если заведение не выдаст — полный возврат.</div>
       <label>Ваше имя <input id="oName" placeholder="Имя" /></label>
       <label>Телефон <input id="oPhone" placeholder="+7 7XX XXX XX XX" /></label>
@@ -390,23 +461,24 @@ function successScreen(res){
   showModal(`<div class="mc ok-wrap" style="padding-top:1.4rem">
     <div style="font-size:2.4rem">✅</div>
     <h3>Бокс забронирован!</h3>
-    <p style="color:var(--muted);font-size:.88rem;margin:.2rem 0 0">${esc(o.partner_name)} · ${esc(o.address)}</p>
+    <p style="color:var(--txt2);font-size:.86rem;margin:.2rem 0 0">${esc(o.partner_name)} · ${esc(o.address)}</p>
     <div class="qr">${res.qr_svg}</div>
     <div class="code">${esc(o.code)}</div>
-    <p style="font-size:.85rem;color:var(--muted);margin:.5rem 0">Покажите код или QR на кассе.<br>Забрать: <b style="color:var(--green-d)">${win(o.pickup_from,o.pickup_to)}</b></p>
+    <p style="font-size:.84rem;color:var(--txt2);margin:.5rem 0">Покажите код или QR на кассе.<br>Забрать: <b style="color:var(--brown)">${win(o.pickup_from,o.pickup_to)}</b></p>
     <button class="btn sec" onclick="closeModal()">Готово</button>
   </div>`);
 }
-/* мои заказы (localStorage кодов) */
-function myCodes(){try{return JSON.parse(localStorage.getItem("sb_codes")||"[]");}catch(e){return [];}}
-function saveCode(c){const a=myCodes();if(!a.includes(c)){a.unshift(c);localStorage.setItem("sb_codes",JSON.stringify(a.slice(0,20)));}}
+function myCodes(){try{return JSON.parse(localStorage.getItem("ym_codes")||"[]");}catch(e){return [];}}
+function saveCode(c){const a=myCodes();if(!a.includes(c)){a.unshift(c);localStorage.setItem("ym_codes",JSON.stringify(a.slice(0,20)));}updateCart();}
+function updateCart(){const n=myCodes().length;const el=$("#cartCnt");el.textContent=n;el.classList.toggle("hidden",!n);}
 async function renderMyOrders(){
+  updateCart();
   const codes=myCodes(); const el=$("#myorders");
   if(!codes.length){el.innerHTML="";return;}
   const orders=(await Promise.all(codes.map(c=>get("/orders/"+c).catch(()=>null)))).filter(Boolean);
-  el.innerHTML=`<div class="card"><h3>Мои заказы</h3>${orders.map(o=>`<div class="lrow">
-    <div style="font-size:1.4rem">${o.emoji}</div>
-    <div class="g"><b>${esc(o.code)}</b> · ${esc(o.partner_name)}<div style="font-size:.78rem;color:var(--muted)">${win(o.pickup_from,o.pickup_to)} · ${money(o.price)}</div></div>
+  el.innerHTML=`<div class="cardp"><h3>Мои заказы</h3>${orders.map(o=>`<div class="lrow">
+    <div style="font-size:1.3rem">${o.emoji}</div>
+    <div class="g"><b>${esc(o.code)}</b> · ${esc(o.partner_name)}<div style="font-size:.76rem;color:var(--txt2)">${win(o.pickup_from,o.pickup_to)} · ${money(o.price)}</div></div>
     <span class="tag t-${o.status}">${STATUS_RU[o.status]}</span></div>`).join("")}</div>`;
 }
 
@@ -426,17 +498,17 @@ async function loadPartnerData(){
   let boxes=[],orders=[];
   try{boxes=await get(`/partners/${pid}/boxes`);}catch(e){}
   try{orders=await get(`/partners/${pid}/orders`);}catch(e){}
-  $("#pBoxes").innerHTML=boxes.length?boxes.map(b=>`<div class="lrow"><div style="font-size:1.3rem">${b.emoji}</div>
-    <div class="g"><b>${esc(b.title||b.category_ru)}</b><div style="font-size:.78rem;color:var(--muted)">${money(b.price)} · ${win(b.pickup_from,b.pickup_to)}</div></div>
+  $("#pBoxes").innerHTML=boxes.length?boxes.map(b=>`<div class="lrow"><div style="font-size:1.2rem">${b.emoji}</div>
+    <div class="g"><b>${esc(b.title||b.category_ru)}</b><div style="font-size:.76rem;color:var(--txt2)">${money(b.price)} · ${win(b.pickup_from,b.pickup_to)}</div></div>
     <span class="tag ${b.qty_left>0?"t-issued":"t-expired"}">${b.qty_left}/${b.qty_total}</span></div>`).join(""):'<p class="empty">Боксов пока нет.</p>';
-  $("#pOrders").innerHTML=orders.length?orders.map(orderRow).join(""):'<p class="empty">Броней пока нет.</p>';
+  $("#pOrders").innerHTML=orders.length?orders.map(o=>orderRow(o)).join(""):'<p class="empty">Броней пока нет.</p>';
 }
 function orderRow(o,admin=false){
-  return `<div class="lrow"><div style="font-size:1.3rem">${o.emoji}</div>
-    <div class="g"><b>${esc(o.code)}</b> · ${esc(o.user_name)} <span style="color:var(--muted)">${esc(o.user_phone)}</span>
-      <div style="font-size:.78rem;color:var(--muted)">${admin?esc(o.partner_name)+" · ":""}${money(o.price)} · ${win(o.pickup_from,o.pickup_to)}</div></div>
+  return `<div class="lrow"><div style="font-size:1.2rem">${o.emoji}</div>
+    <div class="g"><b>${esc(o.code)}</b> · ${esc(o.user_name)} <span style="color:var(--txt2)">${esc(o.user_phone)}</span>
+      <div style="font-size:.76rem;color:var(--txt2)">${admin?esc(o.partner_name)+" · ":""}${money(o.price)} · ${win(o.pickup_from,o.pickup_to)}</div></div>
     <span class="tag t-${o.status}">${STATUS_RU[o.status]}</span>
-    ${admin&&(o.status==="paid")?`<button class="btn sec" style="width:auto;padding:.3rem .6rem;font-size:.78rem" onclick="refund('${o.id}')">Возврат</button>`:""}</div>`;
+    ${admin&&(o.status==="paid")?`<button class="btn sec" style="width:auto;padding:.3rem .6rem;font-size:.74rem" onclick="refund('${o.id}')">Возврат</button>`:""}</div>`;
 }
 $("#boxForm").addEventListener("submit",async e=>{
   e.preventDefault();
@@ -452,7 +524,7 @@ $("#redeemBtn").onclick=async()=>{
   const code=$("#redeemCode").value.trim();if(!code){toast("Введите код",true);return;}
   try{const r=await post("/redeem",{code});
     $("#redeemRes").innerHTML=`<span class="tag ${r.ok?"t-issued":"t-expired"}">${r.ok?"✓ ":"✕ "}${esc(r.message)}</span>`+
-      (r.order?` <span style="color:var(--muted)">${esc(r.order.partner_name)} · ${money(r.order.price)}</span>`:"");
+      (r.order?` <span style="color:var(--txt2)">${esc(r.order.partner_name)} · ${money(r.order.price)}</span>`:"");
     if(r.ok){toast("Выдано ✓");loadPartnerData();}
   }catch(e){toast(e.message,true);}
 };
