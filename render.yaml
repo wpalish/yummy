@@ -1,9 +1,9 @@
-# Деплой SaveEat в один клик:
-#   render.com → New → Blueprint → выбрать репозиторий spasibox → Apply
-#   через ~2 мин будет https://saveeat.onrender.com  (магазин/партнёр/админ, /docs)
+# Деплой Yummy в один клик:
+#   render.com → New → Blueprint → выбрать репозиторий yummy → Apply
+#   через ~2 мин будет https://yummy-astana.onrender.com (магазин/партнёр/админ, /docs)
 services:
   - type: web
-    name: saveeat
+    name: yummy-astana
     runtime: python
     plan: free
     buildCommand: pip install -r requirements.txt

@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>Yummy — сюрприз-боксы из кофеен Астаны со скидкой до 70%</title>
+<title>Yummy — сюрприз-боксы со скидкой до 70% · Астана</title>
 <meta name="description" content="Yummy — сервис спасения еды в Астане: кофейни и пекарни продают свежие остатки дня сюрприз-боксами со скидкой 40–70%. Бронируй онлайн, забирай рядом." />
 <meta name="theme-color" content="#FDC620" />
 <meta property="og:title" content="Yummy — спасай еду, экономь" />
@@ -193,6 +193,23 @@
   .stat span{font-size:.72rem;color:var(--txt2);font-weight:600;}
   .linkbtn{background:0;border:0;color:var(--brown-l);font-size:.74rem;font-weight:700;text-decoration:underline;padding:0;}
 
+  /* ===== КАК ЭТО РАБОТАЕТ ===== */
+  .hiw{margin-top:2rem;background:var(--card);border-radius:18px;box-shadow:0 0 0 1px var(--border) inset;padding:1.3rem 1.4rem;}
+  .hiw h2{margin:0 0 1rem;font-size:1.1rem;font-weight:800;color:var(--brown);}
+  .hiw-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:1.1rem;}
+  @media(max-width:680px){.hiw-grid{grid-template-columns:1fr;}}
+  .hiw-step .n{display:inline-grid;place-items:center;width:30px;height:30px;border-radius:10px;background:var(--yellow);
+    color:var(--brown);font-weight:800;margin-bottom:.4rem;}
+  .hiw-step b{display:block;color:var(--brown);font-size:.95rem;}
+  .hiw-step p{margin:.25rem 0 0;font-size:.82rem;color:var(--txt2);}
+
+  /* ===== COOKIE ===== */
+  .cookiebar{position:fixed;left:50%;transform:translateX(-50%);bottom:calc(4.6rem + env(safe-area-inset-bottom));z-index:70;
+    background:var(--card);box-shadow:0 8px 26px rgba(101,54,36,.22),0 0 0 1px var(--border) inset;border-radius:14px;
+    padding:.7rem .9rem;display:flex;align-items:center;gap:.8rem;font-size:.78rem;color:var(--txt2);max-width:92vw;width:480px;}
+  @media(min-width:760px){.cookiebar{bottom:1.2rem;}}
+  .cookiebar button{border:0;border-radius:10px;background:var(--yellow);color:var(--brown);font-weight:800;padding:.45rem .9rem;flex:none;}
+
   /* ===== ФУТЕР ===== */
   footer{background:var(--card);border-top:1px solid var(--border);margin-top:2.5rem;}
   .fwrap{max-width:1024px;margin:0 auto;padding:1.8rem 1rem 2.2rem;}
@@ -245,8 +262,8 @@
       <div class="cats" id="cats"></div>
       <div class="promo">
         <div>
-          <h1>Свежая еда со скидкой до −70%</h1>
-          <div class="sub">Кофейни и пекарни Астаны продают вечерние излишки сюрприз-боксами. Ты экономишь — еда не отправляется на списание.</div>
+          <h1>Вечерние излишки кофеен — со скидкой до 70%</h1>
+          <div class="sub">Кофейни и пекарни Астаны собирают непроданное за день в сюрприз-боксы. Еда свежая — просто её приготовили сегодня больше, чем купили. Ты экономишь, заведение не списывает.</div>
           <div class="cta-row">
             <button class="cta" onclick="scrollToBoxes()">Смотреть боксы</button>
             <span class="cta-note" id="heroCnt"></span>
@@ -261,6 +278,14 @@
       </div>
       <div id="map" class="hidden"></div>
       <div class="grid" id="boxes"></div>
+      <div class="hiw">
+        <h2>Как это работает</h2>
+        <div class="hiw-grid">
+          <div class="hiw-step"><span class="n">1</span><b>Выбери бокс</b><p>Кофейни выкладывают вечерние излишки со скидкой 40–70%.</p></div>
+          <div class="hiw-step"><span class="n">2</span><b>Оплати онлайн</b><p>Получишь код и QR для выдачи. Состав бокса — приятный сюрприз.</p></div>
+          <div class="hiw-step"><span class="n">3</span><b>Забери сегодня</b><p>Покажи код на кассе в окно самовывоза — и наслаждайся.</p></div>
+        </div>
+      </div>
       <div id="myorders" style="margin-top:1.8rem"></div>
     </section>
 
@@ -317,6 +342,10 @@
 
   <footer>
     <div class="fwrap">
+      <p style="margin:0 0 1.4rem;font-size:.86rem;color:var(--txt2);max-width:640px">
+        <b style="color:var(--brown)">О сервисе.</b> Yummy — пилотный проект из Астаны против выбрасывания еды.
+        Делает его Алишер Нурсаин (<a href="https://github.com/wpalish">github.com/wpalish</a>).
+        Мы соединяем кофейни, у которых к вечеру остаётся свежая выпечка, и людей, которые рады забрать её со скидкой.</p>
       <div class="fgrid">
         <div>
           <h4>Частые вопросы</h4>
@@ -366,7 +395,8 @@ const $=s=>document.querySelector(s);
 const esc=s=>String(s??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
 const money=n=>Number(n).toLocaleString("ru-RU")+" ₸";
 const hhmm=iso=>{try{return new Date(iso).toLocaleTimeString("ru-RU",{hour:"2-digit",minute:"2-digit"});}catch(e){return "—";}};
-const win=(a,b)=>`сегодня ${hhmm(a)}–${hhmm(b)}`;
+const win=(a,b)=>`Сегодня ${hhmm(a)}–${hhmm(b)}`;
+const plural=(n,f)=>{const m10=n%10,m100=n%100;return f[(m10===1&&m100!==11)?0:(m10>=2&&m10<=4&&(m100<10||m100>=20))?1:2];};
 function toast(m,err=false){const t=$("#toast");t.textContent=m;t.className=err?"err show":"show";clearTimeout(t._t);t._t=setTimeout(()=>t.className="",2800);}
 async function api(m,u,b){const r=await fetch(u,{method:m,headers:b?{"Content-Type":"application/json"}:undefined,body:b?JSON.stringify(b):undefined});
   if(!r.ok){let d;try{d=await r.json();}catch(e){} throw new Error((d&&d.detail)||("Ошибка "+r.status));} return r.status===204?null:r.json();}
@@ -381,10 +411,10 @@ const REVIEWS={
  "Sweet Corner":[["Дана","Чизкейк в боксе — любовь!",5],["Арман","Десерты свежие, рекомендую.",5]],
  "Утром Кофе":[["Инкар","Отличная выпечка по вечерней цене.",5],["Санжар","Всё чётко по коду выдали.",4]],
 };
-let curDistrict="all", curCat="all", curQuery="", mapMode=false, mapObj=null;
+let curDistrict="all", curCat="all", curQuery="", curNow=false, mapMode=false, mapObj=null;
 /* фильтры переживают перезагрузку */
-try{const f=JSON.parse(localStorage.getItem("ym_filters")||"{}");curDistrict=f.d||"all";curCat=f.c||"all";}catch(e){}
-const saveFilters=()=>localStorage.setItem("ym_filters",JSON.stringify({d:curDistrict,c:curCat}));
+try{const f=JSON.parse(localStorage.getItem("ym_filters")||"{}");curDistrict=f.d||"all";curCat=f.c||"all";curNow=!!f.n;}catch(e){}
+const saveFilters=()=>localStorage.setItem("ym_filters",JSON.stringify({d:curDistrict,c:curCat,n:curNow}));
 
 /* ---- роли + bottom-nav + демо-доступ персонала ---- */
 const roleBtns=[...document.querySelectorAll(".roles button")];
@@ -435,26 +465,36 @@ async function loadStore(){
   document.querySelectorAll("#cats .cat").forEach(c=>c.onclick=()=>{curCat=c.dataset.c;saveFilters();loadStore();});
   $("#boxes").innerHTML=skCard().repeat(6);
   let ds=[];try{ds=await get("/districts");}catch(e){}
-  $("#districts").innerHTML=[`<button class="dist${curDistrict==="all"?" on":""}" data-d="all">Все районы</button>`]
-    .concat(ds.map(d=>`<button class="dist${curDistrict===d?" on":""}" data-d="${esc(d)}">${esc(d)}</button>`)).join("");
-  document.querySelectorAll("#districts .dist").forEach(c=>c.onclick=()=>{curDistrict=c.dataset.d;saveFilters();loadStore();});
+  const hasFilters=curCat!=="all"||curDistrict!=="all"||curNow||curQuery;
+  $("#districts").innerHTML=[`<button class="dist${curNow?" on":""}" data-now="1">⚡ Забрать сейчас</button>`,
+      `<button class="dist${curDistrict==="all"?" on":""}" data-d="all">Все районы</button>`]
+    .concat(ds.map(d=>`<button class="dist${curDistrict===d?" on":""}" data-d="${esc(d)}">${esc(d)}</button>`))
+    .concat(hasFilters?['<button class="dist" data-reset="1" style="color:var(--red)">✕ Сбросить</button>']:[]).join("");
+  document.querySelectorAll("#districts .dist").forEach(c=>c.onclick=()=>{
+    if(c.dataset.reset){curCat="all";curDistrict="all";curNow=false;curQuery="";["q","qm"].forEach(id=>{const e=$("#"+id);if(e)e.value="";});}
+    else if(c.dataset.now){curNow=!curNow;}
+    else curDistrict=c.dataset.d;
+    saveFilters();loadStore();});
   try{ALL_BOXES=await get("/boxes?district=all");}catch(e){ALL_BOXES=[];}
   const totalLeft=ALL_BOXES.reduce((s,b)=>s+b.qty_left,0);
-  $("#heroCnt").textContent=totalLeft?`Сегодня доступно ${totalLeft} боксов`:"";
+  $("#heroCnt").textContent=totalLeft?`Сегодня доступно ${totalLeft} ${plural(totalLeft,["бокс","бокса","боксов"])}`:"";
   renderBoxes();
   if(mapMode)renderMap();
   renderMyOrders();
 }
 function filtered(){
-  let bs=ALL_BOXES;
+  let bs=ALL_BOXES.slice();
   if(curDistrict!=="all")bs=bs.filter(b=>b.district===curDistrict);
   if(curCat!=="all")bs=bs.filter(b=>b.category===curCat);
+  if(curNow){const t=Date.now();bs=bs.filter(b=>Date.parse(b.pickup_from)<=t&&t<=Date.parse(b.pickup_to));}
   if(curQuery)bs=bs.filter(b=>(b.title+" "+b.partner_name).toLowerCase().includes(curQuery));
+  // по умолчанию — «скоро закроется окно выдачи» выше (стимул забрать сейчас)
+  bs.sort((a,b)=>Date.parse(a.pickup_to)-Date.parse(b.pickup_to));
   return bs;
 }
 function renderBoxes(){
   const bs=filtered();
-  $("#listTitle").textContent=`Боксы рядом${bs.length?` · ${bs.length}`:""}`;
+  $("#listTitle").textContent=bs.length?`Боксы рядом (${bs.length})`:"Боксы рядом";
   $("#boxes").innerHTML=bs.length?bs.map(boxCard).join(""):'<p class="empty">Ничего не нашлось. Попробуй другой район или категорию 🌙</p>';
   document.querySelectorAll(".boxc").forEach(el=>el.onclick=()=>openBox(el.dataset.id));
 }
@@ -607,6 +647,7 @@ $("#boxForm").addEventListener("submit",async e=>{
   try{await post("/boxes",body);toast("Бокс опубликован ✓");e.target.reset();$("#bPrice").value=990;$("#bValue").value=2600;$("#bQty").value=5;$("#bHours").value=4;loadPartnerData();}
   catch(err){toast(err.message,true);}
 });
+$("#redeemCode").addEventListener("input",e=>{e.target.value=e.target.value.toUpperCase().replace(/[^A-Z0-9-]/g,"");});
 $("#redeemBtn").onclick=async()=>{
   const code=$("#redeemCode").value.trim();if(!code){toast("Введите код",true);return;}
   try{const r=await post("/redeem",{code});
@@ -644,6 +685,14 @@ window.showLegal=k=>{const [t,body]=LEGAL[k];
 function showModal(html){const m=$("#modal");m.className="modal-bg";m.innerHTML=`<div class="modal">${html}</div>`;
   m.onclick=e=>{if(e.target===m)closeModal();};}
 window.closeModal=()=>{$("#modal").className="hidden";$("#modal").innerHTML="";if(!$("#view-store").classList.contains("hidden"))renderMyOrders();};
+
+/* ---- cookies ---- */
+if(!localStorage.getItem("ym_cookies")){
+  const cb=document.createElement("div");cb.className="cookiebar";
+  cb.innerHTML=`<span>Мы используем cookies и localStorage, чтобы помнить ваши заказы и фильтры.</span><button>Понятно</button>`;
+  cb.querySelector("button").onclick=()=>{localStorage.setItem("ym_cookies","1");cb.remove();};
+  document.body.appendChild(cb);
+}
 
 loadStore();
 </script>

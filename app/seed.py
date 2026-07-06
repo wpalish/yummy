@@ -43,9 +43,13 @@ def seed(store: Store) -> None:
     for p in PARTNERS:
         store.upsert_partner(p)
 
+    def _round30(dt: datetime) -> datetime:
+        """Окно выдачи с «человеческими» минутами (:00 / :30)."""
+        return dt.replace(minute=0 if dt.minute < 30 else 30, second=0, microsecond=0)
+
     now = datetime.now(timezone.utc)
     for i, (pid, cat, title, price, value, qty, start_min, dur_h, desc) in enumerate(_BOXES, start=1):
-        pickup_from = now + timedelta(minutes=start_min)
+        pickup_from = _round30(now + timedelta(minutes=start_min))
         pickup_to = pickup_from + timedelta(hours=dur_h)
         store.create_box(
             f"b{i}",
