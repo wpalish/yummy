@@ -109,6 +109,11 @@
   .b-left{top:.55rem;right:.55rem;background:rgba(255,255,255,.94);color:var(--brown);font-size:.66rem;}
   .b-left.fomo{background:var(--red);color:#fff;}
   .b-cat{bottom:.55rem;left:.55rem;background:rgba(74,42,27,.78);color:#fff;font-size:.66rem;}
+  .b-fav{position:absolute;bottom:.5rem;right:.5rem;border:0;width:30px;height:30px;border-radius:50%;
+    background:rgba(255,255,255,.94);color:#C9B8A8;font-size:1rem;line-height:1;cursor:pointer;
+    transition:transform .15s var(--ease),color .15s;}
+  .b-fav:hover{transform:scale(1.12);}
+  .b-fav.on{color:var(--red);}
   .boxc .body{display:flex;flex-direction:column;gap:.32rem;padding:.85rem .95rem 1rem;flex:1;}
   .boxc h3{margin:0;font-size:.95rem;font-weight:800;color:var(--brown);line-height:1.28;}
   .boxc .meta{font-size:.76rem;color:var(--txt2);}
@@ -406,7 +411,7 @@ const PARTNERS=[
  {id:"p1",name:"Coffee Point",district:"Есильский р-н",address:"пр. Мангилик Ел, 55",rating:4.8,lat:51.090,lng:71.416},
  {id:"p2",name:"Bake House",district:"Сарыарка р-н",address:"ул. Бейбитшилик, 33",rating:4.7,lat:51.180,lng:71.408},
  {id:"p3",name:"Donut Lab",district:"Есильский р-н",address:"ТРЦ Mega Silk Way",rating:4.6,lat:51.089,lng:71.402},
- {id:"p4",name:"Сдоба",district:"Алматинский р-н",address:"ул. Кенесары, 40",rating:4.5,lat:51.165,lng:71.419},
+ {id:"p4",name:"Сдоба",district:"Алматинский р-н",address:"ул. Кенесары, 40",rating:4.2,lat:51.165,lng:71.419},
  {id:"p5",name:"Sweet Corner",district:"Есильский р-н",address:"пр. Кабанбай батыра, 7",rating:4.9,lat:51.132,lng:71.437},
  {id:"p6",name:"Утром Кофе",district:"Алматинский р-н",address:"ул. Богенбай батыра, 23",rating:4.6,lat:51.166,lng:71.446}];
 /* [id,pid,cat,title,price,value,qty,start_off_min,dur_h,desc] */
@@ -501,10 +506,13 @@ const REVIEWS={
  "Sweet Corner":[["Дана","Чизкейк в боксе — любовь!",5],["Арман","Десерты свежие, рекомендую.",5]],
  "Утром Кофе":[["Инкар","Отличная выпечка по вечерней цене.",5],["Санжар","Всё чётко по коду выдали.",4]],
 };
-let curDistrict="all", curCat="all", curQuery="", curNow=false, mapMode=false, mapObj=null;
+let curDistrict="all", curCat="all", curQuery="", curNow=false, curFav=false, mapMode=false, mapObj=null;
+const favs=()=>{try{return JSON.parse(localStorage.getItem("ym_favs")||"[]");}catch(e){return [];}};
+window.toggleFav=pid=>{let f=favs();f=f.includes(pid)?f.filter(x=>x!==pid):[...f,pid];
+  localStorage.setItem("ym_favs",JSON.stringify(f));renderBoxes();toast(f.includes(pid)?"Кофейня в избранном ♥":"Убрано из избранного");};
 /* фильтры переживают перезагрузку */
-try{const f=JSON.parse(localStorage.getItem("ym_filters")||"{}");curDistrict=f.d||"all";curCat=f.c||"all";curNow=!!f.n;}catch(e){}
-const saveFilters=()=>localStorage.setItem("ym_filters",JSON.stringify({d:curDistrict,c:curCat,n:curNow}));
+try{const f=JSON.parse(localStorage.getItem("ym_filters")||"{}");curDistrict=f.d||"all";curCat=f.c||"all";curNow=!!f.n;curFav=!!f.f;}catch(e){}
+const saveFilters=()=>localStorage.setItem("ym_filters",JSON.stringify({d:curDistrict,c:curCat,n:curNow,f:curFav}));
 
 /* ---- роли + bottom-nav + демо-доступ персонала ---- */
 const roleBtns=[...document.querySelectorAll(".roles button")];
@@ -555,14 +563,16 @@ async function loadStore(){
   document.querySelectorAll("#cats .cat").forEach(c=>c.onclick=()=>{curCat=c.dataset.c;saveFilters();loadStore();});
   $("#boxes").innerHTML=skCard().repeat(6);
   let ds=[];try{ds=await get("/districts");}catch(e){}
-  const hasFilters=curCat!=="all"||curDistrict!=="all"||curNow||curQuery;
+  const hasFilters=curCat!=="all"||curDistrict!=="all"||curNow||curFav||curQuery;
   $("#districts").innerHTML=[`<button class="dist${curNow?" on":""}" data-now="1">⚡ Забрать сейчас</button>`,
+      `<button class="dist${curFav?" on":""}" data-fav="1">♥ Любимые</button>`,
       `<button class="dist${curDistrict==="all"?" on":""}" data-d="all">Все районы</button>`]
     .concat(ds.map(d=>`<button class="dist${curDistrict===d?" on":""}" data-d="${esc(d)}">${esc(d)}</button>`))
     .concat(hasFilters?['<button class="dist" data-reset="1" style="color:var(--red)">✕ Сбросить</button>']:[]).join("");
   document.querySelectorAll("#districts .dist").forEach(c=>c.onclick=()=>{
-    if(c.dataset.reset){curCat="all";curDistrict="all";curNow=false;curQuery="";["q","qm"].forEach(id=>{const e=$("#"+id);if(e)e.value="";});}
+    if(c.dataset.reset){curCat="all";curDistrict="all";curNow=false;curFav=false;curQuery="";["q","qm"].forEach(id=>{const e=$("#"+id);if(e)e.value="";});}
     else if(c.dataset.now){curNow=!curNow;}
+    else if(c.dataset.fav){curFav=!curFav;}
     else curDistrict=c.dataset.d;
     saveFilters();loadStore();});
   try{ALL_BOXES=await get("/boxes?district=all");}catch(e){ALL_BOXES=[];}
@@ -577,7 +587,8 @@ function filtered(){
   if(curDistrict!=="all")bs=bs.filter(b=>b.district===curDistrict);
   if(curCat!=="all")bs=bs.filter(b=>b.category===curCat);
   if(curNow){const t=Date.now();bs=bs.filter(b=>Date.parse(b.pickup_from)<=t&&t<=Date.parse(b.pickup_to));}
-  if(curQuery)bs=bs.filter(b=>(b.title+" "+b.partner_name).toLowerCase().includes(curQuery));
+  if(curFav){const f=favs();bs=bs.filter(b=>f.includes(b.partner_id));}
+  if(curQuery)bs=bs.filter(b=>(b.title+" "+b.partner_name+" "+(b.description||"")+" "+b.category_ru).toLowerCase().includes(curQuery));
   // по умолчанию — «скоро закроется окно выдачи» выше (стимул забрать сейчас)
   bs.sort((a,b)=>Date.parse(a.pickup_to)-Date.parse(b.pickup_to));
   return bs;
@@ -604,7 +615,9 @@ function boxCard(b){
     <div class="top" style="background-image:url(img/${imgFor(b)})">
       <span class="bdg b-disc">−${b.discount}%</span>
       <span class="bdg b-left${fomo?" fomo":""}">${fomo?"🔥 ":""}осталось ${b.qty_left}</span>
-      <span class="bdg b-cat">${esc(b.category_ru)}</span></div>
+      <span class="bdg b-cat">${esc(b.category_ru)}</span>
+      <button class="b-fav${favs().includes(b.partner_id)?" on":""}" title="Любимая кофейня"
+        onclick="event.stopPropagation();toggleFav('${b.partner_id}')">♥</button></div>
     <div class="body">
       <h3>${esc(b.title||b.partner_name)}</h3>
       <div class="meta"><b>${esc(b.partner_name)}</b> · ${esc(b.district)} · <button class="linkbtn" data-rev="${esc(b.partner_name)}" onclick="event.stopPropagation();showReviews(this.dataset.rev)">⭐ ${b.rating}</button></div>
@@ -653,8 +666,15 @@ async function openBox(id){
       <label>Ваше имя <input id="oName" placeholder="Имя" /></label>
       <label>Телефон <input id="oPhone" placeholder="+7 7XX XXX XX XX" /></label>
       <button class="btn" id="payBtn" style="margin-top:.8rem">Оплатить ${money(b.price)}</button>
+      <button class="btn sec" id="shareBtn" style="margin-top:.5rem">🔗 Поделиться боксом</button>
       <div class="demo-pay">💳 Демо-оплата. В продакшене — Kaspi Pay / Kaspi QR.</div>
     </div>`);
+  $("#shareBtn").onclick=async()=>{
+    const url=location.origin+location.pathname+"?box="+encodeURIComponent(b.id);
+    const data={title:"Yummy — "+(b.title||b.partner_name),text:`${b.title||b.partner_name} за ${money(b.price)} (скидка −${b.discount}%) в ${b.partner_name}`,url};
+    try{ if(navigator.share){await navigator.share(data);} else {await navigator.clipboard.writeText(url);toast("Ссылка скопирована 🔗");} }
+    catch(e){ try{await navigator.clipboard.writeText(url);toast("Ссылка скопирована 🔗");}catch(_){toast(url);} }
+  };
   $("#payBtn").onclick=async()=>{
     const name=$("#oName").value.trim(), phone=$("#oPhone").value.trim();
     if(!name||phone.length<5){toast("Укажите имя и телефон",true);return;}
@@ -784,7 +804,11 @@ if(!localStorage.getItem("ym_cookies")){
   document.body.appendChild(cb);
 }
 
-loadStore();
+loadStore().then(()=>{
+  // deep-link: ?box=id — открыть карточку бокса из расшаренной ссылки
+  const bid=new URLSearchParams(location.search).get("box");
+  if(bid)openBox(bid);
+});
 </script>
 </body>
 </html>

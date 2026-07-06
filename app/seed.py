@@ -14,7 +14,7 @@ PARTNERS = [
     Partner(id="p1", name="Coffee Point", district="Есильский р-н", address="пр. Мангилик Ел, 55", rating=4.8, lat=51.090, lng=71.416),
     Partner(id="p2", name="Bake House", district="Сарыарка р-н", address="ул. Бейбитшилик, 33", rating=4.7, lat=51.180, lng=71.408),
     Partner(id="p3", name="Donut Lab", district="Есильский р-н", address="ТРЦ Mega Silk Way", rating=4.6, lat=51.089, lng=71.402),
-    Partner(id="p4", name="Сдоба", district="Алматинский р-н", address="ул. Кенесары, 40", rating=4.5, lat=51.165, lng=71.419),
+    Partner(id="p4", name="Сдоба", district="Алматинский р-н", address="ул. Кенесары, 40", rating=4.2, lat=51.165, lng=71.419),
     Partner(id="p5", name="Sweet Corner", district="Есильский р-н", address="пр. Кабанбай батыра, 7", rating=4.9, lat=51.132, lng=71.437),
     Partner(id="p6", name="Утром Кофе", district="Алматинский р-н", address="ул. Богенбай батыра, 23", rating=4.6, lat=51.166, lng=71.446),
 ]
