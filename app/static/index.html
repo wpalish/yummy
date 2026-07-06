@@ -8,8 +8,14 @@
 <meta name="theme-color" content="#FDC620" />
 <meta property="og:title" content="Yummy — спасай еду, экономь" />
 <meta property="og:description" content="Сюрприз-боксы из кофеен и пекарен Астаны со скидкой до 70%. Бронируй и забирай сегодня." />
-<meta property="og:image" content="/static/img/hero.jpg" />
+<meta property="og:image" content="https://wpalish.github.io/yummy/img/hero.jpg" />
+<meta property="og:url" content="https://wpalish.github.io/yummy/" />
+<meta property="og:site_name" content="Yummy" />
+<meta property="og:locale" content="ru_RU" />
 <meta property="og:type" content="website" />
+<meta name="twitter:card" content="summary_large_image" />
+<link rel="canonical" href="https://wpalish.github.io/yummy/" />
+<link rel="apple-touch-icon" href="/static/img/logo.png" />
 <link rel="icon" type="image/png" href="/static/img/favicon.png" />
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
 <style>
@@ -370,15 +376,15 @@
         <div>
           <h4>Контакты</h4>
           <div class="flinks">
-            <a href="mailto:hello@yummy.kz">✉️ hello@yummy.kz</a>
-            <a href="https://t.me/yummy_astana" target="_blank" rel="noopener">💬 Telegram-поддержка</a>
+            <a href="mailto:alisher.nursain@gmail.com">✉️ alisher.nursain@gmail.com</a>
+            <button onclick="toast('Telegram-поддержку запустим вместе с пилотом 💬')">💬 Telegram-поддержка</button>
             <button onclick="toast('Instagram скоро запустим 📸')">📸 Instagram</button>
             <button onclick="toast('TikTok скоро запустим 🎬')">🎬 TikTok</button>
           </div>
         </div>
       </div>
       <div class="copy">
-        <span>© Yummy, Астана · 2026. Демо-версия MVP: оплата тестовая, в продакшене — Kaspi Pay / Kaspi QR.</span>
+        <span>© Yummy, Астана · <span id="yr">2026</span>. Демо-версия MVP: оплата тестовая, в продакшене — Kaspi Pay / Kaspi QR.</span>
         <a href="https://github.com/wpalish/yummy" style="font-weight:700">Код на GitHub</a>
       </div>
     </div>
@@ -398,7 +404,7 @@
 <script>
 const $=s=>document.querySelector(s);
 const esc=s=>String(s??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
-const money=n=>Number(n).toLocaleString("ru-RU")+" ₸";
+const money=n=>Number(n).toLocaleString("ru-RU",{maximumFractionDigits:0})+" ₸";
 const hhmm=iso=>{try{return new Date(iso).toLocaleTimeString("ru-RU",{hour:"2-digit",minute:"2-digit"});}catch(e){return "—";}};
 const win=(a,b)=>`Сегодня ${hhmm(a)}–${hhmm(b)}`;
 const plural=(n,f)=>{const m10=n%10,m100=n%100;return f[(m10===1&&m100!==11)?0:(m10>=2&&m10<=4&&(m100<10||m100>=20))?1:2];};
@@ -411,7 +417,7 @@ const CATS=[["all","Все","🔥"],["sweet","Сладкое","🍩"],["bakery",
 const REVIEWS={
  "Coffee Point":[["Айгерим","Бокс превзошёл ожидания — 2 пончика и маффин, всё свежее!",5],["Дамир","Хорошая выгода, но приходите к началу окна выдачи.",4]],
  "Bake House":[["Салтанат","Круассаны как утром! Беру второй раз.",5],["Ержан","Нормально за свою цену.",4]],
- "Donut Lab":[["Мария","6 пончиков за 790 — это подарок 🍩",5],["Алექс","Вкусно, глазурь чуть подтаяла.",4]],
+ "Donut Lab":[["Мария","6 пончиков за 790 — это подарок 🍩",5],["Алекс","Вкусно, глазурь чуть подтаяла.",4]],
  "Сдоба":[["Гульнара","Микс порадовал: сэндвич + выпечка.",5],["Тимур","Сюрприз есть сюрприз — мне попалось всё сладкое.",4]],
  "Sweet Corner":[["Дана","Чизкейк в боксе — любовь!",5],["Арман","Десерты свежие, рекомендую.",5]],
  "Утром Кофе":[["Инкар","Отличная выпечка по вечерней цене.",5],["Санжар","Всё чётко по коду выдали.",4]],
@@ -463,7 +469,12 @@ function gotoOrders(){switchView("store");setTimeout(()=>$("#myorders").scrollIn
 function scrollToBoxes(){$("#boxes").scrollIntoView({behavior:"smooth",block:"start"});}
 
 /* ---- поиск ---- */
-["q","qm"].forEach(id=>{const el=$("#"+id);if(el)el.addEventListener("input",()=>{curQuery=el.value.trim().toLowerCase();renderBoxes();});});
+let _qT;
+["q","qm"].forEach(id=>{const el=$("#"+id);if(el)el.addEventListener("input",()=>{
+  curQuery=el.value.trim().toLowerCase();
+  const other=$(id==="q"?"#qm":"#q");if(other&&other.value!==el.value)other.value=el.value;   // синк desktop/mobile
+  clearTimeout(_qT);_qT=setTimeout(renderBoxes,180);                                          // дебаунс
+});});
 
 /* ============ МАГАЗИН ============ */
 let ALL_BOXES=[];
@@ -620,9 +631,20 @@ async function renderMyOrders(){
     <div style="font-size:1.3rem">${o.emoji}</div>
     <div class="g"><b>${esc(o.code)}</b> · ${esc(o.partner_name)}
       <div style="font-size:.76rem;color:var(--txt2)">${win(o.pickup_from,o.pickup_to)} · ${money(o.price)}</div>
-      ${o.status==="paid"?`<button class="linkbtn" onclick="userRefund('${o.id}')">Не выдали заказ? Вернуть деньги</button>`:""}</div>
+      ${(o.status==="paid"&&Date.now()>=Date.parse(o.pickup_from))?`<button class="linkbtn" onclick="userRefund('${o.id}')">Не выдали заказ? Вернуть деньги</button>`:""}
+      <button class="linkbtn" onclick="showCode('${esc(o.code)}')">Показать код и QR</button></div>
     <span class="tag t-${o.status}">${STATUS_RU[o.status]}</span></div>`).join("")}</div>`;
 }
+window.showCode=code=>{
+  // QR рисуем на месте, если библиотека есть (Pages-версия); иначе — крупный код
+  let qr="";
+  try{ if(typeof qrcode==="function"){const q=qrcode(0,"M");q.addData(code);q.make();qr=`<div class="qr">${q.createSvgTag({cellSize:6,margin:2})}</div>`;} }catch(e){}
+  showModal(`<div class="mc ok-wrap" style="padding-top:1.3rem">
+    <h3>Код выдачи</h3>${qr}
+    <div class="code">${esc(code)}</div>
+    <p style="font-size:.84rem;color:var(--txt2);margin:.5rem 0">Покажите ${qr?"QR или ":""}код на кассе заведения.</p>
+    <button class="btn sec" onclick="closeModal()">Закрыть</button></div>`);
+};
 window.userRefund=async id=>{
   if(!confirm("Вернуть деньги? Используйте, только если заведение не выдало заказ."))return;
   try{await post("/admin/refund/"+id);toast("Возврат оформлен — деньги вернутся на карту");renderMyOrders();}
@@ -664,6 +686,9 @@ $("#boxForm").addEventListener("submit",async e=>{
   const body={partner_id:curPartner(),category:$("#bCat").value,title:$("#bTitle").value.trim(),
     price:+$("#bPrice").value,value_est:+$("#bValue").value,qty:+$("#bQty").value,
     pickup_from:now.toISOString(),pickup_to:to.toISOString(),description:$("#bDesc").value.trim()};
+  if(!(body.price>=100&&body.price<=50000)){toast("Цена бокса — от 100 до 50 000 ₸",true);return;}
+  if(body.value_est<body.price){toast("Ценность внутри должна быть не ниже цены",true);return;}
+  if(!(body.qty>=1&&body.qty<=50)){toast("Количество — от 1 до 50",true);return;}
   try{await post("/boxes",body);toast("Бокс опубликован ✓");e.target.reset();$("#bPrice").value=990;$("#bValue").value=2600;$("#bQty").value=5;$("#bHours").value=4;loadPartnerData();}
   catch(err){toast(err.message,true);}
 });
@@ -702,14 +727,18 @@ window.showLegal=k=>{const [t,body]=LEGAL[k];
   <button class="btn sec" onclick="closeModal()" style="margin-top:.9rem">Закрыть</button></div>`);};
 
 /* ---- модалка ---- */
-function showModal(html){const m=$("#modal");m.className="modal-bg";m.innerHTML=`<div class="modal">${html}</div>`;
-  m.onclick=e=>{if(e.target===m)closeModal();};}
+function showModal(html){const m=$("#modal");m.className="modal-bg";
+  m.innerHTML=`<div class="modal" role="dialog" aria-modal="true">${html}</div>`;
+  m.onclick=e=>{if(e.target===m)closeModal();};
+  const inp=m.querySelector("input,button");if(inp)inp.focus();}
+document.addEventListener("keydown",e=>{if(e.key==="Escape"&&!$("#modal").classList.contains("hidden"))closeModal();});
 window.closeModal=()=>{$("#modal").className="hidden";$("#modal").innerHTML="";if(!$("#view-store").classList.contains("hidden"))renderMyOrders();};
 
-/* ---- cookies ---- */
+/* ---- уведомление о хранении данных ---- */
+$("#yr").textContent=new Date().getFullYear();
 if(!localStorage.getItem("ym_cookies")){
   const cb=document.createElement("div");cb.className="cookiebar";
-  cb.innerHTML=`<span>Мы используем cookies и localStorage, чтобы помнить ваши заказы и фильтры.</span><button>Понятно</button>`;
+  cb.innerHTML=`<span>Данные (коды заказов, избранное, фильтры) хранятся только в вашем браузере — localStorage. Cookies не используем.</span><button>Понятно</button>`;
   cb.querySelector("button").onclick=()=>{localStorage.setItem("ym_cookies","1");cb.remove();};
   document.body.appendChild(cb);
 }
