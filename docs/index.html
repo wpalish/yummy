@@ -16,6 +16,7 @@
 <meta name="twitter:card" content="summary_large_image" />
 <link rel="canonical" href="https://wpalish.github.io/yummy/" />
 <link rel="apple-touch-icon" href="img/logo.png" />
+<link rel="manifest" href="manifest.json" />
 <script type="application/ld+json">{"@context":"https://schema.org","@type":"WebSite","name":"Yummy","url":"https://wpalish.github.io/yummy/","description":"Сюрприз-боксы из кофеен и пекарен Астаны со скидкой до 70%","inLanguage":"ru"}</script>
 <link rel="icon" type="image/png" href="img/favicon.png" />
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
@@ -511,6 +512,13 @@ async function post(u,body){ let m;
   throw new Error("404 "+u);
 }
 const STATUS_RU={paid:"оплачен",issued:"выдан",expired:"не забран",refunded:"возврат",cancelled:"отменён"};
+/* Kaspi Pay deep-link: после регистрации мерчанта в Kaspi Pay вставь свой
+   service_id — в модалке оплаты появится настоящая кнопка Kaspi. */
+const KASPI_SERVICE_ID="";
+/* маршрут в 2ГИС: поиск по названию+адресу (работает без API-ключа) */
+const gisUrl=(name,addr)=>"https://2gis.kz/astana/search/"+encodeURIComponent(name+" "+addr);
+/* эко-вклад: ~0.5 кг еды и ~1.3 кг CO₂ на бокс (усреднённая оценка food waste) */
+const ECO_KG=0.5, ECO_CO2=1.3;
 const CATS=[["all","Все","🔥"],["sweet","Сладкое","🍩"],["bakery","Выпечка","🥐"],["snack","Снеки","🥪"],["mixed","Микс","🧺"]];
 const REVIEWS={
  "Coffee Point":[["Айгерим","Бокс превзошёл ожидания — 2 пончика и маффин, всё свежее!",5],["Дамир","Хорошая выгода, но приходите к началу окна выдачи.",4]],
@@ -669,6 +677,8 @@ async function renderMap(){
         ${minP?`<b style="color:var(--brown)">от ${money(minP)}</b>`:""}
       </div>
       ${n?`<button onclick="shopFromMap('${esc(p.name)}')" style="width:100%;background:#FDC620;border:0;padding:8px;border-radius:9px;font-weight:800;color:#653624;cursor:pointer;font-family:inherit">Смотреть боксы</button>`:'<span style="font-size:.74rem;color:#7E6A5A">Сегодня боксов нет</span>'}
+      <a href="https://2gis.kz/astana/directions/points/%7C${p.lng}%2C${p.lat}" target="_blank" rel="noopener"
+        style="display:block;text-align:center;margin-top:6px;font-size:.76rem;font-weight:700;color:#653624">🗺 Маршрут в 2ГИС</a>
     </div>`;
     return L.marker([p.lat,p.lng],{icon:mapObj._icon,title:p.name}).addTo(mapObj).bindPopup(html);
   });
@@ -695,7 +705,8 @@ async function openBox(id){
     <div class="mc">
       <div style="color:var(--txt2);font-size:.72rem;font-weight:800;text-transform:uppercase;letter-spacing:.04em">${esc(b.category_ru)}</div>
       <h3>${esc(b.title||b.partner_name)}</h3>
-      <div style="color:var(--txt2);font-size:.84rem">${esc(b.partner_name)} · ${esc(b.address)} · ⭐ ${b.rating}</div>
+      <div style="color:var(--txt2);font-size:.84rem">${esc(b.partner_name)} · ${esc(b.address)} · ⭐ ${b.rating}
+        · <a href="${gisUrl(b.partner_name,b.address)}" target="_blank" rel="noopener" style="font-weight:700">🗺 Маршрут</a></div>
       <div class="row"><span>Цена</span><b>${money(b.price)} <s style="color:#A08D7D;font-weight:400">${money(b.value_est)}</s> <span style="color:var(--green);font-weight:800">−${b.discount}%</span></b></div>
       <div class="row"><span>Самовывоз</span><span>${win(b.pickup_from,b.pickup_to)}</span></div>
       <div class="row"><span>Осталось</span><span>${b.qty_left} из ${b.qty_total}</span></div>
@@ -704,9 +715,14 @@ async function openBox(id){
       <label>Ваше имя <input id="oName" placeholder="Имя" /></label>
       <label>Телефон <input id="oPhone" placeholder="+7 7XX XXX XX XX" /></label>
       <button class="btn" id="payBtn" style="margin-top:.8rem">Оплатить ${money(b.price)}</button>
+      <div id="kaspiSlot"></div>
       <button class="btn sec" id="shareBtn" style="margin-top:.5rem">🔗 Поделиться боксом</button>
       <div class="demo-pay">💳 Демо-оплата. В продакшене — Kaspi Pay / Kaspi QR.</div>
     </div>`);
+  if(KASPI_SERVICE_ID){ // включается автоматически, когда появится service_id мерчанта
+    $("#kaspiSlot").innerHTML=`<a href="https://kaspi.kz/pay/${encodeURIComponent(KASPI_SERVICE_ID)}?amount=${b.price}"
+      style="display:block;text-align:center;background:#F14635;color:#fff;font-weight:800;padding:.8rem 1rem;border-radius:13px;margin-top:.5rem;text-decoration:none">Оплатить через Kaspi</a>`;
+  }
   $("#shareBtn").onclick=async()=>{
     const url=location.origin+location.pathname+"?box="+encodeURIComponent(b.id);
     const data={title:"Yummy — "+(b.title||b.partner_name),text:`${b.title||b.partner_name} за ${money(b.price)} (скидка −${b.discount}%) в ${b.partner_name}`,url};
@@ -733,6 +749,8 @@ function successScreen(res){
     <div class="qr">${res.qr_svg}</div>
     <div class="code">${esc(o.code)}</div>
     <p style="font-size:.84rem;color:var(--txt2);margin:.5rem 0">Покажите код или QR на кассе.<br>Забрать: <b style="color:var(--brown)">${win(o.pickup_from,o.pickup_to)}</b></p>
+    <p style="font-size:.8rem;color:var(--green);font-weight:700;margin:.3rem 0 .6rem">🌱 Вы спасли ~${ECO_KG} кг еды и предотвратили ~${ECO_CO2} кг CO₂</p>
+    <a class="btn sec" style="display:block;text-decoration:none;margin-bottom:.5rem" href="${gisUrl(o.partner_name,o.address)}" target="_blank" rel="noopener">🗺 Маршрут в 2ГИС</a>
     <button class="btn sec" onclick="closeModal()">Готово</button>
   </div>`);
 }
@@ -744,7 +762,9 @@ async function renderMyOrders(){
   const codes=myCodes(); const el=$("#myorders");
   if(!codes.length){el.innerHTML="";return;}
   const orders=(await Promise.all(codes.map(c=>get("/orders/"+c).catch(()=>null)))).filter(Boolean);
-  el.innerHTML=`<div class="cardp"><h3>Мои заказы</h3>${orders.map(o=>`<div class="lrow">
+  const done=orders.filter(o=>o.status==="issued");
+  const eco=done.length?`<p style="margin:0 0 .6rem;font-size:.82rem;font-weight:700;color:var(--green)">🌱 Вы спасли ~${(done.length*ECO_KG).toFixed(1)} кг еды · ${(done.length*ECO_CO2).toFixed(1)} кг CO₂ · сэкономили ≈${money(Math.round(done.reduce((s,o)=>s+o.price,0)*1.5))}</p>`:"";
+  el.innerHTML=`<div class="cardp"><h3>Мои заказы</h3>${eco}${orders.map(o=>`<div class="lrow">
     <div style="font-size:1.3rem">${o.emoji}</div>
     <div class="g"><b>${esc(o.code)}</b> · ${esc(o.partner_name)}
       <div style="font-size:.76rem;color:var(--txt2)">${win(o.pickup_from,o.pickup_to)} · ${money(o.price)}</div>
@@ -870,6 +890,9 @@ if(!localStorage.getItem("ym_cookies")){
   cb.querySelector("button").onclick=()=>{localStorage.setItem("ym_cookies","1");cb.remove();};
   document.body.appendChild(cb);
 }
+
+/* PWA: установка на телефон + оффлайн-доступ к купленным кодам */
+if("serviceWorker" in navigator){navigator.serviceWorker.register("sw.js").catch(()=>{});}
 
 loadStore().then(()=>{
   // deep-link: ?box=id — открыть карточку бокса из расшаренной ссылки

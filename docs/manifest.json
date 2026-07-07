@@ -1,0 +1,15 @@
+{
+  "name": "Yummy — спасай еду, экономь",
+  "short_name": "Yummy",
+  "description": "Сюрприз-боксы из кофеен и пекарен Астаны со скидкой до 70%",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#F5EFE3",
+  "theme_color": "#FDC620",
+  "lang": "ru",
+  "icons": [
+    { "src": "img/favicon.png", "sizes": "64x64", "type": "image/png" },
+    { "src": "img/logo.png", "sizes": "1024x1024", "type": "image/png", "purpose": "any maskable" }
+  ]
+}
