@@ -557,20 +557,39 @@ function boxCard(b){
 /* карта */
 $("#vList").onclick=()=>{mapMode=false;$("#vList").classList.add("on");$("#vMap").classList.remove("on");$("#map").classList.add("hidden");$("#boxes").classList.remove("hidden");};
 $("#vMap").onclick=()=>{mapMode=true;$("#vMap").classList.add("on");$("#vList").classList.remove("on");$("#boxes").classList.add("hidden");$("#map").classList.remove("hidden");renderMap();};
+/* подложку карты легко сменить на 2GIS MapGL, когда будет API-ключ (dev.2gis.com) */
 async function renderMap(){
   let ps=[];try{ps=await get("/partners");}catch(e){return;}
   if(!mapObj){
     mapObj=L.map("map").setView([51.128,71.43],12);
     L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png",{attribution:"© OpenStreetMap"}).addTo(mapObj);
+    mapObj._icon=L.icon({iconUrl:"/static/img/logo.png",iconSize:[34,34],iconAnchor:[17,34],popupAnchor:[0,-30]});
   }
   setTimeout(()=>mapObj.invalidateSize(),100);
   if(mapObj._markers)mapObj._markers.forEach(m=>m.remove());
   mapObj._markers=ps.map(p=>{
-    const n=ALL_BOXES.filter(b=>b.partner_id===p.id).reduce((s,b)=>s+b.qty_left,0);
-    return L.marker([p.lat,p.lng]).addTo(mapObj)
-      .bindPopup(`<b>${esc(p.name)}</b><br>${esc(p.address)}<br>⭐ ${p.rating} · доступно боксов: ${n}`);
+    const pb=ALL_BOXES.filter(b=>b.partner_id===p.id);
+    const n=pb.reduce((s,b)=>s+b.qty_left,0);
+    const minP=pb.length?Math.min(...pb.map(b=>b.price)):null;
+    const html=`<div style="font-family:inherit;min-width:190px">
+      <b style="color:var(--brown);font-size:.95rem">${esc(p.name)}</b>
+      <div style="font-size:.76rem;color:#7E6A5A;margin:.15rem 0 .4rem">${esc(p.address)} · ⭐ ${p.rating}</div>
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:.5rem">
+        <span style="background:#FFF5D6;color:#7E5233;padding:2px 8px;border-radius:7px;font-size:.72rem;font-weight:700">${n} ${plural(n,["бокс","бокса","боксов"])}</span>
+        ${minP?`<b style="color:var(--brown)">от ${money(minP)}</b>`:""}
+      </div>
+      ${n?`<button onclick="shopFromMap('${esc(p.name)}')" style="width:100%;background:#FDC620;border:0;padding:8px;border-radius:9px;font-weight:800;color:#653624;cursor:pointer;font-family:inherit">Смотреть боксы</button>`:'<span style="font-size:.74rem;color:#7E6A5A">Сегодня боксов нет</span>'}
+    </div>`;
+    return L.marker([p.lat,p.lng],{icon:mapObj._icon,title:p.name}).addTo(mapObj).bindPopup(html);
   });
 }
+window.shopFromMap=name=>{
+  curQuery=name.toLowerCase();
+  ["q","qm"].forEach(id=>{const e=$("#"+id);if(e)e.value=name;});
+  $("#vList").click();                                     // назад в список
+  renderBoxes();
+  setTimeout(()=>$("#boxes").scrollIntoView({behavior:"smooth"}),150);
+};
 /* отзывы (демо) */
 window.showReviews=name=>{
   const rv=REVIEWS[name]||[["Гость","Пока нет отзывов — будь первым!",5]];
