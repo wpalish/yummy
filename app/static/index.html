@@ -16,6 +16,7 @@
 <meta name="twitter:card" content="summary_large_image" />
 <link rel="canonical" href="https://wpalish.github.io/yummy/" />
 <link rel="apple-touch-icon" href="/static/img/logo.png" />
+<script type="application/ld+json">{"@context":"https://schema.org","@type":"WebSite","name":"Yummy","url":"https://wpalish.github.io/yummy/","description":"Сюрприз-боксы из кофеен и пекарен Астаны со скидкой до 70%","inLanguage":"ru"}</script>
 <link rel="icon" type="image/png" href="/static/img/favicon.png" />
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
 <style>
@@ -29,6 +30,10 @@
   }
   *{box-sizing:border-box;}
   body{margin:0;background:var(--bg);color:var(--txt);line-height:1.55;}
+  :focus-visible{outline:3px solid var(--yellow);outline-offset:2px;border-radius:6px;}
+  .skip{position:absolute;left:-9999px;top:0;background:var(--brown);color:#fff;padding:.6rem 1rem;
+    border-radius:0 0 12px 0;z-index:100;font-weight:700;text-decoration:none;}
+  .skip:focus{left:0;}
   button{font:inherit;cursor:pointer;}
   .hidden{display:none !important;}
   img{display:block;}
@@ -247,6 +252,7 @@
 </style>
 </head>
 <body>
+  <a class="skip" href="#boxes">Перейти к боксам</a>
   <noscript><div class="noscript-bar">Для работы Yummy нужен включённый JavaScript.</div></noscript>
   <header>
     <div class="topline"></div>
@@ -255,15 +261,15 @@
         <div class="logo"><img src="/static/img/logo.png" alt="Yummy — спасай еду" />
           <div class="txt"><div class="nm">Yummy</div><div class="tg">Спасай еду</div></div></div>
         <button class="loc" title="Город">📍 Астана <span style="font-size:.6rem;color:var(--txt2)">▾</span></button>
-        <div class="search desk"><input id="q" placeholder="Поиск боксов и заведений" /></div>
+        <div class="search desk"><input id="q" placeholder="Поиск боксов и заведений" aria-label="Поиск боксов и заведений" /></div>
         <div class="roles">
           <button data-role="store" class="on">Магазин</button>
           <button data-role="partner">Партнёр</button>
           <button data-role="admin">Админ</button>
         </div>
-        <button class="hbtn" title="Мои заказы" onclick="gotoOrders()">🛒<span class="cnt hidden" id="cartCnt"></span></button>
+        <button class="hbtn" title="Мои заказы" aria-label="Мои заказы" onclick="gotoOrders()">🛒<span class="cnt hidden" id="cartCnt"></span></button>
       </div>
-      <div class="msearch search"><input id="qm" placeholder="Поиск боксов и заведений" /></div>
+      <div class="msearch search"><input id="qm" placeholder="Поиск боксов и заведений" aria-label="Поиск боксов и заведений" /></div>
     </div>
   </header>
 
@@ -305,6 +311,8 @@
       <h2 class="pageh">Кабинет партнёра</h2>
       <p class="sub">Выставляй боксы из вечерних остатков за минуту. Выдавай заказы по коду.</p>
       <label>Заведение <select id="pSelect"></select></label>
+      <div class="stats" id="pStats" style="margin:1rem 0 0"></div>
+      <p style="font-size:.72rem;color:var(--txt2);margin:.4rem 0 0">📊 Аналитика точки — базовая. В тарифе <b>Yummy Pro</b>: динамика спроса по дням, прогноз остатков, CRM постоянных клиентов, продвижение в ленте.</p>
       <div class="two" style="margin-top:1rem">
         <div class="cardp">
           <h3>Создать бокс</h3>
@@ -390,7 +398,7 @@
     </div>
   </footer>
 
-  <nav class="bnav" id="bnav">
+  <nav class="bnav" id="bnav" aria-label="Основная навигация">
     <button data-nav="store" class="on"><span class="ic">🏠</span>Главная</button>
     <button data-nav="orders"><span class="ic">📦</span>Заказы</button>
     <button data-nav="partner"><span class="ic">🧑‍🍳</span>Партнёр</button>
@@ -667,6 +675,17 @@ async function loadPartnerData(){
   let boxes=[],orders=[];
   try{boxes=await get(`/partners/${pid}/boxes`);}catch(e){}
   try{orders=await get(`/partners/${pid}/orders`);}catch(e){}
+  // мини-аналитика точки (семя CRM-тарифа): выручка, продажи, выкуп, остаток
+  const done=orders.filter(o=>o.status==="issued"), act=orders.filter(o=>o.status==="paid");
+  const noshow=orders.filter(o=>o.status==="expired").length;
+  const revenue=done.concat(act).reduce((s,o)=>s+o.price,0);
+  const closedTotal=done.length+noshow;
+  const fill=closedTotal?Math.round(done.length/closedTotal*100):null;
+  const leftNow=boxes.reduce((s,b)=>s+b.qty_left,0);
+  $("#pStats").innerHTML=[
+    [money(revenue),"выручка с боксов"],[done.length+act.length,plural(done.length+act.length,["продажа","продажи","продаж"])],
+    [fill===null?"—":fill+"%","выкуп (забрали)"],[leftNow,plural(leftNow,["бокс","бокса","боксов"])+" в продаже"],
+  ].map(([v,l])=>`<div class="stat"><b>${v}</b><span>${l}</span></div>`).join("");
   $("#pBoxes").innerHTML=boxes.length?boxes.map(b=>`<div class="lrow"><div style="font-size:1.2rem">${b.emoji}</div>
     <div class="g"><b>${esc(b.title||b.category_ru)}</b><div style="font-size:.76rem;color:var(--txt2)">${money(b.price)} · ${win(b.pickup_from,b.pickup_to)}</div></div>
     <span class="tag ${b.qty_left>0?"t-issued":"t-expired"}">${b.qty_left}/${b.qty_total}</span></div>`).join(""):'<p class="empty">Боксов пока нет.</p>';
