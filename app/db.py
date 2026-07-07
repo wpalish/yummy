@@ -1,12 +1,15 @@
 """SQLite-хранилище MVP: партнёры, боксы, заказы. Локально, без внешних БД."""
 from __future__ import annotations
 
+import logging
 import sqlite3
 import threading
 from datetime import datetime, timezone
 from pathlib import Path
 
 from .models import Box, Order, Partner
+
+logger = logging.getLogger(__name__)
 
 _DB = Path(__file__).parent.parent / "spasibox.db"
 
@@ -74,20 +77,29 @@ class Store:
     # ------------------------------------------------------------------ #
     def _box_from_row(self, c: sqlite3.Connection, r: sqlite3.Row) -> Box:
         p = self._partner_row(c, r["partner_id"])
+        if p is None:
+            raise LookupError(f"Partner {r['partner_id']!r} referenced by box {r['id']!r} not found")
         return Box(
             id=r["id"], partner_id=r["partner_id"],
-            partner_name=p["name"] if p else "—",
-            district=p["district"] if p else "",
-            address=p["address"] if p else "",
-            rating=p["rating"] if p else 0.0,
+            partner_name=p["name"],
+            district=p["district"],
+            address=p["address"],
+            rating=p["rating"],
             category=r["category"], title=r["title"], price=r["price"],
             value_est=r["value_est"], qty_total=r["qty_total"], qty_left=r["qty_left"],
             pickup_from=r["pickup_from"], pickup_to=r["pickup_to"],
             description=r["description"], created_at=r["created_at"],
         )
 
+    def partner(self, partner_id: str) -> Partner | None:
+        with self._lock, self._conn() as c:
+            r = self._partner_row(c, partner_id)
+            return Partner(**dict(r)) if r else None
+
     def create_box(self, box_id: str, data) -> Box:
         with self._lock, self._conn() as c:
+            if self._partner_row(c, data.partner_id) is None:
+                raise LookupError(f"Partner {data.partner_id!r} not found")
             c.execute(
                 """INSERT INTO boxes(id,partner_id,category,title,price,value_est,
                        qty_total,qty_left,pickup_from,pickup_to,description,created_at,status)
@@ -138,10 +150,12 @@ class Store:
     # ------------------------------------------------------------------ #
     def _order_from_row(self, c: sqlite3.Connection, r: sqlite3.Row) -> Order:
         p = self._partner_row(c, r["partner_id"])
+        if p is None:
+            raise LookupError(f"Partner {r['partner_id']!r} referenced by order {r['id']!r} not found")
         status = self._effective_status(r["status"], r["pickup_to"])
         return Order(
             id=r["id"], code=r["code"], box_id=r["box_id"], partner_id=r["partner_id"],
-            partner_name=p["name"] if p else "—", address=p["address"] if p else "",
+            partner_name=p["name"], address=p["address"],
             category=r["category"], price=r["price"], user_name=r["user_name"],
             user_phone=r["user_phone"], status=status,
             pickup_from=r["pickup_from"], pickup_to=r["pickup_to"],
@@ -153,10 +167,12 @@ class Store:
         """Заказ со статусом paid, чьё окно выдачи прошло, считается просроченным."""
         if stored == "paid":
             try:
-                if datetime.now(timezone.utc) > datetime.fromisoformat(pickup_to):
-                    return "expired"
-            except ValueError:
-                pass
+                deadline = datetime.fromisoformat(pickup_to)
+            except (ValueError, TypeError):
+                logger.warning("Malformed pickup_to %r — cannot determine expiry", pickup_to)
+                return stored
+            if datetime.now(timezone.utc) > deadline:
+                return "expired"
         return stored
 
     def create_order(self, order_id: str, code: str, box: Box, name: str, phone: str) -> Order | None:
@@ -208,15 +224,20 @@ class Store:
             r2 = c.execute("SELECT * FROM orders WHERE id=?", (r["id"],)).fetchone()
             return True, "Выдано ✓", self._order_from_row(c, r2)
 
-    def refund(self, order_id: str) -> bool:
-        """Возврат (вина партнёра): вернуть бокс в наличие, статус refunded."""
+    def refund(self, order_id: str) -> tuple[bool, str]:
+        """Возврат (вина партнёра): вернуть бокс в наличие, статус refunded.
+
+        Returns (success, reason).
+        """
         with self._lock, self._conn() as c:
             r = c.execute("SELECT * FROM orders WHERE id=?", (order_id,)).fetchone()
-            if not r or r["status"] in ("issued", "refunded", "cancelled"):
-                return False
+            if not r:
+                return False, "not_found"
+            if r["status"] in ("issued", "refunded", "cancelled"):
+                return False, f"invalid_status:{r['status']}"
             c.execute("UPDATE orders SET status='refunded' WHERE id=?", (order_id,))
             self._return_one(c, r["box_id"])
-            return True
+            return True, "ok"
 
     # ------------------------------------------------------------------ #
     #  Статистика и сервис

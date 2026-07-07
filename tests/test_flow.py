@@ -74,7 +74,8 @@ def test_refund_returns_box_and_excludes_gmv(store):
     _box(store, qty=2, price=900)
     o = store.create_order("o1", "SB-AAAA", store.box("b1"), "Имя", "+770")
     assert store.box("b1").qty_left == 1
-    assert store.refund(o.id) is True
+    success, reason = store.refund(o.id)
+    assert success is True and reason == "ok"
     assert store.box("b1").qty_left == 2              # бокс вернулся в наличие
     stats = store.stats()
     assert stats["refunds"] == 1
