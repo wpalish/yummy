@@ -178,6 +178,11 @@
   .onb .guest{display:block;width:100%;text-align:center;background:0;border:0;color:var(--txt2);
     font-size:.82rem;font-weight:600;margin-top:.4rem;text-decoration:underline;cursor:pointer;}
   .onb-back{background:0;border:0;color:var(--txt2);font-weight:700;font-size:.82rem;cursor:pointer;padding:0;margin-bottom:.3rem;}
+  .ferr{display:block;color:var(--red);font-size:.74rem;font-weight:600;margin:.2rem 0 0 .1rem;min-height:.9rem;}
+  .pw{position:relative;display:block;}
+  .pw input{padding-right:2.6rem;}
+  .pw-t{position:absolute;right:.5rem;top:50%;transform:translateY(-50%);background:0;border:0;font-size:1.05rem;cursor:pointer;opacity:.6;}
+  .pw-t:hover{opacity:1;}
 
   .modal-bg{position:fixed;inset:0;background:rgba(70,40,25,.45);display:grid;place-items:center;padding:1rem;z-index:80;
     animation:fade .18s var(--ease);}
@@ -637,28 +642,60 @@ function showOnboarding(){
     <button class="guest" onclick="onbGuest()">Пропустить, просто осмотреться →</button>
   </div>`;
 }
-function onbBuyer(){
-  const o=$("#onboard");
+const _emailOk=v=>/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(v);
+const _pwErr=v=>v.length<8?"Минимум 8 символов":(!/[a-zа-яA-ZА-Я]/.test(v)||!/[0-9]/.test(v))?"Нужны буквы и цифры":"";
+/* Регистрация: пробуем реальный бэкенд POST /auth/register; на статике Pages —
+   локальный фолбэк (пароль в браузере НЕ храним). */
+async function tryRegister(payload){
+  try{ return {mode:"server",res:await post("/auth/register",payload)}; }
+  catch(e){
+    if(/зарегистрирован|занят|409/i.test(e.message)) throw e;  // реальный дубль email
+    return {mode:"local"};                                      // бэкенда нет
+  }
+}
+function onbBuyer(){ regForm("buyer"); }
+function onbPartner(){ regForm("partner"); }
+function regForm(role){
+  const partner=role==="partner", o=$("#onboard");
   o.innerHTML=`<div class="onb-card">
-    <button class="onb-back" onclick="showOnboarding()">← Назад</button>
-    <h2>Регистрация покупателя</h2>
-    <p class="lead">Имя и телефон нужны заведению, чтобы выдать заказ. Хранятся только в этом браузере.</p>
-    <label>Имя <input id="rgName" placeholder="Как к вам обращаться" autocomplete="name" /></label>
-    <label>Телефон <input id="rgPhone" inputmode="tel" placeholder="+7 7XX XXX XX XX" autocomplete="tel" /></label>
-    <button class="btn" id="rgBtn" style="margin-top:.9rem">Создать профиль</button>
+    <button class="onb-back" onclick="showOnboarding()">← Назад к выбору роли</button>
+    <h2>${partner?"Регистрация заведения":"Создать аккаунт"}</h2>
+    <p class="lead">${partner?"Кабинет владельца кофейни или пекарни.":"Личный кабинет покупателя."}</p>
+    ${partner
+      ?`<label>Название заведения <input id="rgName" placeholder="Напр.: Coffee Point" autocomplete="organization" /><span class="ferr" id="e_name"></span></label>`
+      :`<label>Имя <input id="rgName" placeholder="Как к вам обращаться" autocomplete="name" /><span class="ferr" id="e_name"></span></label>`}
+    <label>Email <input id="rgEmail" type="email" placeholder="you@email.com" autocomplete="email" /><span class="ferr" id="e_email"></span></label>
+    <label>Пароль <span class="pw"><input id="rgPass" type="password" placeholder="Минимум 8 символов, буквы и цифры" autocomplete="new-password" />
+      <button type="button" class="pw-t" id="pwToggle" aria-label="Показать пароль">👁</button></span><span class="ferr" id="e_pass"></span></label>
+    <button class="btn" id="rgBtn" style="margin-top:.5rem">Зарегистрироваться</button>
+    <p style="font-size:.72rem;color:var(--txt2);text-align:center;margin:.7rem 0 0">Регистрируясь, вы принимаете оферту и политику конфиденциальности Yummy.</p>
   </div>`;
   $("#rgName").focus();
-  $("#rgBtn").onclick=()=>{
-    const name=$("#rgName").value.trim(), phone=$("#rgPhone").value.trim();
-    if(name.length<2){toast("Введите имя",true);return;}
-    if(phone.replace(/\D/g,"").length<10){toast("Введите корректный телефон",true);return;}
-    setAccount({role:"buyer",name,phone,createdAt:Date.now()});
-    hideOnboarding();toast(`Профиль создан. Добро пожаловать, ${name}!`);switchView("store");
+  $("#pwToggle").onclick=()=>{const p=$("#rgPass");p.type=p.type==="password"?"text":"password";};
+  $("#rgBtn").onclick=async()=>{
+    const setE=(id,m)=>$("#"+id).textContent=m||"";
+    ["e_name","e_email","e_pass"].forEach(id=>setE(id,""));
+    const name=$("#rgName").value.trim(), email=$("#rgEmail").value.trim(), pass=$("#rgPass").value;
+    let bad=false;
+    if(name.length<2){setE("e_name",partner?"Укажите название заведения":"Введите имя");bad=true;}
+    if(!_emailOk(email)){setE("e_email","Некорректный email");bad=true;}
+    const pe=_pwErr(pass); if(pe){setE("e_pass",pe);bad=true;}
+    if(bad)return;
+    const btn=$("#rgBtn"); btn.disabled=true; btn.textContent="Создаём аккаунт…";
+    try{
+      const payload=partner?{email,password:pass,role:"partner",brand_name:name}:{email,password:pass,role:"customer"};
+      let out;
+      try{ out=await tryRegister(payload); }
+      catch(e){ setE("e_email",e.message); btn.disabled=false; btn.textContent="Зарегистрироваться"; return; }
+      const acc={role:partner?"partner":"buyer",name,email,createdAt:Date.now(),server:out.mode==="server"};
+      if(out.mode==="server"&&out.res&&out.res.access_token)acc.token=out.res.access_token;
+      setAccount(acc);
+      if(partner)sessionStorage.setItem("ym_staff","1");   // регистрация партнёра = доступ к кабинету
+      hideOnboarding();
+      toast(out.mode==="server"?"Аккаунт создан ✓":"Профиль создан (демо). Добро пожаловать!");
+      switchView(partner?"partner":"store");
+    }catch(e){ toast(e.message,true); btn.disabled=false; btn.textContent="Зарегистрироваться"; }
   };
-}
-function onbPartner(){
-  hideOnboarding();
-  requireStaff(()=>{setAccount({role:"partner",name:"Заведение",createdAt:Date.now()});switchView("partner");});
 }
 function onbGuest(){setAccount({role:"guest",name:"Гость",createdAt:Date.now()});hideOnboarding();}
 
@@ -826,6 +863,7 @@ async function openBox(id){
     try{
       const res=await post("/orders",{box_id:b.id,user_name:name,user_phone:phone});
       saveCode(res.order.code);
+      const a=account(); if(a&&a.role==="buyer"&&!a.phone){a.phone=phone;setAccount(a);}  // запомнить телефон
       successScreen(res);
     }catch(e){toast(e.message,true);$("#payBtn").disabled=false;$("#payBtn").textContent="Оплатить "+money(b.price);}
   };
