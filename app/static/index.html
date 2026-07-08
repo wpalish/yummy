@@ -343,6 +343,8 @@
               <input id="redeemCode" placeholder="YM-XXXX" style="text-transform:uppercase" />
               <button class="btn" style="width:auto;white-space:nowrap" id="redeemBtn">Выдать</button>
             </div>
+            <button class="btn sec" id="scanBtn" style="margin-top:.5rem">📷 Сканировать QR камерой</button>
+            <div id="scanBox" class="hidden" style="margin-top:.6rem;border-radius:12px;overflow:hidden"></div>
             <div id="redeemRes" style="margin-top:.6rem;font-size:.84rem"></div>
           </div>
           <div class="cardp"><h3>Мои боксы</h3><div id="pBoxes"></div></div>
@@ -758,6 +760,27 @@ $("#redeemBtn").onclick=async()=>{
       (r.order?` <span style="color:var(--txt2)">${esc(r.order.partner_name)} · ${money(r.order.price)}</span>`:"");
     if(r.ok){toast("Выдано ✓");loadPartnerData();}
   }catch(e){toast(e.message,true);}
+};
+/* QR-сканер камерой (html5-qrcode подгружается лениво, только при первом клике) */
+let _scanner=null;
+function loadScript(src){return new Promise((res,rej)=>{const s=document.createElement("script");s.src=src;s.onload=res;s.onerror=rej;document.head.appendChild(s);});}
+$("#scanBtn").onclick=async()=>{
+  const box=$("#scanBox");
+  if(_scanner){try{await _scanner.stop();}catch(e){} _scanner=null; box.classList.add("hidden"); box.innerHTML=""; $("#scanBtn").textContent="📷 Сканировать QR камерой"; return;}
+  try{ if(typeof Html5Qrcode==="undefined") await loadScript("https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"); }
+  catch(e){toast("Не удалось загрузить сканер",true);return;}
+  box.classList.remove("hidden"); box.innerHTML='<div id="qrReader" style="width:100%"></div>';
+  $("#scanBtn").textContent="✕ Остановить сканер";
+  _scanner=new Html5Qrcode("qrReader");
+  try{
+    await _scanner.start({facingMode:"environment"},{fps:10,qrbox:220},async decoded=>{
+      const code=(decoded||"").trim().toUpperCase();
+      if(!/^YM-/.test(code))return;                       // игнор посторонних QR
+      try{await _scanner.stop();}catch(e){} _scanner=null;
+      box.classList.add("hidden"); box.innerHTML=""; $("#scanBtn").textContent="📷 Сканировать QR камерой";
+      $("#redeemCode").value=code; $("#redeemBtn").click();
+    });
+  }catch(e){toast("Нет доступа к камере",true);box.classList.add("hidden");$("#scanBtn").textContent="📷 Сканировать QR камерой";_scanner=null;}
 };
 
 /* ============ АДМИН ============ */

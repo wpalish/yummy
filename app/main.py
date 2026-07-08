@@ -5,7 +5,9 @@
 """
 from __future__ import annotations
 
+import time
 import uuid
+from collections import deque
 from contextlib import asynccontextmanager
 from pathlib import Path
 
@@ -15,6 +17,7 @@ from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
 from . import __version__
+from .auth_telegram import router as telegram_router
 from .db import Store
 from .models import (
     Box,
@@ -41,6 +44,7 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(title="Yummy MVP", version=__version__, lifespan=lifespan)
 app.mount("/static", StaticFiles(directory=str(_STATIC)), name="static")
+app.include_router(telegram_router)
 
 _LOCAL = {"127.0.0.1", "::1", "testclient", "localhost"}
 
@@ -49,6 +53,24 @@ def local_only(req: HttpRequest) -> None:
     host = req.client.host if req.client else None
     if host not in _LOCAL:
         raise HTTPException(403, "Только локально")
+
+
+# In-memory rate limit: защита от спама заказами без Redis (для одного инстанса).
+_RATE_MAX = 8          # заказов
+_RATE_WINDOW = 60.0    # за окно, сек
+_rate_hits: dict[str, deque[float]] = {}
+
+
+def rate_limit_orders(req: HttpRequest) -> None:
+    """Не более _RATE_MAX заказов с одного IP за _RATE_WINDOW секунд."""
+    ip = req.client.host if req.client else "?"
+    now = time.monotonic()
+    hits = _rate_hits.setdefault(ip, deque())
+    while hits and now - hits[0] > _RATE_WINDOW:
+        hits.popleft()
+    if len(hits) >= _RATE_MAX:
+        raise HTTPException(429, "Слишком много заказов подряд, подождите минуту")
+    hits.append(now)
 
 
 def _new(prefix: str, n: int = 8) -> str:
@@ -94,7 +116,8 @@ def get_box(box_id: str) -> Box:
     return box
 
 
-@app.post("/orders", response_model=OrderResult, status_code=201, tags=["Store"])
+@app.post("/orders", response_model=OrderResult, status_code=201, tags=["Store"],
+          dependencies=[Depends(rate_limit_orders)])
 def create_order(payload: OrderCreate) -> OrderResult:
     """Забронировать и оплатить бокс (оплата — демо; в проде Kaspi Pay/QR)."""
     box = store.box(payload.box_id)
