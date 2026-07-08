@@ -17,6 +17,7 @@ from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
 from . import __version__
+from .accounts import router as accounts_router
 from .auth_telegram import router as telegram_router
 from .db import Store
 from .models import (
@@ -45,6 +46,7 @@ async def lifespan(app: FastAPI):
 app = FastAPI(title="Yummy MVP", version=__version__, lifespan=lifespan)
 app.mount("/static", StaticFiles(directory=str(_STATIC)), name="static")
 app.include_router(telegram_router)
+app.include_router(accounts_router)
 
 _LOCAL = {"127.0.0.1", "::1", "testclient", "localhost"}
 
