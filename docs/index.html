@@ -66,6 +66,11 @@
   .roles{display:none;gap:.2rem;background:var(--cream);padding:.22rem;border-radius:12px;flex:none;}
   .roles button{border:0;background:transparent;color:var(--txt2);font-weight:700;font-size:.8rem;padding:.42rem .8rem;border-radius:9px;}
   .roles button.on{background:var(--brown);color:#fff;}
+  .acct{display:flex;align-items:center;gap:.4rem;border:0;background:var(--cream);border-radius:99px;padding:.3rem .35rem;flex:none;}
+  .acct:hover{background:var(--cream-d);}
+  .acct .av{width:28px;height:28px;border-radius:50%;background:var(--brown);color:#fff;display:grid;place-items:center;font-weight:800;font-size:.82rem;flex:none;}
+  .acct .nm{font-size:.8rem;font-weight:700;color:var(--brown);max-width:90px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;padding-right:.3rem;}
+  @media(max-width:559px){ .acct .nm{display:none;} }
   .msearch{margin-top:.6rem;}
   @media(min-width:760px){ .roles{display:flex;} .msearch{display:none;} }
   @media(max-width:759px){ .search.desk{display:none;} .logo .txt{display:none;} }
@@ -154,6 +159,26 @@
   @media(min-width:760px){ .bnav{display:none;} }
 
   /* ===== МОДАЛКА ===== */
+  /* ===== ОНБОРДИНГ / РЕГИСТРАЦИЯ ===== */
+  .onb{position:fixed;inset:0;z-index:95;background:linear-gradient(160deg,var(--cream),var(--bg));
+    display:grid;place-items:center;padding:1.2rem;overflow:auto;animation:fade .2s var(--ease);}
+  .onb-card{background:var(--card);border-radius:22px;max-width:440px;width:100%;padding:1.6rem 1.5rem 1.7rem;
+    box-shadow:0 20px 60px rgba(101,54,36,.2);animation:pop .3s var(--ease);}
+  .onb-logo{display:flex;align-items:center;gap:.6rem;margin-bottom:.2rem;}
+  .onb-logo img{width:44px;height:44px;border-radius:12px;}
+  .onb-logo b{font-size:1.3rem;color:var(--brown);}
+  .onb h2{margin:.9rem 0 .2rem;font-size:1.35rem;color:var(--brown);}
+  .onb p.lead{margin:0 0 1.1rem;color:var(--txt2);font-size:.9rem;}
+  .role-card{display:flex;align-items:center;gap:.9rem;width:100%;text-align:left;border:0;background:var(--cream);
+    box-shadow:0 0 0 1px var(--border) inset;border-radius:15px;padding:1rem;margin-bottom:.7rem;transition:transform .15s var(--ease),box-shadow .15s;}
+  .role-card:hover{transform:translateY(-2px);box-shadow:0 0 0 2px var(--yellow) inset;}
+  .role-card .ic{font-size:1.9rem;flex:none;}
+  .role-card .t{font-weight:800;color:var(--brown);font-size:1rem;}
+  .role-card .d{font-size:.8rem;color:var(--txt2);margin-top:.1rem;}
+  .onb .guest{display:block;width:100%;text-align:center;background:0;border:0;color:var(--txt2);
+    font-size:.82rem;font-weight:600;margin-top:.4rem;text-decoration:underline;cursor:pointer;}
+  .onb-back{background:0;border:0;color:var(--txt2);font-weight:700;font-size:.82rem;cursor:pointer;padding:0;margin-bottom:.3rem;}
+
   .modal-bg{position:fixed;inset:0;background:rgba(70,40,25,.45);display:grid;place-items:center;padding:1rem;z-index:80;
     animation:fade .18s var(--ease);}
   .modal{background:var(--card);border-radius:20px;max-width:450px;width:100%;max-height:92vh;overflow:auto;
@@ -269,6 +294,7 @@
           <button data-role="admin">Админ</button>
         </div>
         <button class="hbtn" title="Мои заказы" aria-label="Мои заказы" onclick="gotoOrders()">🛒<span class="cnt hidden" id="cartCnt"></span></button>
+        <button class="acct" id="acctBtn" aria-label="Профиль"></button>
       </div>
       <div class="msearch search"><input id="qm" placeholder="Поиск боксов и заведений" aria-label="Поиск боксов и заведений" /></div>
     </div>
@@ -408,6 +434,7 @@
     <button data-nav="admin"><span class="ic">⚙️</span>Админ</button>
   </nav>
 
+  <div id="onboard" class="hidden"></div>
   <div id="modal" class="hidden"></div>
   <div id="toast"></div>
 
@@ -576,6 +603,65 @@ navBtns.forEach(b=>b.onclick=()=>{
 function gotoOrders(){switchView("store");setTimeout(()=>$("#myorders").scrollIntoView({behavior:"smooth"}),250);}
 function scrollToBoxes(){$("#boxes").scrollIntoView({behavior:"smooth",block:"start"});}
 
+/* ============ АККАУНТ / ОНБОРДИНГ ============ */
+const ROLE_RU={buyer:"Покупатель",partner:"Заведение",guest:"Гость"};
+function account(){try{return JSON.parse(localStorage.getItem("ym_account")||"null");}catch(e){return null;}}
+function setAccount(a){localStorage.setItem("ym_account",JSON.stringify(a));renderAccount();}
+function renderAccount(){
+  const a=account(), btn=$("#acctBtn");
+  if(!a){btn.innerHTML='<span class="av">?</span><span class="nm">Войти</span>';btn.onclick=showOnboarding;return;}
+  const ini=((a.name||"?").trim()[0]||"?").toUpperCase();
+  btn.innerHTML=`<span class="av">${esc(ini)}</span><span class="nm">${esc(a.name||ROLE_RU[a.role])}</span>`;
+  btn.onclick=acctMenu;
+}
+function acctMenu(){
+  const a=account()||{};
+  showModal(`<div class="mc">
+    <h3>${esc(a.name||"Профиль")}</h3>
+    <p style="color:var(--txt2);font-size:.85rem;margin:.1rem 0 .9rem">Вы вошли как <b style="color:var(--brown)">${ROLE_RU[a.role]||"гость"}</b>${a.phone?" · "+esc(a.phone):""}</p>
+    <button class="btn" onclick="closeModal();gotoOrders()">🛒 Мои заказы</button>
+    <button class="btn sec" style="margin-top:.5rem" onclick="closeModal();showOnboarding()">Сменить роль</button>
+    <button class="btn sec" style="margin-top:.5rem" onclick="logout()">Выйти</button>
+  </div>`);
+}
+function logout(){localStorage.removeItem("ym_account");sessionStorage.removeItem("ym_staff");closeModal();renderAccount();switchView("store");showOnboarding();}
+function hideOnboarding(){$("#onboard").className="hidden";$("#onboard").innerHTML="";}
+function showOnboarding(){
+  const o=$("#onboard");o.className="onb";
+  o.innerHTML=`<div class="onb-card">
+    <div class="onb-logo"><img src="img/logo.png" alt=""><b>Yummy</b></div>
+    <h2>Добро пожаловать 👋</h2>
+    <p class="lead">Спасайте свежую еду из кофеен и пекарен Астаны со скидкой до 70%. Кто вы?</p>
+    <button class="role-card" onclick="onbBuyer()"><span class="ic">🛍️</span><div><div class="t">Я покупатель</div><div class="d">Бронировать и забирать сюрприз-боксы</div></div></button>
+    <button class="role-card" onclick="onbPartner()"><span class="ic">☕</span><div><div class="t">Я заведение</div><div class="d">Кофейня/пекарня — продавать вечерние излишки</div></div></button>
+    <button class="guest" onclick="onbGuest()">Пропустить, просто осмотреться →</button>
+  </div>`;
+}
+function onbBuyer(){
+  const o=$("#onboard");
+  o.innerHTML=`<div class="onb-card">
+    <button class="onb-back" onclick="showOnboarding()">← Назад</button>
+    <h2>Регистрация покупателя</h2>
+    <p class="lead">Имя и телефон нужны заведению, чтобы выдать заказ. Хранятся только в этом браузере.</p>
+    <label>Имя <input id="rgName" placeholder="Как к вам обращаться" autocomplete="name" /></label>
+    <label>Телефон <input id="rgPhone" inputmode="tel" placeholder="+7 7XX XXX XX XX" autocomplete="tel" /></label>
+    <button class="btn" id="rgBtn" style="margin-top:.9rem">Создать профиль</button>
+  </div>`;
+  $("#rgName").focus();
+  $("#rgBtn").onclick=()=>{
+    const name=$("#rgName").value.trim(), phone=$("#rgPhone").value.trim();
+    if(name.length<2){toast("Введите имя",true);return;}
+    if(phone.replace(/\D/g,"").length<10){toast("Введите корректный телефон",true);return;}
+    setAccount({role:"buyer",name,phone,createdAt:Date.now()});
+    hideOnboarding();toast(`Профиль создан. Добро пожаловать, ${name}!`);switchView("store");
+  };
+}
+function onbPartner(){
+  hideOnboarding();
+  requireStaff(()=>{setAccount({role:"partner",name:"Заведение",createdAt:Date.now()});switchView("partner");});
+}
+function onbGuest(){setAccount({role:"guest",name:"Гость",createdAt:Date.now()});hideOnboarding();}
+
 /* ---- поиск ---- */
 let _qT;
 ["q","qm"].forEach(id=>{const el=$("#"+id);if(el)el.addEventListener("input",()=>{
@@ -721,6 +807,8 @@ async function openBox(id){
       <button class="btn sec" id="shareBtn" style="margin-top:.5rem">🔗 Поделиться боксом</button>
       <div class="demo-pay">💳 Демо-оплата. В продакшене — Kaspi Pay / Kaspi QR.</div>
     </div>`);
+  const acc=account();  // зарегистрированному покупателю подставляем имя/телефон
+  if(acc&&acc.role==="buyer"){ if(acc.name)$("#oName").value=acc.name; if(acc.phone)$("#oPhone").value=acc.phone; }
   if(KASPI_SERVICE_ID){ // включается автоматически, когда появится service_id мерчанта
     $("#kaspiSlot").innerHTML=`<a href="https://kaspi.kz/pay/${encodeURIComponent(KASPI_SERVICE_ID)}?amount=${b.price}"
       style="display:block;text-align:center;background:#F14635;color:#fff;font-weight:800;padding:.8rem 1rem;border-radius:13px;margin-top:.5rem;text-decoration:none">Оплатить через Kaspi</a>`;
@@ -916,6 +1004,9 @@ if(!localStorage.getItem("ym_cookies")){
 
 /* PWA: установка на телефон + оффлайн-доступ к купленным кодам */
 if("serviceWorker" in navigator){navigator.serviceWorker.register("sw.js").catch(()=>{});}
+
+renderAccount();
+if(!account())showOnboarding();   // первый заход — выбор роли/регистрация
 
 loadStore().then(()=>{
   // deep-link: ?box=id — открыть карточку бокса из расшаренной ссылки
