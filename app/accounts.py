@@ -12,6 +12,7 @@ import base64
 import hashlib
 import hmac
 import json
+import logging
 import os
 import re
 import secrets
@@ -36,6 +37,7 @@ _TOKEN_TTL = 7 * 24 * 3600  # 7 дней
 _EMAIL_RE = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
 
 router = APIRouter(tags=["Accounts"])
+audit = logging.getLogger("yummy.audit")  # аудит-лог входов/регистраций (без паролей)
 
 # Rate limit регистрации/входа: не более 6 попыток / мин с IP (анти-перебор).
 _AUTH_MAX, _AUTH_WINDOW = 6, 60.0
@@ -200,10 +202,15 @@ def _public(row: sqlite3.Row) -> PublicUser:
 # --------------------------------------------------------------------------- #
 #  Эндпоинты
 # --------------------------------------------------------------------------- #
+def _ip(req: HttpRequest) -> str:
+    return req.client.host if req and req.client else "?"
+
+
 @router.post("/auth/register", response_model=AuthResult, status_code=201,
              dependencies=[Depends(auth_rate_limit)])
-def register(data: RegisterInput) -> AuthResult:
+def register(data: RegisterInput, request: HttpRequest) -> AuthResult:
     if accounts.by_email(data.email):
+        audit.info("register DENIED (email занят) email=%s ip=%s", data.email, _ip(request))
         raise HTTPException(409, "Email уже зарегистрирован")
     brand = data.brand_name if data.role == "partner" else None
     addr = data.address if data.role == "partner" else None
@@ -211,17 +218,20 @@ def register(data: RegisterInput) -> AuthResult:
         raise HTTPException(422, "Для заведения укажите название")
     uid = accounts.create(data.email, hash_password(data.password), data.role, brand, addr)
     row = accounts.by_id(uid)
+    audit.info("register OK id=%s role=%s email=%s ip=%s", uid, data.role, data.email, _ip(request))
     return AuthResult(access_token=create_token(uid, data.role), user=_public(row))
 
 
 @router.post("/auth/login", response_model=AuthResult, dependencies=[Depends(auth_rate_limit)])
-def login(data: LoginInput) -> AuthResult:
+def login(data: LoginInput, request: HttpRequest) -> AuthResult:
     row = accounts.by_email(data.email)
     # одинаковая ошибка для «нет такого email» и «неверный пароль» — не раскрываем, что есть
     if not row or not verify_password(data.password, row["pw_hash"]):
+        audit.warning("login FAIL email=%s ip=%s", data.email, _ip(request))
         raise HTTPException(401, "Неверный email или пароль")
     if not row["is_active"]:
         raise HTTPException(403, "Аккаунт отключён")
+    audit.info("login OK id=%s ip=%s", row["id"], _ip(request))
     return AuthResult(access_token=create_token(row["id"], row["role"]), user=_public(row))
 
 

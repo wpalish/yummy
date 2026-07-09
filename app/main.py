@@ -5,6 +5,8 @@
 """
 from __future__ import annotations
 
+import logging
+import os
 import time
 import uuid
 from collections import deque
@@ -13,6 +15,7 @@ from pathlib import Path
 
 from fastapi import Depends, FastAPI, HTTPException
 from fastapi import Request as HttpRequest
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
@@ -34,6 +37,38 @@ from .qr import qr_svg
 store = Store()
 _STATIC = Path(__file__).parent / "static"
 
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s %(levelname)s %(name)s %(message)s",
+)
+log = logging.getLogger("yummy")
+
+# CORS: разрешаем только явные origin'ы из env (для деплоя, когда фронт на Pages,
+# а API на другом домене). По умолчанию — localhost. Без wildcard с credentials.
+_CORS = [o.strip() for o in os.getenv(
+    "YUMMY_CORS_ORIGINS",
+    "http://localhost:8021,http://127.0.0.1:8021,https://wpalish.github.io",
+).split(",") if o.strip()]
+
+# CSP допускает inline (в приложении много inline-обработчиков) и CDN, с которых
+# грузятся Leaflet/qrcode/html5-qrcode и Swagger UI. Строже сделать нельзя без
+# перевода фронта на nonce — это отдельная большая работа.
+_CSP = (
+    "default-src 'self'; "
+    "script-src 'self' 'unsafe-inline' https://unpkg.com https://cdn.jsdelivr.net; "
+    "style-src 'self' 'unsafe-inline' https://unpkg.com https://cdn.jsdelivr.net; "
+    "img-src 'self' data: https:; font-src 'self' data:; "
+    "connect-src 'self'; frame-ancestors 'none'; object-src 'none'; base-uri 'self'"
+)
+_SEC_HEADERS = {
+    "Content-Security-Policy": _CSP,
+    "X-Frame-Options": "DENY",
+    "X-Content-Type-Options": "nosniff",
+    "Referrer-Policy": "strict-origin-when-cross-origin",
+    "Permissions-Policy": "camera=(self), microphone=(), geolocation=()",
+    "Strict-Transport-Security": "max-age=31536000; includeSubDomains",
+}
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -44,6 +79,22 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(title="Yummy MVP", version=__version__, lifespan=lifespan)
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=_CORS,
+    allow_methods=["GET", "POST"],
+    allow_headers=["Authorization", "Content-Type"],
+)
+
+
+@app.middleware("http")
+async def security_headers(request: HttpRequest, call_next):
+    response = await call_next(request)
+    for k, v in _SEC_HEADERS.items():
+        response.headers.setdefault(k, v)
+    return response
+
+
 app.mount("/static", StaticFiles(directory=str(_STATIC)), name="static")
 app.include_router(telegram_router)
 app.include_router(accounts_router)
