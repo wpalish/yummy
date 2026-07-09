@@ -16,10 +16,11 @@ from pathlib import Path
 from fastapi import Depends, FastAPI, HTTPException
 from fastapi import Request as HttpRequest
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, PlainTextResponse
 from fastapi.staticfiles import StaticFiles
 
 from . import __version__
+from .accounts import require_role
 from .accounts import router as accounts_router
 from .auth_telegram import router as telegram_router
 from .db import Store
@@ -92,7 +93,18 @@ async def security_headers(request: HttpRequest, call_next):
     response = await call_next(request)
     for k, v in _SEC_HEADERS.items():
         response.headers.setdefault(k, v)
+    # fingerprint-заголовок Server снимается флагом uvicorn --no-server-header
+    # (см. Procfile/render.yaml/Dockerfile) — на уровне middleware его не убрать.
     return response
+
+
+@app.get("/.well-known/security.txt", include_in_schema=False)
+def security_txt() -> PlainTextResponse:
+    return PlainTextResponse(
+        "Contact: mailto:alisher.nursain@gmail.com\n"
+        "Preferred-Languages: ru, en\n"
+        "Policy: ответственное раскрытие; без DoS и доступа к чужим данным\n"
+    )
 
 
 app.mount("/static", StaticFiles(directory=str(_STATIC)), name="static")
@@ -203,7 +215,8 @@ def list_partners() -> list[Partner]:
     return store.partners()
 
 
-@app.post("/boxes", response_model=Box, status_code=201, tags=["Partner"])
+@app.post("/boxes", response_model=Box, status_code=201, tags=["Partner"],
+          dependencies=[Depends(require_role("partner", "admin"))])
 def create_box(payload: BoxCreate) -> Box:
     """Партнёр публикует бокс."""
     if payload.value_est < payload.price:
@@ -221,7 +234,8 @@ def partner_orders(partner_id: str) -> list[Order]:
     return store.partner_orders(partner_id)
 
 
-@app.post("/redeem", tags=["Partner"])
+@app.post("/redeem", tags=["Partner"],
+          dependencies=[Depends(require_role("partner", "admin"))])
 def redeem(payload: RedeemInput) -> dict:
     """Выдать заказ по коду (сотрудник партнёра)."""
     ok, message, order = store.redeem(payload.code)
@@ -231,17 +245,19 @@ def redeem(payload: RedeemInput) -> dict:
 # --------------------------------------------------------------------------- #
 #  Админка
 # --------------------------------------------------------------------------- #
-@app.get("/admin/stats", tags=["Admin"])
+@app.get("/admin/stats", tags=["Admin"], dependencies=[Depends(require_role("admin"))])
 def admin_stats() -> dict:
     return store.stats()
 
 
-@app.get("/admin/orders", response_model=list[Order], tags=["Admin"])
+@app.get("/admin/orders", response_model=list[Order], tags=["Admin"],
+         dependencies=[Depends(require_role("admin"))])
 def admin_orders() -> list[Order]:
     return store.orders()
 
 
-@app.post("/admin/refund/{order_id}", tags=["Admin"])
+@app.post("/admin/refund/{order_id}", tags=["Admin"],
+          dependencies=[Depends(require_role("admin"))])
 def admin_refund(order_id: str) -> dict:
     return {"refunded": store.refund(order_id)}
 

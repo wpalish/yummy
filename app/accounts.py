@@ -251,3 +251,23 @@ def current_user(authorization: str | None = Header(default=None)) -> PublicUser
 @router.get("/auth/me", response_model=PublicUser)
 def me(user: PublicUser = Depends(current_user)) -> PublicUser:
     return user
+
+
+# --------------------------------------------------------------------------- #
+#  Ролевой доступ (из API-Security-Checklist: «все эндпоинты за аутентификацией»)
+#  Включается флагом YUMMY_ENFORCE_AUTH=1 — так прод защищён, а демо (без флага)
+#  продолжает работать без токенов.
+# --------------------------------------------------------------------------- #
+_ENFORCE = os.getenv("YUMMY_ENFORCE_AUTH", "").lower() in {"1", "true", "yes"}
+
+
+def require_role(*roles: str):
+    """Dependency-фабрика: требует валидный JWT нужной роли (когда включено)."""
+    def _dep(authorization: str | None = Header(default=None)) -> PublicUser | None:
+        if not _ENFORCE:
+            return None  # демо-режим: доступ открыт (как раньше)
+        user = current_user(authorization)  # 401, если токена нет/невалиден
+        if roles and user.role not in roles:
+            raise HTTPException(403, "Недостаточно прав")
+        return user
+    return _dep
