@@ -69,6 +69,10 @@ def _client(tmp_path, monkeypatch):
     from app.main import app
 
     monkeypatch.setattr(accounts_mod, "accounts", Accounts(path=tmp_path / "api.db"))
+    # изоляция между тестами: rate-limit и jail общие по IP/email —
+    # без сброса набегает 429 при быстром прогоне всего сьюта
+    accounts_mod._auth_hits.clear()
+    accounts_mod._jail.clear()
     return TestClient(app)
 
 
@@ -149,3 +153,37 @@ def test_login_jail_locks_after_fails():
     assert exc.value.status_code == 429
     _jail_reset(email)                       # успешный вход снимает блок
     _jail_check(email)
+
+
+# ---- production-фичи: admin-роль, смена пароля, /me/orders ------------------ #
+def test_admin_email_gets_admin_role(tmp_path, monkeypatch):
+    import app.accounts as A
+    c = _client(tmp_path, monkeypatch)
+    monkeypatch.setattr(A, "_ADMIN_EMAILS", {"boss@yummy.kz"})
+    r = c.post("/auth/register", json={"email": "boss@yummy.kz", "password": "Secret123"})
+    assert r.status_code == 201 and r.json()["user"]["role"] == "admin"
+
+
+def test_change_password_flow(tmp_path, monkeypatch):
+    c = _client(tmp_path, monkeypatch)
+    tok = c.post("/auth/register", json={"email": "cp@yummy.kz", "password": "Secret123"}).json()["access_token"]
+    bad = c.post("/auth/change-password", headers={"Authorization": f"Bearer {tok}"},
+                 json={"old_password": "WRONG999", "new_password": "Newpass123"})
+    assert bad.status_code == 401
+    ok = c.post("/auth/change-password", headers={"Authorization": f"Bearer {tok}"},
+                json={"old_password": "Secret123", "new_password": "Newpass123"})
+    assert ok.status_code == 200
+    assert c.post("/auth/login", json={"email": "cp@yummy.kz", "password": "Newpass123"}).status_code == 200
+
+
+def test_me_orders_cross_device(tmp_path, monkeypatch):
+    """Заказ с токеном привязан к аккаунту и виден в /me/orders."""
+    c = _client(tmp_path, monkeypatch)
+    tok = c.post("/auth/register", json={"email": "mo@yummy.kz", "password": "Secret123"}).json()["access_token"]
+    bid = c.get("/boxes").json()[0]["id"]
+    r = c.post("/orders", json={"box_id": bid, "user_name": "Т", "user_phone": "+77010000000"},
+               headers={"Authorization": f"Bearer {tok}"})
+    assert r.status_code == 201
+    mine = c.get("/me/orders", headers={"Authorization": f"Bearer {tok}"}).json()
+    assert len(mine) == 1 and mine[0]["code"] == r.json()["order"]["code"]
+    assert c.get("/me/orders").status_code == 401  # без токена — закрыто

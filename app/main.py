@@ -20,7 +20,7 @@ from fastapi.responses import FileResponse, PlainTextResponse
 from fastapi.staticfiles import StaticFiles
 
 from . import __version__
-from .accounts import require_role
+from .accounts import PublicUser, current_user, optional_user, require_role
 from .accounts import router as accounts_router
 from .auth_telegram import router as telegram_router
 from .db import Store
@@ -183,8 +183,13 @@ def get_box(box_id: str) -> Box:
 
 @app.post("/orders", response_model=OrderResult, status_code=201, tags=["Store"],
           dependencies=[Depends(rate_limit_orders)])
-def create_order(payload: OrderCreate) -> OrderResult:
-    """Забронировать и оплатить бокс (оплата — демо; в проде Kaspi Pay/QR)."""
+def create_order(payload: OrderCreate,
+                 user: PublicUser | None = Depends(optional_user)) -> OrderResult:
+    """Забронировать и оплатить бокс (оплата — демо; в проде Kaspi Pay/QR).
+
+    С Bearer-токеном заказ привязывается к аккаунту → виден в GET /me/orders
+    с любого устройства; без токена работает как гостевой (по коду).
+    """
     box = store.box(payload.box_id)
     if not box:
         raise HTTPException(404, "Бокс не найден")
@@ -192,11 +197,18 @@ def create_order(payload: OrderCreate) -> OrderResult:
         raise HTTPException(409, "Боксы закончились")
 
     order = store.create_order(
-        _new("o"), _order_code(), box, payload.user_name.strip(), payload.user_phone.strip()
+        _new("o"), _order_code(), box, payload.user_name.strip(), payload.user_phone.strip(),
+        user_id=user.id if user else None,
     )
     if order is None:
         raise HTTPException(409, "Боксы только что закончились")
     return OrderResult(order=order, qr_svg=qr_svg(order.code))
+
+
+@app.get("/me/orders", response_model=list[Order], tags=["Store"])
+def my_orders(user: PublicUser = Depends(current_user)) -> list[Order]:
+    """История заказов аккаунта (кросс-девайс, паттерн /me/* из чеклиста)."""
+    return store.user_orders(user.id)
 
 
 @app.get("/orders/{code}", response_model=Order, tags=["Store"])

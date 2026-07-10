@@ -14,7 +14,9 @@ ROOT = pathlib.Path(__file__).resolve().parent.parent
 STATIC = ROOT / "app" / "static"
 DOCS = ROOT / "docs"
 
-API_BLOCK = '''async function api(m,u,b){const r=await fetch(u,{method:m,headers:b?{"Content-Type":"application/json"}:undefined,body:b?JSON.stringify(b):undefined});
+API_BLOCK = '''async function api(m,u,b){const h=b?{"Content-Type":"application/json"}:{};
+  const a=account(); if(a&&a.token)h["Authorization"]="Bearer "+a.token;
+  const r=await fetch(u,{method:m,headers:h,body:b?JSON.stringify(b):undefined});
   if(!r.ok){let d;try{d=await r.json();}catch(e){} throw new Error((d&&d.detail)||("Ошибка "+r.status));} return r.status===204?null:r.json();}
 const get=u=>api("GET",u), post=(u,b)=>api("POST",u,b);'''
 

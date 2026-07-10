@@ -245,10 +245,11 @@ def register(data: RegisterInput, request: HttpRequest) -> AuthResult:
     addr = data.address if data.role == "partner" else None
     if data.role == "partner" and not (brand and brand.strip()):
         raise HTTPException(422, "Для заведения укажите название")
-    uid = accounts.create(data.email, hash_password(data.password), data.role, brand, addr)
+    role = "admin" if data.email in _ADMIN_EMAILS else data.role
+    uid = accounts.create(data.email, hash_password(data.password), role, brand, addr)
     row = accounts.by_id(uid)
-    audit.info("register OK id=%s role=%s email=%s ip=%s", uid, data.role, data.email, _ip(request))
-    return AuthResult(access_token=create_token(uid, data.role), user=_public(row))
+    audit.info("register OK id=%s role=%s email=%s ip=%s", uid, role, data.email, _ip(request))
+    return AuthResult(access_token=create_token(uid, role), user=_public(row))
 
 
 @router.post("/auth/login", response_model=AuthResult, dependencies=[Depends(auth_rate_limit)])
@@ -266,6 +267,18 @@ def login(data: LoginInput, request: HttpRequest) -> AuthResult:
     _jail_reset(email)
     audit.info("login OK id=%s ip=%s", row["id"], _ip(request))
     return AuthResult(access_token=create_token(row["id"], row["role"]), user=_public(row))
+
+
+def optional_user(authorization: str | None = Header(default=None)) -> PublicUser | None:
+    """Мягкая авторизация: токен есть и валиден → юзер, иначе None (гость)."""
+    if not authorization or not authorization.lower().startswith("bearer "):
+        return None
+    try:
+        payload = decode_token(authorization.split(" ", 1)[1])
+        row = accounts.by_id(payload["sub"])
+        return _public(row) if row else None
+    except ValueError:
+        return None
 
 
 def current_user(authorization: str | None = Header(default=None)) -> PublicUser:
@@ -286,12 +299,40 @@ def me(user: PublicUser = Depends(current_user)) -> PublicUser:
     return user
 
 
+class ChangePasswordInput(BaseModel):
+    old_password: str
+    new_password: str
+
+    @field_validator("new_password")
+    @classmethod
+    def _strong(cls, v: str) -> str:
+        return RegisterInput._password_strong(v)
+
+
+@router.post("/auth/change-password", dependencies=[Depends(auth_rate_limit)])
+def change_password(data: ChangePasswordInput,
+                    request: HttpRequest,
+                    user: PublicUser = Depends(current_user)) -> dict:
+    row = accounts.by_id(user.id)
+    if not row or not verify_password(data.old_password, row["pw_hash"]):
+        audit.warning("change-password FAIL id=%s ip=%s", user.id, _ip(request))
+        raise HTTPException(401, "Текущий пароль неверен")
+    with accounts._lock, accounts._conn() as c:
+        c.execute("UPDATE users SET pw_hash=? WHERE id=?",
+                  (hash_password(data.new_password), user.id))
+    audit.info("change-password OK id=%s ip=%s", user.id, _ip(request))
+    return {"status": "ok"}
+
+
 # --------------------------------------------------------------------------- #
 #  Ролевой доступ (из API-Security-Checklist: «все эндпоинты за аутентификацией»)
 #  Включается флагом YUMMY_ENFORCE_AUTH=1 — так прод защищён, а демо (без флага)
 #  продолжает работать без токенов.
 # --------------------------------------------------------------------------- #
 _ENFORCE = os.getenv("YUMMY_ENFORCE_AUTH", "").lower() in {"1", "true", "yes"}
+
+# Владельцы: email из этого списка при регистрации получают роль admin.
+_ADMIN_EMAILS = {e.strip().lower() for e in os.getenv("YUMMY_ADMIN_EMAILS", "").split(",") if e.strip()}
 
 
 def require_role(*roles: str):

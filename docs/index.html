@@ -700,10 +700,27 @@ function acctMenu(){
     <h3>${esc(a.name||"Профиль")}</h3>
     <p style="color:var(--txt2);font-size:.85rem;margin:.1rem 0 .9rem">Вы вошли как <b style="color:var(--brown)">${ROLE_RU[a.role]||"гость"}</b>${a.phone?" · "+esc(a.phone):""}</p>
     <button class="btn" onclick="closeModal();gotoOrders()">🛒 Мои заказы</button>
+    ${a.token?`<button class="btn sec" style="margin-top:.5rem" onclick="changePwForm()">🔑 Сменить пароль</button>`:""}
     <button class="btn sec" style="margin-top:.5rem" onclick="closeModal();showOnboarding()">Сменить роль</button>
     <button class="btn sec" style="margin-top:.5rem" onclick="logout()">Выйти</button>
   </div>`);
 }
+window.changePwForm=()=>{
+  showModal(`<div class="mc">
+    <h3>Сменить пароль</h3>
+    <label>Текущий пароль <input id="pwOld" type="password" autocomplete="current-password" /></label>
+    <label>Новый пароль <input id="pwNew" type="password" placeholder="Мин. 8 символов, буквы и цифры" autocomplete="new-password" /><span class="ferr" id="pw_err"></span></label>
+    <button class="btn" id="pwBtn" style="margin-top:.7rem">Сохранить</button>
+    <button class="btn sec" onclick="closeModal()" style="margin-top:.5rem">Отмена</button>
+  </div>`);
+  $("#pwBtn").onclick=async()=>{
+    const old=$("#pwOld").value, nw=$("#pwNew").value;
+    const pe=_pwErr(nw); if(pe){$("#pw_err").textContent=pe;return;}
+    try{ await post("/auth/change-password",{old_password:old,new_password:nw});
+      closeModal(); toast("Пароль изменён ✓"); }
+    catch(e){ $("#pw_err").textContent=e.message; }
+  };
+};
 function logout(){localStorage.removeItem("ym_account");sessionStorage.removeItem("ym_staff");closeModal();renderAccount();switchView("store");showOnboarding();}
 function hideOnboarding(){$("#onboard").className="hidden";$("#onboard").innerHTML="";}
 function showOnboarding(){
@@ -714,8 +731,47 @@ function showOnboarding(){
     <p class="lead">Спасайте свежую еду из кофеен и пекарен Астаны со скидкой до 70%. Кто вы?</p>
     <button class="role-card" onclick="onbBuyer()"><span class="ic">🛍️</span><div><div class="t">Я покупатель</div><div class="d">Бронировать и забирать сюрприз-боксы</div></div></button>
     <button class="role-card" onclick="onbPartner()"><span class="ic">☕</span><div><div class="t">Я заведение</div><div class="d">Кофейня/пекарня — продавать вечерние излишки</div></div></button>
+    <button class="guest" onclick="loginForm()">Уже есть аккаунт? Войти</button>
     <button class="guest" onclick="onbGuest()">Пропустить, просто осмотреться →</button>
   </div>`;
+}
+/* Вход по email+паролю → POST /auth/login (роль приходит с сервера) */
+function loginForm(){
+  const o=$("#onboard");
+  o.innerHTML=`<div class="onb-card">
+    <button class="onb-back" onclick="showOnboarding()">← Назад</button>
+    <h2>Вход</h2>
+    <p class="lead">Войдите в аккаунт покупателя или заведения.</p>
+    <label>Email <input id="lgEmail" type="email" placeholder="you@email.com" autocomplete="email" /><span class="ferr" id="le_email"></span></label>
+    <label>Пароль <span class="pw"><input id="lgPass" type="password" autocomplete="current-password" />
+      <button type="button" class="pw-t" id="lgToggle" aria-label="Показать пароль">👁</button></span><span class="ferr" id="le_pass"></span></label>
+    <button class="btn" id="lgBtn" style="margin-top:.5rem">Войти</button>
+  </div>`;
+  $("#lgEmail").focus();
+  $("#lgToggle").onclick=()=>{const p=$("#lgPass");p.type=p.type==="password"?"text":"password";};
+  $("#lgBtn").onclick=async()=>{
+    const email=$("#lgEmail").value.trim(), pass=$("#lgPass").value;
+    $("#le_email").textContent=""; $("#le_pass").textContent="";
+    if(!_emailOk(email)){$("#le_email").textContent="Некорректный email";return;}
+    if(!pass){$("#le_pass").textContent="Введите пароль";return;}
+    const btn=$("#lgBtn"); btn.disabled=true; btn.textContent="Входим…";
+    try{
+      const res=await post("/auth/login",{email,password:pass});
+      const u=res.user, roleMap={customer:"buyer",partner:"partner",admin:"admin"};
+      const acc={role:roleMap[u.role]||"buyer",name:u.brand_name||email.split("@")[0],email,
+        token:res.access_token,server:true,createdAt:Date.now()};
+      setAccount(acc);
+      if(u.role==="partner"||u.role==="admin")sessionStorage.setItem("ym_staff","1");
+      hideOnboarding();
+      toast(`С возвращением${acc.name?", "+acc.name:""}!`);
+      switchView(u.role==="partner"?"partner":u.role==="admin"?"admin":"store");
+    }catch(e){
+      // на статике Pages бэкенда нет — честно объясняем
+      const msg=/404|Failed|fetch/i.test(e.message)?"Вход работает в полной версии (с сервером). В демо создайте профиль":e.message;
+      $("#le_pass").textContent=msg;
+      btn.disabled=false; btn.textContent="Войти";
+    }
+  };
 }
 const _emailOk=v=>/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(v);
 const _pwErr=v=>v.length<8?"Минимум 8 символов":(!/[a-zа-яA-ZА-Я]/.test(v)||!/[0-9]/.test(v))?"Нужны буквы и цифры":"";
@@ -1092,9 +1148,15 @@ function saveCode(c){const a=myCodes();if(!a.includes(c)){a.unshift(c);localStor
 function updateCart(){const n=myCodes().length;const el=$("#cartCnt");el.textContent=n;el.classList.toggle("hidden",!n);}
 async function renderMyOrders(){
   updateCart();
-  const codes=myCodes(); const el=$("#myorders");
-  if(!codes.length){el.innerHTML="";return;}
-  const orders=(await Promise.all(codes.map(c=>get("/orders/"+c).catch(()=>null)))).filter(Boolean);
+  const el=$("#myorders"); const a=account();
+  let orders=null;
+  if(a&&a.token){ try{orders=await get("/me/orders");}catch(e){} }  // кросс-девайс история аккаунта
+  if(!orders){
+    const codes=myCodes();
+    if(!codes.length){el.innerHTML="";return;}
+    orders=(await Promise.all(codes.map(c=>get("/orders/"+c).catch(()=>null)))).filter(Boolean);
+  }
+  if(!orders.length){el.innerHTML="";return;}
   const done=orders.filter(o=>o.status==="issued");
   const eco=done.length?`<p style="margin:0 0 .6rem;font-size:.82rem;font-weight:700;color:var(--green)">🌱 Вы спасли ~${(done.length*ECO_KG).toFixed(1)} кг еды · ${(done.length*ECO_CO2).toFixed(1)} кг CO₂ · сэкономили ≈${money(Math.round(done.reduce((s,o)=>s+o.price,0)*1.5))}</p>`:"";
   el.innerHTML=`<div class="cardp"><h3>Мои заказы</h3>${eco}${orders.map(o=>`<div class="lrow">

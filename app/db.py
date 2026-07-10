@@ -43,9 +43,14 @@ class Store:
                 CREATE TABLE IF NOT EXISTS orders(
                     id TEXT PRIMARY KEY, code TEXT UNIQUE, box_id TEXT, partner_id TEXT,
                     category TEXT, price INTEGER, user_name TEXT, user_phone TEXT,
-                    status TEXT, pickup_from TEXT, pickup_to TEXT, created_at TEXT);
+                    status TEXT, pickup_from TEXT, pickup_to TEXT, created_at TEXT,
+                    user_id TEXT);
                 """
             )
+            # миграция существующих БД: добиваем user_id, если колонки ещё нет
+            cols = {r[1] for r in c.execute("PRAGMA table_info(orders)").fetchall()}
+            if "user_id" not in cols:
+                c.execute("ALTER TABLE orders ADD COLUMN user_id TEXT")
 
     # ------------------------------------------------------------------ #
     #  Партнёры
@@ -159,19 +164,29 @@ class Store:
                 pass
         return stored
 
-    def create_order(self, order_id: str, code: str, box: Box, name: str, phone: str) -> Order | None:
+    def create_order(self, order_id: str, code: str, box: Box, name: str, phone: str,
+                     user_id: str | None = None) -> Order | None:
         with self._lock, self._conn() as c:
             if not self._take_one(c, box.id):
                 return None                 # боксы закончились
             c.execute(
                 """INSERT INTO orders(id,code,box_id,partner_id,category,price,
-                       user_name,user_phone,status,pickup_from,pickup_to,created_at)
-                   VALUES(?,?,?,?,?,?,?,?, 'paid', ?,?,?)""",
+                       user_name,user_phone,status,pickup_from,pickup_to,created_at,user_id)
+                   VALUES(?,?,?,?,?,?,?,?, 'paid', ?,?,?,?)""",
                 (order_id, code, box.id, box.partner_id, box.category, box.price,
-                 name, phone, box.pickup_from, box.pickup_to, _now_iso()),
+                 name, phone, box.pickup_from, box.pickup_to, _now_iso(), user_id),
             )
             r = c.execute("SELECT * FROM orders WHERE id=?", (order_id,)).fetchone()
             return self._order_from_row(c, r)
+
+    def user_orders(self, user_id: str) -> list[Order]:
+        """Заказы аккаунта — основа «/me/orders» (кросс-девайс история)."""
+        with self._lock, self._conn() as c:
+            rows = c.execute(
+                "SELECT * FROM orders WHERE user_id=? ORDER BY created_at DESC",
+                (user_id,),
+            ).fetchall()
+            return [self._order_from_row(c, r) for r in rows]
 
     def order_by_code(self, code: str) -> Order | None:
         with self._lock, self._conn() as c:

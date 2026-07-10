@@ -90,3 +90,11 @@ def test_stats_fill_rate(store):
     assert stats["orders_total"] == 3
     assert stats["issued"] == 1
     assert stats["fill_rate"] == 33
+
+
+def test_order_binds_user_and_user_orders(store):
+    box = _box(store)
+    store.create_order("o_u1", "YM-USER", box, "Т", "+7700", user_id="u42")
+    mine = store.user_orders("u42")
+    assert len(mine) == 1 and mine[0].id == "o_u1"
+    assert store.user_orders("nobody") == []
