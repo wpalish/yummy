@@ -11,5 +11,11 @@
   "icons": [
     { "src": "img/favicon.png", "sizes": "64x64", "type": "image/png" },
     { "src": "img/logo.png", "sizes": "1024x1024", "type": "image/png", "purpose": "any maskable" }
+  ],
+  "shortcuts": [
+    { "name": "Мои заказы", "url": "./?nav=orders",
+      "icons": [{ "src": "img/favicon.png", "sizes": "64x64" }] },
+    { "name": "Заведения рядом", "url": "./?nav=venues",
+      "icons": [{ "src": "img/favicon.png", "sizes": "64x64" }] }
   ]
 }

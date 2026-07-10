@@ -330,6 +330,9 @@
   #toast.show{opacity:1;transform:translate(-50%,0);}
   #toast.err{background:var(--red);}
   .noscript-bar{background:var(--red);color:#fff;text-align:center;padding:.7rem 1rem;font-weight:700;}
+  #ptr{position:fixed;left:50%;transform:translateX(-50%);top:-60px;z-index:60;width:38px;height:38px;
+    border-radius:50%;background:var(--card);box-shadow:0 4px 14px rgba(101,54,36,.25);
+    display:grid;place-items:center;font-size:1.2rem;color:var(--brown);transition:top .2s var(--ease);}
 </style>
 </head>
 <body>
@@ -490,6 +493,7 @@
             <button onclick="toast('Telegram-поддержку запустим вместе с пилотом 💬')">💬 Telegram-поддержка</button>
             <button onclick="toast('Instagram скоро запустим 📸')">📸 Instagram</button>
             <button onclick="toast('TikTok скоро запустим 🎬')">🎬 TikTok</button>
+            <button id="installBtn" class="hidden">📲 Установить приложение</button>
           </div>
         </div>
       </div>
@@ -508,6 +512,7 @@
     <button data-nav="admin"><span class="ic">⚙️</span>Админ</button>
   </nav>
 
+  <div id="ptr" class="hidden" aria-hidden="true">⟳</div>
   <div id="onboard" class="hidden"></div>
   <div id="modal" class="hidden"></div>
   <div id="toast"></div>
@@ -569,6 +574,7 @@ function requireStaff(cb){
 }
 function switchView(v){
   const go=()=>{
+    window.__view=v;
     roleBtns.forEach(x=>x.classList.toggle("on",x.dataset.role===v));
     navBtns.forEach(x=>x.classList.toggle("on",x.dataset.nav===v));
     ["store","venues","partner","admin"].forEach(s=>$("#view-"+s).classList.toggle("hidden",s!==v));
@@ -1187,13 +1193,49 @@ if(!localStorage.getItem("ym_cookies")){
 /* PWA: установка на телефон + оффлайн-доступ к купленным кодам */
 if("serviceWorker" in navigator){navigator.serviceWorker.register("/static/sw.js").catch(()=>{});}
 
+/* Кнопка «Установить приложение» (паттерн из Google WebFundamentals):
+   перехватываем системный баннер и показываем свою кнопку в футере */
+let _bip=null;
+window.addEventListener("beforeinstallprompt",e=>{e.preventDefault();_bip=e;$("#installBtn").classList.remove("hidden");});
+window.addEventListener("appinstalled",()=>{$("#installBtn").classList.add("hidden");toast("Yummy установлен 📲");});
+$("#installBtn").onclick=async()=>{if(!_bip)return;_bip.prompt();try{await _bip.userChoice;}catch(e){} _bip=null;$("#installBtn").classList.add("hidden");};
+
+/* Живые дашборды (реактивность в духе marimo): админка/партнёрка сами
+   подтягивают свежие заказы, без F5 — только когда вкладка видима */
+setInterval(()=>{
+  if(document.hidden)return;
+  if(window.__view==="admin")loadAdmin();
+  else if(window.__view==="partner"&&$("#pSelect").value)loadPartnerData();
+},15000);
+
+/* Pull-to-refresh на мобиле (паттерн vux/WeUI) */
+let _ptrY=0,_ptrOn=false;
+document.addEventListener("touchstart",e=>{
+  if(window.scrollY===0&&(window.__view==="store"||window.__view==="venues")){_ptrY=e.touches[0].clientY;_ptrOn=true;}
+},{passive:true});
+document.addEventListener("touchmove",e=>{
+  if(!_ptrOn)return;
+  const d=e.touches[0].clientY-_ptrY, el=$("#ptr");
+  if(d>25&&window.scrollY===0){el.classList.remove("hidden");el.style.top=Math.min(d-25,70)+"px";el.style.transform=`translateX(-50%) rotate(${d*2}deg)`;}
+},{passive:true});
+document.addEventListener("touchend",()=>{
+  if(!_ptrOn)return;_ptrOn=false;
+  const el=$("#ptr"), d=parseInt(el.style.top)||0;
+  el.classList.add("hidden");el.style.top="-60px";
+  if(d>=60){toast("Обновляем…");window.__view==="venues"?loadVenues():loadStore();}
+});
+
 renderAccount();
 if(!account())showOnboarding();   // первый заход — выбор роли/регистрация
 
+window.__view="store";
 loadStore().then(()=>{
   // deep-link: ?box=id — открыть карточку бокса из расшаренной ссылки
-  const bid=new URLSearchParams(location.search).get("box");
-  if(bid)openBox(bid);
+  const qs=new URLSearchParams(location.search);
+  const bid=qs.get("box"); if(bid)openBox(bid);
+  // ярлыки PWA (manifest shortcuts): ?nav=orders|venues
+  const nav=qs.get("nav");
+  if(nav==="venues")switchView("venues"); else if(nav==="orders")gotoOrders();
 });
 </script>
 </body>

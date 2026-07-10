@@ -118,3 +118,34 @@ def test_partner_requires_brand(tmp_path, monkeypatch):
         "email": "cafe@yummy.kz", "password": "Secret123", "role": "partner",
         "brand_name": "Coffee Point", "address": "пр. Мангилик Ел, 55"})
     assert r2.status_code == 201 and r2.json()["user"]["brand_name"] == "Coffee Point"
+
+
+# ---- iss-клейм (spring-security паттерн) и login-jail (xapax) --------------- #
+def test_jwt_rejects_wrong_issuer():
+    """Токен с чужим iss, но валидной подписью — отклоняется."""
+    import base64, hashlib as hl, hmac as hm, json as js
+    from app.accounts import _SECRET, decode_token
+    b64 = lambda b: base64.urlsafe_b64encode(b).rstrip(b"=").decode()
+    head = b64(b'{"alg":"HS256","typ":"JWT"}')
+    pay = b64(js.dumps({"iss": "evil", "sub": "u1", "role": "admin",
+                        "exp": int(time.time()) + 999}).encode())
+    sig = b64(hm.new(_SECRET.encode(), f"{head}.{pay}".encode(), hl.sha256).digest())
+    with pytest.raises(ValueError, match="издател"):
+        decode_token(f"{head}.{pay}.{sig}")
+
+
+def test_login_jail_locks_after_fails():
+    from fastapi import HTTPException
+    from app.accounts import _jail, _jail_check, _jail_fail, _jail_reset
+
+    email = "jail@test.kz"
+    _jail_reset(email)
+    for _ in range(4):
+        _jail_fail(email)
+    _jail_check(email)                       # 4 неудачи — ещё не блок
+    _jail_fail(email)                        # 5-я — блок
+    with pytest.raises(HTTPException) as exc:
+        _jail_check(email)
+    assert exc.value.status_code == 429
+    _jail_reset(email)                       # успешный вход снимает блок
+    _jail_check(email)
