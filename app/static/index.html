@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <title>Yummy — сюрприз-боксы со скидкой до 70% · Астана</title>
 <meta name="description" content="Yummy — сервис спасения еды в Астане: кофейни и пекарни продают свежие остатки дня сюрприз-боксами со скидкой 40–70%. Бронируй онлайн, забирай рядом." />
-<meta name="theme-color" content="#FDC620" />
+<meta name="theme-color" content="#FAF4E8" />
 <meta property="og:title" content="Yummy — спасай еду, экономь" />
 <meta property="og:description" content="Сюрприз-боксы из кофеен и пекарен Астаны со скидкой до 70%. Бронируй и забирай сегодня." />
 <meta property="og:image" content="https://wpalish.github.io/yummy/img/hero.jpg" />
@@ -18,8 +18,10 @@
 <!-- perf (в духе Gatsby): ранние соединения с CDN + preload hero -->
 <link rel="preconnect" href="https://unpkg.com" crossorigin />
 <link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin />
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
 <link rel="dns-prefetch" href="https://tile.openstreetmap.org" />
-<link rel="preload" as="image" href="/static/img/hero.jpg" fetchpriority="high" />
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Sora:wght@700;800&family=Manrope:wght@400;600;700;800&display=swap" />
 <link rel="apple-touch-icon" href="/static/img/logo.png" />
 <link rel="manifest" href="/static/manifest.json" />
 <script type="application/ld+json">{"@context":"https://schema.org","@type":"WebSite","name":"Yummy","url":"https://wpalish.github.io/yummy/","description":"Сюрприз-боксы из кофеен и пекарен Астаны со скидкой до 70%","inLanguage":"ru"}</script>
@@ -27,13 +29,19 @@
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
 <style>
   :root{
-    --bg:#F5EFE3; --card:#FFFFFF; --brown:#653624; --brown-l:#7E5233;
-    --yellow:#FDC620; --yellow-h:#F0B800; --yellow-l:#FFF5D6;
-    --cream:#FAF6EA; --cream-d:#F0E8D4; --border:#E8DCCB;
-    --txt:#4A2A1B; --txt2:#7E6A5A; --red:#E84855; --green:#3E9142;
+    /* дизайн-система из Lovable-макета: тёплый крем + чернильные пилюли, Sora/Manrope */
+    --bg:oklch(97.2% .018 82); --card:oklch(99.5% .008 82);
+    --brown:oklch(22% .03 45); --brown-l:oklch(42% .035 50);
+    --accent:oklch(66% .14 55);
+    --yellow:oklch(22% .03 45); --yellow-h:oklch(30% .035 45); --yellow-l:oklch(94% .025 80);
+    --cream:oklch(95% .02 82); --cream-d:oklch(91% .022 80); --border:oklch(88% .018 78 / .6);
+    --txt:oklch(24% .03 45); --txt2:oklch(52% .028 55); --red:#E84855; --green:#3E9142;
+    --ink:oklch(22% .03 45); --on-ink:oklch(97.2% .018 82);
     --ease:cubic-bezier(.16,1,.3,1);
-    font-family:ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+    --font-h:"Sora",ui-sans-serif,system-ui,sans-serif;
+    font-family:"Manrope",ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
   }
+  h1,h2,h3,h4,.nm,.pageh,.code{font-family:var(--font-h);letter-spacing:-.02em;}
   *{box-sizing:border-box;}
   body{margin:0;background:var(--bg);color:var(--txt);line-height:1.55;}
   :focus-visible{outline:3px solid var(--yellow);outline-offset:2px;border-radius:6px;}
@@ -47,18 +55,19 @@
 
   /* ===== HEADER ===== */
   header{position:sticky;top:0;z-index:50;background:var(--card);box-shadow:0 1px 0 var(--border);}
-  .topline{height:6px;background:var(--brown);}
+  .topline{display:none;}
   .hwrap{max-width:1024px;margin:0 auto;padding:.65rem 1rem;}
   .hrow{display:flex;align-items:center;gap:.75rem;}
   .logo{display:flex;align-items:center;gap:.55rem;flex:none;}
   .logo img{width:38px;height:38px;border-radius:10px;}
-  .logo .nm{font-weight:800;font-size:1.08rem;line-height:1.1;color:var(--brown);}
-  .logo .tg{font-size:.62rem;font-weight:600;color:var(--txt2);}
-  .loc{display:flex;align-items:center;gap:.35rem;background:var(--cream);border:0;border-radius:12px;
-    padding:.5rem .75rem;font-size:.84rem;font-weight:700;color:var(--brown);white-space:nowrap;}
+  .logo .nm{font-weight:800;font-size:1.3rem;line-height:1.1;color:var(--ink);}
+  .logo .tg{display:none;}
+  .loc{display:flex;align-items:center;gap:.35rem;background:var(--card);border:0;border-radius:999px;
+    box-shadow:0 0 0 1px var(--border) inset;
+    padding:.5rem .85rem;font-size:.84rem;font-weight:700;color:var(--ink);white-space:nowrap;}
   .loc:hover{background:var(--cream-d);}
   .search{flex:1;min-width:0;}
-  .search input{width:100%;height:40px;border:0;border-radius:12px;background:var(--cream);color:var(--txt);
+  .search input{width:100%;height:42px;border:0;border-radius:999px;background:var(--card);color:var(--txt);
     font:inherit;font-size:.9rem;padding:0 .9rem 0 2.2rem;outline:none;box-shadow:0 0 0 1px var(--border) inset;
     background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%237E6A5A' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Ccircle cx='11' cy='11' r='8'/%3E%3Cline x1='21' y1='21' x2='16.65' y2='16.65'/%3E%3C/svg%3E");
     background-repeat:no-repeat;background-position:11px center;}
@@ -86,11 +95,11 @@
   /* ===== ЧИПЫ ===== */
   .cats{display:flex;gap:.55rem;overflow-x:auto;padding:.9rem 0 .25rem;scrollbar-width:none;}
   .cats::-webkit-scrollbar{display:none;}
-  .cat{display:flex;flex-direction:column;align-items:center;gap:.18rem;border:0;background:var(--card);
-    box-shadow:0 0 0 1px var(--border) inset;border-radius:14px;padding:.55rem .95rem;min-width:70px;flex:none;
-    font-size:.74rem;font-weight:600;color:var(--txt2);transition:transform .15s var(--ease);}
-  .cat .ic{font-size:1.3rem;}
-  .cat.on{background:var(--yellow);color:var(--brown);box-shadow:0 0 0 2px var(--brown) inset;font-weight:800;}
+  .cat{display:flex;flex-direction:row;align-items:center;gap:.35rem;border:0;background:var(--card);
+    box-shadow:0 0 0 1px var(--border) inset;border-radius:999px;padding:.5rem 1rem;flex:none;
+    font-size:.84rem;font-weight:600;color:var(--txt);transition:transform .15s var(--ease);}
+  .cat .ic{font-size:1rem;}
+  .cat.on{background:var(--ink);color:var(--on-ink);box-shadow:none;font-weight:700;}
   .cat:hover{transform:translateY(-1px);}
   .dists{display:flex;gap:.45rem;overflow-x:auto;padding:.65rem 0 .15rem;scrollbar-width:none;}
   .dists::-webkit-scrollbar{display:none;}
@@ -99,18 +108,20 @@
   .dist.on{background:var(--brown);color:#fff;box-shadow:none;}
 
   /* ===== HERO ===== */
-  .promo{margin-top:.9rem;border-radius:18px;overflow:hidden;display:flex;align-items:center;justify-content:space-between;
-    background:linear-gradient(90deg,rgba(253,198,32,.28),rgba(101,54,36,.08) 55%,rgba(253,198,32,.10));padding:1.3rem 1.4rem;}
-  .promo h1{margin:0;font-size:1.45rem;font-weight:800;color:var(--brown);line-height:1.18;}
-  .promo .sub{margin-top:.3rem;font-size:.86rem;font-weight:600;color:var(--brown-l);max-width:430px;}
+  .promo{margin-top:1.6rem;padding:0 0 .3rem;}
+  .promo h1{margin:0;font-size:clamp(2.1rem,5vw,3rem);font-weight:800;color:var(--ink);line-height:1.05;}
+  .promo .sub{margin-top:.55rem;font-size:.95rem;font-weight:500;color:var(--txt2);max-width:560px;}
   .cta-row{display:flex;align-items:center;gap:.7rem;margin-top:.9rem;flex-wrap:wrap;}
-  .cta{border:0;border-radius:13px;font-weight:800;padding:.7rem 1.3rem;background:var(--yellow);color:var(--brown);
+  .cta{border:0;border-radius:999px;font-weight:700;padding:.7rem 1.4rem;background:var(--ink);color:var(--on-ink);
     transition:background .15s,transform .15s var(--ease);}
   .cta:hover{background:var(--yellow-h);transform:translateY(-1px);}
+  .caption{display:block;color:var(--accent);font-size:.72rem;font-weight:700;letter-spacing:.14em;text-transform:uppercase;margin-bottom:.4rem;}
   .cta-note{font-size:.76rem;font-weight:700;color:var(--brown-l);}
-  .promo .ph{width:130px;height:104px;border-radius:16px;overflow:hidden;flex:none;margin-left:1rem;display:none;position:relative;}
-  .promo .ph img{width:100%;height:100%;object-fit:cover;}
-  @media(min-width:640px){ .promo .ph{display:block;} .promo h1{font-size:1.75rem;} }
+  .suggest{margin-top:2rem;display:flex;align-items:center;justify-content:space-between;gap:1.2rem;flex-wrap:wrap;
+    background:var(--card);border-radius:24px;box-shadow:0 0 0 1px var(--border) inset;padding:1.5rem 1.6rem;}
+  .suggest h3{margin:0;font-size:1.35rem;color:var(--ink);}
+  .suggest p{margin:.25rem 0 0;color:var(--txt2);font-size:.9rem;}
+  .suggest a{text-decoration:none;flex:none;}
 
   .sechead{display:flex;align-items:center;justify-content:space-between;margin:1.4rem 0 .8rem;gap:.8rem;}
   .sechead h2{margin:0;font-size:1.1rem;font-weight:800;color:var(--brown);}
@@ -122,15 +133,21 @@
   /* ===== КАРТОЧКИ ===== */
   .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(255px,1fr));gap:1.1rem;}
   @media(max-width:560px){ .grid{grid-template-columns:repeat(2,1fr);gap:.75rem;} }
-  .boxc{display:flex;flex-direction:column;overflow:hidden;border-radius:16px;background:var(--card);
+  .boxc{display:flex;flex-direction:column;overflow:hidden;border-radius:24px;background:var(--card);
     box-shadow:0 0 0 1px var(--border) inset;transition:box-shadow .15s,transform .15s var(--ease);cursor:pointer;}
-  .boxc:hover{box-shadow:0 8px 22px rgba(101,54,36,.14);transform:translateY(-2px);}
+  .boxc:hover{box-shadow:0 12px 28px oklch(22% .03 45/.12);transform:translateY(-2px);}
   .boxc .top{position:relative;aspect-ratio:4/3;background:var(--cream) center/cover no-repeat;}
-  .bdg{position:absolute;border-radius:9px;font-weight:700;padding:.18rem .55rem;font-size:.72rem;}
-  .b-disc{top:.55rem;left:.55rem;background:var(--green);color:#fff;font-weight:800;font-size:.76rem;}
-  .b-left{top:.55rem;right:.55rem;background:rgba(255,255,255,.94);color:var(--brown);font-size:.66rem;}
-  .b-left.fomo{background:var(--red);color:#fff;}
-  .b-cat{bottom:.55rem;left:.55rem;background:rgba(74,42,27,.78);color:#fff;font-size:.66rem;}
+  .bdg{position:absolute;border-radius:999px;font-weight:700;padding:.22rem .65rem;font-size:.74rem;}
+  .b-disc{top:.6rem;left:.6rem;background:oklch(22% .03 45/.9);color:var(--on-ink);font-weight:700;}
+  .b-left{top:.72rem;right:.75rem;background:transparent;color:rgba(255,255,255,.95);font-size:.72rem;
+    font-weight:600;text-shadow:0 1px 6px rgba(0,0,0,.45);padding:0;}
+  .b-left.fomo{background:var(--red);color:#fff;text-shadow:none;padding:.22rem .65rem;top:.6rem;}
+  .b-cat{display:none;}
+  .trow{display:flex;justify-content:space-between;align-items:flex-start;gap:.5rem;}
+  .rt{border:0;background:var(--yellow-l);color:var(--brown);border-radius:999px;padding:.2rem .6rem;
+    font-size:.74rem;font-weight:700;flex:none;cursor:pointer;}
+  .ven{font-size:.84rem;color:var(--txt2);font-weight:600;}
+  .meta2{font-size:.76rem;color:var(--txt2);}
   .b-fav{position:absolute;bottom:.5rem;right:.5rem;border:0;width:30px;height:30px;border-radius:50%;
     background:rgba(255,255,255,.94);color:#C9B8A8;font-size:1rem;line-height:1;cursor:pointer;
     transition:transform .15s var(--ease),color .15s;}
@@ -141,9 +158,9 @@
   .boxc .meta{font-size:.76rem;color:var(--txt2);}
   .boxc .meta b{color:var(--brown-l);font-weight:700;}
   .boxc .time{font-size:.74rem;color:var(--txt2);font-weight:600;}
-  .boxc .price{margin-top:auto;display:flex;align-items:baseline;gap:.5rem;padding-top:.4rem;}
-  .boxc .price b{font-size:1.1rem;color:var(--brown);}
-  .boxc .price s{font-size:.8rem;color:#A08D7D;}
+  .boxc .price{margin-top:auto;display:flex;align-items:baseline;gap:.55rem;padding-top:.5rem;}
+  .boxc .price b{font-size:1.35rem;color:var(--ink);font-family:var(--font-h);letter-spacing:-.02em;}
+  .boxc .price s{font-size:.82rem;color:var(--txt2);}
   .empty{grid-column:1/-1;color:var(--txt2);text-align:center;padding:2.2rem 1rem;font-size:.92rem;}
 
   /* skeleton */
@@ -164,7 +181,7 @@
   .chart .brow{display:flex;align-items:center;gap:.55rem;margin:.4rem 0;font-size:.8rem;}
   .chart .brow .nm{flex:none;width:96px;color:var(--txt);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
   .chart .brow .bar{flex:1;height:12px;border-radius:6px;background:var(--cream-d);overflow:hidden;}
-  .chart .brow .bar i{display:block;height:100%;border-radius:6px;background:var(--yellow-h);transition:width .5s var(--ease);}
+  .chart .brow .bar i{display:block;height:100%;border-radius:6px;background:var(--accent);transition:width .5s var(--ease);}
   .chart .brow .val{flex:none;font-weight:700;color:var(--brown);font-size:.76rem;}
   .gauge-wrap{position:relative;text-align:center;}
   .gauge-wrap .lbl{position:absolute;left:0;right:0;top:52%;transform:translateY(-50%);font-weight:800;font-size:1.5rem;color:var(--brown);}
@@ -190,7 +207,7 @@
   .vcard h3{margin:0;font-size:.98rem;font-weight:800;color:var(--brown);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
   .vcard .addr{font-size:.78rem;color:var(--txt2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
   .vcard .meta{display:flex;align-items:center;gap:.5rem;margin-top:.35rem;flex-wrap:wrap;}
-  .vcard .pill{font-size:.72rem;font-weight:700;padding:.16rem .5rem;border-radius:7px;background:var(--yellow-l);color:#9a7400;}
+  .vcard .pill{font-size:.72rem;font-weight:700;padding:.16rem .5rem;border-radius:7px;background:var(--yellow-l);color:var(--brown-l);}
   .vcard .pill.gr{background:#E4F3E5;color:var(--green);}
   .vcard .star{font-size:.78rem;color:#C99A00;font-weight:700;}
   .vgroup-h{display:flex;align-items:baseline;gap:.5rem;margin:1.3rem 0 .7rem;}
@@ -253,11 +270,11 @@
   label{display:block;font-size:.79rem;font-weight:700;color:var(--txt2);margin:.6rem 0 .28rem;}
   input,select,textarea{width:100%;font:inherit;padding:.62rem .72rem;border:1px solid var(--border);border-radius:11px;background:var(--card);color:var(--txt);}
   input:focus,select:focus,textarea:focus{outline:2px solid var(--yellow);border-color:var(--yellow);}
-  .btn{border:0;border-radius:13px;font-weight:800;padding:.82rem 1rem;width:100%;background:var(--yellow);color:var(--brown);
+  .btn{border:0;border-radius:999px;font-weight:700;padding:.82rem 1.1rem;width:100%;background:var(--ink);color:var(--on-ink);
     transition:background .15s,transform .15s var(--ease);}
   .btn:hover{background:var(--yellow-h);transform:translateY(-1px);}
   .btn:disabled{opacity:.55;}
-  .btn.sec{background:var(--cream);color:var(--brown);}
+  .btn.sec{background:var(--card);color:var(--ink);box-shadow:0 0 0 1px var(--border) inset;}
   .demo-pay{font-size:.71rem;color:var(--txt2);text-align:center;margin-top:.55rem;}
   .ok-wrap{text-align:center;}
   .ok-ic{font-size:2.6rem;animation:pop .5s var(--ease);}
@@ -279,7 +296,7 @@
   .lrow .g{flex:1;min-width:0;}
   .lrow b{color:var(--brown);}
   .tag{font-size:.68rem;font-weight:800;padding:.18rem .52rem;border-radius:8px;flex:none;}
-  .t-paid{background:var(--yellow-l);color:#A67C00;}
+  .t-paid{background:var(--yellow-l);color:var(--accent);}
   .t-issued{background:#E4F3E5;color:var(--green);}
   .t-expired{background:var(--cream-d);color:var(--txt2);}
   .t-refunded,.t-cancelled{background:#FDEBED;color:var(--red);}
@@ -295,8 +312,8 @@
   .hiw h2{margin:0 0 1rem;font-size:1.1rem;font-weight:800;color:var(--brown);}
   .hiw-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:1.1rem;}
   @media(max-width:680px){.hiw-grid{grid-template-columns:1fr;}}
-  .hiw-step .n{display:inline-grid;place-items:center;width:30px;height:30px;border-radius:10px;background:var(--yellow);
-    color:var(--brown);font-weight:800;margin-bottom:.4rem;}
+  .hiw-step .n{display:inline-grid;place-items:center;width:30px;height:30px;border-radius:50%;background:var(--ink);
+    color:var(--on-ink);font-weight:800;margin-bottom:.4rem;}
   .hiw-step b{display:block;color:var(--brown);font-size:.95rem;}
   .hiw-step p{margin:.25rem 0 0;font-size:.82rem;color:var(--txt2);}
 
@@ -307,9 +324,18 @@
   @media(min-width:760px){.cookiebar{bottom:1.2rem;}}
   .cookiebar button{border:0;border-radius:10px;background:var(--yellow);color:var(--brown);font-weight:800;padding:.45rem .9rem;flex:none;}
 
-  /* ===== ФУТЕР ===== */
-  footer{background:var(--card);border-top:1px solid var(--border);margin-top:2.5rem;}
-  .fwrap{max-width:1024px;margin:0 auto;padding:1.8rem 1rem 2.2rem;}
+  /* ===== ФУТЕР (тёмный, как в макете) ===== */
+  footer{background:var(--ink);color:var(--on-ink);margin-top:2.5rem;}
+  .fwrap{max-width:1024px;margin:0 auto;padding:2.2rem 1rem 2.4rem;}
+  .flogo{font-family:var(--font-h);font-weight:800;font-size:2.6rem;letter-spacing:-.03em;color:var(--on-ink);margin-bottom:1.4rem;}
+  footer .fwrap>p{color:oklch(97.2% .018 82/.72)!important;}
+  footer .fwrap>p b,footer .fwrap>p a{color:var(--on-ink)!important;}
+  footer h4{color:oklch(97.2% .018 82/.55)!important;}
+  footer summary{color:var(--on-ink)!important;}
+  footer details p{color:oklch(97.2% .018 82/.7)!important;}
+  .flinks a,.flinks button{color:var(--on-ink)!important;}
+  .copy{color:oklch(97.2% .018 82/.6)!important;border-top:1px solid oklch(97.2% .018 82/.16)!important;}
+  .copy a{color:var(--on-ink)!important;}
   .fgrid{display:grid;grid-template-columns:1.2fr 1fr 1fr;gap:1.6rem;}
   @media(max-width:760px){ .fgrid{grid-template-columns:1fr;} }
   footer h4{margin:0 0 .6rem;font-size:.8rem;text-transform:uppercase;letter-spacing:.06em;color:var(--txt2);}
@@ -364,16 +390,14 @@
     <section id="view-store">
       <div class="cats" id="cats"></div>
       <div class="promo">
-        <div>
-          <h1>Вечерние излишки кофеен — со скидкой до 70%</h1>
-          <div class="sub">Кофейни и пекарни Астаны собирают непроданное за день в сюрприз-боксы. Еда свежая — просто её приготовили сегодня больше, чем купили. Ты экономишь, заведение не списывает.</div>
-          <div class="cta-row">
-            <button class="cta" onclick="scrollToBoxes()">Смотреть боксы</button>
-            <button class="cta sec2" onclick="switchView('venues')">☕ Заведения на карте</button>
-            <span class="cta-note" id="heroCnt"></span>
-          </div>
+        <span class="caption">Каталог</span>
+        <h1>Боксы в Астане</h1>
+        <p class="sub" id="heroSub">Свежее, дешевле и без списаний.</p>
+        <div class="cta-row">
+          <button class="cta" onclick="scrollToBoxes()">Смотреть боксы</button>
+          <button class="cta sec2" onclick="switchView('venues')">☕ Заведения на карте</button>
+          <span class="cta-note hidden" id="heroCnt"></span>
         </div>
-        <div class="ph"><img src="/static/img/hero.jpg" alt="Сюрприз-бокс Yummy" loading="eager" /></div>
       </div>
       <div class="dists" id="districts"></div>
       <div class="sechead">
@@ -389,6 +413,10 @@
           <div class="hiw-step"><span class="n">2</span><b>Оплати онлайн</b><p>Получишь код и QR для выдачи. Состав бокса — приятный сюрприз.</p></div>
           <div class="hiw-step"><span class="n">3</span><b>Забери сегодня</b><p>Покажи код на кассе в окно самовывоза — и наслаждайся.</p></div>
         </div>
+      </div>
+      <div class="suggest">
+        <div><h3>Не нашли свою кофейню?</h3><p>Расскажите — подключим её к Yummy в ближайшую неделю.</p></div>
+        <a class="cta" href="mailto:alisher.nursain@gmail.com?subject=Yummy%3A%20предлагаю%20заведение">Предложить заведение</a>
       </div>
       <div id="myorders" style="margin-top:1.8rem"></div>
     </section>
@@ -467,6 +495,7 @@
 
   <footer>
     <div class="fwrap">
+      <div class="flogo">Yummy</div>
       <p style="margin:0 0 1.4rem;font-size:.86rem;color:var(--txt2);max-width:640px">
         <b style="color:var(--brown)">О сервисе.</b> Yummy — пилотный проект из Астаны против выбрасывания еды.
         Делает его Алишер Нурсаин (<a href="https://github.com/wpalish">github.com/wpalish</a>).
@@ -588,6 +617,10 @@ const KZ={
 "Доступ для персонала":"Қызметкерлерге арналған кіру","PIN-код":"PIN-код",
 "Данные (коды заказов, избранное, фильтры) хранятся только в вашем браузере — localStorage. Cookies не используем.":"Деректер (тапсырыс кодтары, таңдаулылар, сүзгілер) тек сіздің браузеріңізде сақталады — localStorage. Cookies қолданбаймыз.",
 "Понятно":"Түсінікті",
+"Боксы в Астане":"Астанадағы бокстар","Свежее, дешевле и без списаний.":"Жаңа, арзан және шығынсыз.",
+"Не нашли свою кофейню?":"Өз кофеханаңызды таппадыңыз ба?",
+"Расскажите — подключим её к Yummy в ближайшую неделю.":"Айтыңыз — оны бір апта ішінде Yummy-ге қосамыз.",
+"Предложить заведение":"Мекеме ұсыну",
 "Обновляем…":"Жаңартудамыз…","Оплата…":"Төлем…","Входим…":"Кіру…","Создаём аккаунт…":"Аккаунт құрудамыз…",
 "Это сюрприз-бокс из свежих остатков дня. В карточке каждого бокса есть примерный состав, но точное наполнение меняется — в этом и смысл выгодной цены.":"Бұл — күннің жаңа қалдықтарынан жасалған сюрприз-бокс. Әр бокстың карточкасында шамамен құрамы көрсетілген, бірақ нақты құрамы өзгеріп тұрады — тиімді бағаның мәні де осында.",
 "Нажми «Вернуть деньги» в «Моих заказах» или напиши в поддержку — если заказ не выдан по вине заведения, мы возвращаем полную сумму.":"«Менің тапсырыстарым» бөлімінде «Ақшаны қайтару» батырмасын бас немесе қолдауға жаз — тапсырыс мекеменің кінәсінен берілмесе, толық соманы қайтарамыз.",
@@ -613,6 +646,7 @@ const KZ_RX=[
 [/^(\d+) (?:продажа|продажи|продаж)$/,"$1 сатылым"],
 [/^(\d+) бокс(?:а|ов)? в продаже$/,"сатылымда $1 бокс"],
 [/^(\d+) (?:заказ|заказа|заказов)$/,"$1 тапсырыс"],
+[/^(\d+) бокс(?:|а|ов) доступ(?:ен|но) к самовывозу сегодня вечером\. Свежее, дешевле и без списаний\.$/,"Бүгін кешке өзі алып кетуге $1 бокс қолжетімді. Жаңа, арзан және шығынсыз."],
 ];
 function kzText(s){
   const t=s.trim(); if(!t)return s;
@@ -890,7 +924,9 @@ async function loadStore(){
     saveFilters();loadStore();});
   try{ALL_BOXES=await get("/boxes?district=all");}catch(e){ALL_BOXES=[];}
   const totalLeft=ALL_BOXES.reduce((s,b)=>s+b.qty_left,0);
-  $("#heroCnt").textContent=totalLeft?`Сегодня доступно ${totalLeft} ${plural(totalLeft,["бокс","бокса","боксов"])}`:"";
+  $("#heroSub").textContent=totalLeft
+    ?`${totalLeft} ${plural(totalLeft,["бокс доступен","бокса доступно","боксов доступно"])} к самовывозу сегодня вечером. Свежее, дешевле и без списаний.`
+    :"Свежее, дешевле и без списаний.";
   renderBoxes();
   if(mapMode)renderMap();
   renderMyOrders();
@@ -926,15 +962,15 @@ function boxCard(b){
   const fomo=b.qty_left<=3;
   return `<article class="boxc" data-id="${b.id}">
     <div class="top" style="background-image:url(/static/img/${imgFor(b)})">
-      <span class="bdg b-disc">−${b.discount}%</span>
+      <span class="bdg b-disc">${b.emoji} −${b.discount}%</span>
       <span class="bdg b-left${fomo?" fomo":""}">${fomo?"🔥 ":""}осталось ${b.qty_left}</span>
-      <span class="bdg b-cat">${esc(b.category_ru)}</span>
       <button class="b-fav${favs().includes(b.partner_id)?" on":""}" title="Любимая кофейня"
         onclick="event.stopPropagation();toggleFav('${b.partner_id}')">♥</button></div>
     <div class="body">
-      <h3>${esc(b.title||b.partner_name)}</h3>
-      <div class="meta"><b>${esc(b.partner_name)}</b> · ${esc(b.district)} · <button class="linkbtn" data-rev="${esc(b.partner_name)}" onclick="event.stopPropagation();showReviews(this.dataset.rev)">⭐ ${b.rating}</button></div>
-      <div class="time">⏱ ${win(b.pickup_from,b.pickup_to)}</div>
+      <div class="trow"><h3>${esc(b.title||b.partner_name)}</h3>
+        <button class="rt" data-rev="${esc(b.partner_name)}" onclick="event.stopPropagation();showReviews(this.dataset.rev)">⭐ ${b.rating}</button></div>
+      <div class="ven">${esc(b.partner_name)}</div>
+      <div class="meta2">📍 ${esc(b.district)} · ⏱ ${win(b.pickup_from,b.pickup_to)}</div>
       <div class="price"><b>${money(b.price)}</b><s>${money(b.value_est)}</s></div>
     </div></article>`;
 }
@@ -962,7 +998,7 @@ async function renderMap(){
         <span style="background:#FFF5D6;color:#7E5233;padding:2px 8px;border-radius:7px;font-size:.72rem;font-weight:700">${n} ${plural(n,["бокс","бокса","боксов"])}</span>
         ${minP?`<b style="color:var(--brown)">от ${money(minP)}</b>`:""}
       </div>
-      ${n?`<button onclick="shopFromMap('${esc(p.name)}')" style="width:100%;background:#FDC620;border:0;padding:8px;border-radius:9px;font-weight:800;color:#653624;cursor:pointer;font-family:inherit">Смотреть боксы</button>`:'<span style="font-size:.74rem;color:#7E6A5A">Сегодня боксов нет</span>'}
+      ${n?`<button onclick="shopFromMap('${esc(p.name)}')" style="width:100%;background:oklch(22% .03 45);border:0;padding:8px;border-radius:999px;font-weight:700;color:oklch(97% .018 82);cursor:pointer;font-family:inherit">Смотреть боксы</button>`:'<span style="font-size:.74rem;color:#7E6A5A">Сегодня боксов нет</span>'}
       <a href="https://2gis.kz/astana/directions/points/%7C${p.lng}%2C${p.lat}" target="_blank" rel="noopener"
         style="display:block;text-align:center;margin-top:6px;font-size:.76rem;font-weight:700;color:#653624">🗺 Маршрут в 2ГИС</a>
     </div>`;
@@ -1055,7 +1091,7 @@ function renderVMap(){
   vmapObj._mk=vs.map(v=>{
     const color=v.chain==="Zebra Coffee"?"#2b2b2b":"#6F4E37";
     const mk=L.circleMarker([v.lat,v.lon],{radius:6,fillColor:color,color:"#fff",weight:1.5,fillOpacity:.9}).addTo(vmapObj);
-    mk.bindPopup(`<b>${esc(v.chain)}</b><br>${esc(v.addr)}<br>${esc(v.district)} · ${v.rating?"⭐ "+v.rating+" · ":""}${vBoxCount(v)} ${plural(vBoxCount(v),["бокс","бокса","боксов"])}<br><button onclick="openVenue('${v.id}')" style="margin-top:6px;width:100%;background:#FDC620;border:0;padding:7px;border-radius:8px;font-weight:800;color:#653624;cursor:pointer">Смотреть боксы</button>`);
+    mk.bindPopup(`<b>${esc(v.chain)}</b><br>${esc(v.addr)}<br>${esc(v.district)} · ${v.rating?"⭐ "+v.rating+" · ":""}${vBoxCount(v)} ${plural(vBoxCount(v),["бокс","бокса","боксов"])}<br><button onclick="openVenue('${v.id}')" style="margin-top:6px;width:100%;background:oklch(22% .03 45);border:0;padding:7px;border-radius:999px;font-weight:700;color:oklch(97% .018 82);cursor:pointer">Смотреть боксы</button>`);
     return mk;
   });
   if(vs.length){const g=L.featureGroup(vmapObj._mk); try{vmapObj.fitBounds(g.getBounds().pad(0.1));}catch(e){}}
@@ -1330,7 +1366,7 @@ async function loadAdmin(){
     if(o.status==="issued"||o.status==="paid")byPartner[o.partner_name]=(byPartner[o.partner_name]||0)+o.price;});
   const statusSegs=[
     {label:"выдано",value:cnt.issued,color:"#3E9142"},
-    {label:"активные",value:cnt.paid,color:"#FDC620"},
+    {label:"активные",value:cnt.paid,color:"#D08641"},
     {label:"не забрали",value:cnt.expired,color:"#B9A88F"},
     {label:"возвраты",value:(cnt.refunded||0)+(cnt.cancelled||0),color:"#E84855"},
   ];
