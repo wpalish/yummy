@@ -220,6 +220,33 @@ def my_orders(user: PublicUser = Depends(current_user)) -> list[Order]:
     return store.user_orders(user.id)
 
 
+@app.get("/me/export", tags=["Store"])
+def export_me(user: PublicUser = Depends(current_user)) -> dict:
+    """Privacy: скачать все свои данные одним JSON (профиль + заказы)."""
+    from .accounts import accounts as users_db
+    row = users_db.by_id(user.id)
+    profile = {k: row[k] for k in ("id", "email", "role", "brand_name", "address", "created_at")}
+    return {"profile": profile,
+            "orders": [o.model_dump() for o in store.user_orders(user.id)]}
+
+
+@app.delete("/me", tags=["Store"])
+def delete_me(req: HttpRequest, user: PublicUser = Depends(current_user)) -> dict:
+    """Privacy: удалить аккаунт — вход невозможен, PII в заказах обезличен."""
+    from .accounts import accounts as users_db
+    with users_db._lock, users_db._conn() as c:
+        c.execute(
+            "UPDATE users SET is_active=0, email=?, pw_hash='',"
+            " token_ver=COALESCE(token_ver,0)+1 WHERE id=?",
+            (f"deleted-{user.id}", user.id),
+        )
+    users_db.revoke_all_refresh(user.id)
+    scrubbed = store.scrub_user(user.id)
+    log.info("audit: delete-account id=%s orders_scrubbed=%s ip=%s",
+             user.id, scrubbed, req.client.host if req.client else "?")
+    return {"status": "deleted", "orders_anonymized": scrubbed}
+
+
 @app.get("/orders/{code}", response_model=Order, tags=["Store"])
 def order_status(code: str) -> Order:
     order = store.order_by_code(code)

@@ -216,3 +216,57 @@ def test_prod_config_fail_fast(monkeypatch):
         A.assert_prod_config()
     monkeypatch.setattr(A, "_SECRET", "real-secret-0123456789abcdef")
     A.assert_prod_config()  # с настоящим секретом — ок
+
+
+# ---- Sentinel-пак: refresh-ротация, logout-all, privacy --------------------- #
+def test_pbkdf2_backward_compatible_rounds():
+    """Старые хеши (200k) верифицируются — rounds читаются из записи."""
+    import hashlib as hl
+    import secrets as sec
+    salt = sec.token_bytes(16)
+    dk = hl.pbkdf2_hmac("sha256", b"Secret123", salt, 200_000)
+    legacy = f"pbkdf2_sha256$200000${salt.hex()}${dk.hex()}"
+    assert verify_password("Secret123", legacy)
+
+
+def test_refresh_rotation(tmp_path, monkeypatch):
+    """Refresh обновляет access; использованный refresh сгорает (ротация)."""
+    c = _client(tmp_path, monkeypatch)
+    r = c.post("/auth/register", json={"email": "rf@yummy.kz", "password": "Secret123"}).json()
+    assert r["refresh_token"]
+    r2 = c.post("/auth/refresh", json={"refresh_token": r["refresh_token"]})
+    assert r2.status_code == 200
+    assert c.get("/auth/me", headers={"Authorization": f"Bearer {r2.json()['access_token']}"}).status_code == 200
+    # старый refresh уже отозван ротацией
+    assert c.post("/auth/refresh", json={"refresh_token": r["refresh_token"]}).status_code == 401
+
+
+def test_logout_all_revokes_everything(tmp_path, monkeypatch):
+    c = _client(tmp_path, monkeypatch)
+    r = c.post("/auth/register", json={"email": "la@yummy.kz", "password": "Secret123"}).json()
+    tok, ref = r["access_token"], r["refresh_token"]
+    assert c.post("/auth/logout-all", headers={"Authorization": f"Bearer {tok}"}).status_code == 200
+    assert c.get("/auth/me", headers={"Authorization": f"Bearer {tok}"}).status_code == 401
+    assert c.post("/auth/refresh", json={"refresh_token": ref}).status_code == 401
+
+
+def test_export_and_delete_me(tmp_path, monkeypatch):
+    """Privacy: экспорт данных и удаление аккаунта с обезличиванием заказов."""
+    c = _client(tmp_path, monkeypatch)
+    tok = c.post("/auth/register", json={"email": "pr@yummy.kz", "password": "Secret123"}).json()["access_token"]
+    bid = c.get("/boxes").json()[0]["id"]
+    code = c.post("/orders", json={"box_id": bid, "user_name": "Алишер", "user_phone": "+77010000000"},
+                  headers={"Authorization": f"Bearer {tok}"}).json()["order"]["code"]
+
+    exp = c.get("/me/export", headers={"Authorization": f"Bearer {tok}"}).json()
+    assert exp["profile"]["email"] == "pr@yummy.kz"
+    assert any(o["code"] == code for o in exp["orders"])
+    assert "pw_hash" not in str(exp)
+
+    d = c.delete("/me", headers={"Authorization": f"Bearer {tok}"})
+    assert d.status_code == 200 and d.json()["orders_anonymized"] == 1
+    # вход невозможен, токен отозван, PII обезличен
+    assert c.post("/auth/login", json={"email": "pr@yummy.kz", "password": "Secret123"}).status_code == 401
+    assert c.get("/auth/me", headers={"Authorization": f"Bearer {tok}"}).status_code == 401
+    pub = c.get(f"/orders/{code}").json()
+    assert pub["user_name"] == "(удалён)" and pub["user_phone"] == ""

@@ -595,6 +595,11 @@ const KZ={
 "Войдите в аккаунт покупателя или заведения.":"Сатып алушы не мекеме аккаунтына кіріңіз.",
 "Сменить роль":"Рөлді ауыстыру","Выйти":"Шығу","🔑 Сменить пароль":"🔑 Құпиясөзді ауыстыру",
 "Сменить пароль":"Құпиясөзді ауыстыру","Текущий пароль":"Ағымдағы құпиясөз","Новый пароль":"Жаңа құпиясөз","Сохранить":"Сақтау",
+"🚪 Выйти со всех устройств":"🚪 Барлық құрылғылардан шығу","⬇ Скачать мои данные":"⬇ Деректерімді жүктеу",
+"🗑 Удалить аккаунт":"🗑 Аккаунтты жою","Удалить аккаунт?":"Аккаунтты жою керек пе?",
+"Данные заказов обезличатся, вход станет невозможен. Действие необратимо.":"Тапсырыс деректері иесізденеді, кіру мүмкін болмайды. Әрекет қайтарылмайды.",
+"Да, удалить":"Иә, жою","Вышли со всех устройств":"Барлық құрылғылардан шықтыңыз",
+"Данные скачаны ⬇":"Деректер жүктелді ⬇","Аккаунт удалён":"Аккаунт жойылды",
 "Кабинет партнёра":"Серіктес кабинеті",
 "Выставляй боксы из вечерних остатков за минуту. Выдавай заказы по коду.":"Кешкі қалдықтардан бокстарды бір минутта шығар. Тапсырысты код бойынша бер.",
 "Заведение":"Мекеме","Создать бокс":"Бокс құру","Категория":"Санат","Название":"Атауы",
@@ -678,9 +683,13 @@ const hhmm=iso=>{try{return new Date(iso).toLocaleTimeString("ru-RU",{hour:"2-di
 const win=(a,b)=>`Сегодня ${hhmm(a)}–${hhmm(b)}`;
 const plural=(n,f)=>{const m10=n%10,m100=n%100;return f[(m10===1&&m100!==11)?0:(m10>=2&&m10<=4&&(m100<10||m100>=20))?1:2];};
 function toast(m,err=false){const t=$("#toast");t.textContent=m;t.className=err?"err show":"show";clearTimeout(t._t);t._t=setTimeout(()=>t.className="",2800);}
-async function api(m,u,b){const h=b?{"Content-Type":"application/json"}:{};
+async function api(m,u,b,_retry){const h=b?{"Content-Type":"application/json"}:{};
   const a=account(); if(a&&a.token)h["Authorization"]="Bearer "+a.token;
   const r=await fetch(u,{method:m,headers:h,body:b?JSON.stringify(b):undefined});
+  if(r.status===401&&!_retry&&a&&a.refresh&&!u.startsWith("/auth/")){
+    try{const rr=await fetch("/auth/refresh",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({refresh_token:a.refresh})});
+      if(rr.ok){const j=await rr.json();a.token=j.access_token;a.refresh=j.refresh_token;setAccount(a);return api(m,u,b,true);}}catch(e){}
+  }
   if(!r.ok){let d;try{d=await r.json();}catch(e){} throw new Error((d&&d.detail)||("Ошибка "+r.status));} return r.status===204?null:r.json();}
 const get=u=>api("GET",u), post=(u,b)=>api("POST",u,b);
 const STATUS_RU={paid:"оплачен",issued:"выдан",expired:"не забран",refunded:"возврат",cancelled:"отменён"};
@@ -764,11 +773,40 @@ function acctMenu(){
     <h3>${esc(a.name||"Профиль")}</h3>
     <p style="color:var(--txt2);font-size:.85rem;margin:.1rem 0 .9rem">Вы вошли как <b style="color:var(--brown)">${ROLE_RU[a.role]||"гость"}</b>${a.phone?" · "+esc(a.phone):""}</p>
     <button class="btn" onclick="closeModal();gotoOrders()">🛒 Мои заказы</button>
-    ${a.token?`<button class="btn sec" style="margin-top:.5rem" onclick="changePwForm()">🔑 Сменить пароль</button>`:""}
+    ${a.token?`<button class="btn sec" style="margin-top:.5rem" onclick="changePwForm()">🔑 Сменить пароль</button>
+    <button class="btn sec" style="margin-top:.5rem" onclick="logoutAll()">🚪 Выйти со всех устройств</button>
+    <button class="btn sec" style="margin-top:.5rem" onclick="exportMe()">⬇ Скачать мои данные</button>
+    <button class="btn sec" style="margin-top:.5rem;color:var(--red)" onclick="deleteMeConfirm()">🗑 Удалить аккаунт</button>`:""}
     <button class="btn sec" style="margin-top:.5rem" onclick="closeModal();showOnboarding()">Сменить роль</button>
     <button class="btn sec" style="margin-top:.5rem" onclick="logout()">Выйти</button>
   </div>`);
 }
+/* Privacy + сессии (Sentinel-паттерны, реализованные честно) */
+window.logoutAll=async()=>{
+  try{await post("/auth/logout-all");}catch(e){}
+  toast("Вышли со всех устройств"); logout();
+};
+window.exportMe=async()=>{
+  try{
+    const d=await get("/me/export");
+    const a=document.createElement("a");
+    a.href="data:application/json;charset=utf-8,"+encodeURIComponent(JSON.stringify(d,null,2));
+    a.download="yummy-data.json"; document.body.appendChild(a); a.click(); a.remove();
+    toast("Данные скачаны ⬇");
+  }catch(e){toast(e.message,true);}
+};
+window.deleteMeConfirm=()=>{
+  showModal(`<div class="mc">
+    <h3>Удалить аккаунт?</h3>
+    <p style="font-size:.86rem;color:var(--txt2);margin:.3rem 0 .9rem">Данные заказов обезличатся, вход станет невозможен. Действие необратимо.</p>
+    <button class="btn" style="background:var(--red);color:#fff" id="delBtn">Да, удалить</button>
+    <button class="btn sec" onclick="closeModal()" style="margin-top:.5rem">Отмена</button>
+  </div>`);
+  $("#delBtn").onclick=async()=>{
+    try{await api("DELETE","/me"); toast("Аккаунт удалён"); logout();}
+    catch(e){toast(e.message,true);}
+  };
+};
 window.changePwForm=()=>{
   showModal(`<div class="mc">
     <h3>Сменить пароль</h3>
@@ -781,7 +819,7 @@ window.changePwForm=()=>{
     const old=$("#pwOld").value, nw=$("#pwNew").value;
     const pe=_pwErr(nw); if(pe){$("#pw_err").textContent=pe;return;}
     try{ const r=await post("/auth/change-password",{old_password:old,new_password:nw});
-      if(r&&r.access_token){const a=account();a.token=r.access_token;setAccount(a);}  // старые сессии отозваны, эта — обновлена
+      if(r&&r.access_token){const a=account();a.token=r.access_token;a.refresh=r.refresh_token||a.refresh;setAccount(a);}  // старые сессии отозваны, эта — обновлена
       closeModal(); toast("Пароль изменён ✓ Остальные устройства разлогинены"); }
     catch(e){ $("#pw_err").textContent=e.message; }
   };
@@ -824,7 +862,7 @@ function loginForm(){
       const res=await post("/auth/login",{email,password:pass});
       const u=res.user, roleMap={customer:"buyer",partner:"partner",admin:"admin"};
       const acc={role:roleMap[u.role]||"buyer",name:u.brand_name||email.split("@")[0],email,
-        token:res.access_token,server:true,createdAt:Date.now()};
+        token:res.access_token,refresh:res.refresh_token||"",server:true,createdAt:Date.now()};
       setAccount(acc);
       if(u.role==="partner"||u.role==="admin")sessionStorage.setItem("ym_staff","1");
       hideOnboarding();
@@ -884,7 +922,7 @@ function regForm(role){
       try{ out=await tryRegister(payload); }
       catch(e){ setE("e_email",e.message); btn.disabled=false; btn.textContent="Зарегистрироваться"; return; }
       const acc={role:partner?"partner":"buyer",name,email,createdAt:Date.now(),server:out.mode==="server"};
-      if(out.mode==="server"&&out.res&&out.res.access_token)acc.token=out.res.access_token;
+      if(out.mode==="server"&&out.res&&out.res.access_token){acc.token=out.res.access_token;acc.refresh=out.res.refresh_token||"";}
       setAccount(acc);
       if(partner)sessionStorage.setItem("ym_staff","1");   // регистрация партнёра = доступ к кабинету
       hideOnboarding();

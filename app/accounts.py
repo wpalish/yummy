@@ -42,8 +42,10 @@ def assert_prod_config() -> None:
             "YUMMY_ENFORCE_AUTH=1 требует настоящий YUMMY_SECRET_KEY "
             "(python -c 'import secrets;print(secrets.token_hex(32))'; см. .env.example)"
         )
-_PBKDF2_ROUNDS = 200_000
-_TOKEN_TTL = 7 * 24 * 3600  # 7 дней
+_PBKDF2_ROUNDS = 600_000        # OWASP-рекомендация для PBKDF2-SHA256; старые
+                                 # хеши верифицируются по rounds из самой записи
+_TOKEN_TTL = 15 * 60             # короткий access-токен (Sentinel-паттерн)
+_REFRESH_TTL = 30 * 24 * 3600    # refresh — 30 дней, ротируется при каждом использовании
 _EMAIL_RE = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
 
 router = APIRouter(tags=["Accounts"])
@@ -174,6 +176,12 @@ class Accounts:
             cols = {r[1] for r in c.execute("PRAGMA table_info(users)").fetchall()}
             if "token_ver" not in cols:
                 c.execute("ALTER TABLE users ADD COLUMN token_ver INTEGER DEFAULT 0")
+            c.execute(
+                """CREATE TABLE IF NOT EXISTS refresh_tokens(
+                    token_hash TEXT PRIMARY KEY, user_id TEXT,
+                    expires_at INTEGER, revoked INTEGER DEFAULT 0)"""
+            )
+            c.execute("CREATE INDEX IF NOT EXISTS ix_refresh_user ON refresh_tokens(user_id)")
 
     def _conn(self) -> sqlite3.Connection:
         c = sqlite3.connect(self._path, timeout=5.0)
@@ -189,6 +197,32 @@ class Accounts:
     def by_id(self, uid: str) -> sqlite3.Row | None:
         with self._lock, self._conn() as c:
             return c.execute("SELECT * FROM users WHERE id=?", (uid,)).fetchone()
+
+    # ---- refresh-токены: случайные, в БД только SHA-256-хеш, ротация ---- #
+    @staticmethod
+    def _rt_hash(raw: str) -> str:
+        return hashlib.sha256(raw.encode()).hexdigest()
+
+    def issue_refresh(self, user_id: str) -> str:
+        raw = secrets.token_urlsafe(32)
+        with self._lock, self._conn() as c:
+            c.execute("INSERT INTO refresh_tokens(token_hash,user_id,expires_at) VALUES(?,?,?)",
+                      (self._rt_hash(raw), user_id, int(time.time()) + _REFRESH_TTL))
+        return raw
+
+    def rotate_refresh(self, raw: str) -> str | None:
+        """Валиден → отзываем использованный и выдаём новый; иначе None."""
+        h = self._rt_hash(raw)
+        with self._lock, self._conn() as c:
+            row = c.execute("SELECT * FROM refresh_tokens WHERE token_hash=?", (h,)).fetchone()
+            if not row or row["revoked"] or row["expires_at"] < time.time():
+                return None
+            c.execute("UPDATE refresh_tokens SET revoked=1 WHERE token_hash=?", (h,))
+        return row["user_id"]
+
+    def revoke_all_refresh(self, user_id: str) -> None:
+        with self._lock, self._conn() as c:
+            c.execute("UPDATE refresh_tokens SET revoked=1 WHERE user_id=?", (user_id,))
 
     def create(self, email: str, pw_hash: str, role: str,
                brand_name: str | None, address: str | None) -> str:
@@ -247,6 +281,7 @@ class PublicUser(BaseModel):
 
 class AuthResult(BaseModel):
     access_token: str
+    refresh_token: str = ""
     token_type: str = "bearer"
     user: PublicUser
 
@@ -276,7 +311,8 @@ def register(data: RegisterInput, request: HttpRequest) -> AuthResult:
     uid = accounts.create(data.email, hash_password(data.password), role, brand, addr)
     row = accounts.by_id(uid)
     audit.info("register OK id=%s role=%s email=%s ip=%s", uid, role, data.email, _ip(request))
-    return AuthResult(access_token=create_token(uid, role, ver=_row_token_ver(row)), user=_public(row))
+    return AuthResult(access_token=create_token(uid, role, ver=_row_token_ver(row)),
+                      refresh_token=accounts.issue_refresh(uid), user=_public(row))
 
 
 @router.post("/auth/login", response_model=AuthResult, dependencies=[Depends(auth_rate_limit)])
@@ -294,7 +330,26 @@ def login(data: LoginInput, request: HttpRequest) -> AuthResult:
     _jail_reset(email)
     audit.info("login OK id=%s ip=%s", row["id"], _ip(request))
     return AuthResult(access_token=create_token(row["id"], row["role"], ver=_row_token_ver(row)),
-                      user=_public(row))
+                      refresh_token=accounts.issue_refresh(row["id"]), user=_public(row))
+
+
+class RefreshInput(BaseModel):
+    refresh_token: str
+
+
+@router.post("/auth/refresh", response_model=AuthResult, dependencies=[Depends(auth_rate_limit)])
+def refresh(data: RefreshInput, request: HttpRequest) -> AuthResult:
+    """Обновить короткий access-токен. Refresh ротируется: старый сгорает."""
+    uid = accounts.rotate_refresh(data.refresh_token)
+    row = accounts.by_id(uid) if uid else None
+    if not row or not row["is_active"]:
+        audit.warning("refresh FAIL ip=%s", _ip(request))
+        raise HTTPException(401, "Refresh-токен недействителен, войдите заново")
+    return AuthResult(access_token=create_token(row["id"], row["role"], ver=_row_token_ver(row)),
+                      refresh_token=accounts.issue_refresh(row["id"]), user=_public(row))
+
+
+# /auth/logout-all — ниже, после определения current_user
 
 
 def _row_token_ver(row) -> int:
@@ -339,6 +394,16 @@ def me(user: PublicUser = Depends(current_user)) -> PublicUser:
     return user
 
 
+@router.post("/auth/logout-all")
+def logout_all(request: HttpRequest, user: PublicUser = Depends(current_user)) -> dict:
+    """Выйти со всех устройств: отзывает все access- и refresh-токены."""
+    with accounts._lock, accounts._conn() as c:
+        c.execute("UPDATE users SET token_ver=COALESCE(token_ver,0)+1 WHERE id=?", (user.id,))
+    accounts.revoke_all_refresh(user.id)
+    audit.info("logout-all id=%s ip=%s", user.id, _ip(request))
+    return {"status": "ok"}
+
+
 class ChangePasswordInput(BaseModel):
     old_password: str
     new_password: str
@@ -361,11 +426,13 @@ def change_password(data: ChangePasswordInput,
         # token_ver+1 отзывает ВСЕ ранее выданные токены (украденный JWT умирает)
         c.execute("UPDATE users SET pw_hash=?, token_ver=COALESCE(token_ver,0)+1 WHERE id=?",
                   (hash_password(data.new_password), user.id))
+    accounts.revoke_all_refresh(user.id)
     row = accounts.by_id(user.id)
     audit.info("change-password OK id=%s ip=%s (сессии отозваны)", user.id, _ip(request))
-    # свежий токен — чтобы текущее устройство осталось залогиненным
+    # свежая пара — чтобы текущее устройство осталось залогиненным
     return {"status": "ok",
-            "access_token": create_token(user.id, row["role"], ver=_row_token_ver(row))}
+            "access_token": create_token(user.id, row["role"], ver=_row_token_ver(row)),
+            "refresh_token": accounts.issue_refresh(user.id)}
 
 
 # --------------------------------------------------------------------------- #

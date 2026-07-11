@@ -14,9 +14,13 @@ ROOT = pathlib.Path(__file__).resolve().parent.parent
 STATIC = ROOT / "app" / "static"
 DOCS = ROOT / "docs"
 
-API_BLOCK = '''async function api(m,u,b){const h=b?{"Content-Type":"application/json"}:{};
+API_BLOCK = '''async function api(m,u,b,_retry){const h=b?{"Content-Type":"application/json"}:{};
   const a=account(); if(a&&a.token)h["Authorization"]="Bearer "+a.token;
   const r=await fetch(u,{method:m,headers:h,body:b?JSON.stringify(b):undefined});
+  if(r.status===401&&!_retry&&a&&a.refresh&&!u.startsWith("/auth/")){
+    try{const rr=await fetch("/auth/refresh",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({refresh_token:a.refresh})});
+      if(rr.ok){const j=await rr.json();a.token=j.access_token;a.refresh=j.refresh_token;setAccount(a);return api(m,u,b,true);}}catch(e){}
+  }
   if(!r.ok){let d;try{d=await r.json();}catch(e){} throw new Error((d&&d.detail)||("Ошибка "+r.status));} return r.status===204?null:r.json();}
 const get=u=>api("GET",u), post=(u,b)=>api("POST",u,b);'''
 

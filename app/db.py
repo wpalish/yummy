@@ -200,6 +200,16 @@ class Store:
             r = c.execute("SELECT * FROM orders WHERE id=?", (order_id,)).fetchone()
             return self._order_from_row(c, r)
 
+    def scrub_user(self, user_id: str) -> int:
+        """Privacy: анонимизировать PII в заказах удалённого аккаунта
+        (строки остаются — статистика партнёров не ломается)."""
+        with self._lock, self._conn() as c:
+            cur = c.execute(
+                "UPDATE orders SET user_name='(удалён)', user_phone='' WHERE user_id=?",
+                (user_id,),
+            )
+            return cur.rowcount
+
     def user_orders(self, user_id: str) -> list[Order]:
         """Заказы аккаунта — основа «/me/orders» (кросс-девайс история)."""
         with self._lock, self._conn() as c:
