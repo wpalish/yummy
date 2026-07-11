@@ -1,6 +1,13 @@
-"""SQLite-хранилище MVP: партнёры, боксы, заказы. Локально, без внешних БД."""
+"""SQLite-хранилище: партнёры, боксы, заказы.
+
+Продакшен-настройки: WAL (параллельные читатели не блокируют писателя),
+busy_timeout (вместо мгновенного «database is locked»), foreign keys, индексы
+под реальные запросы. Путь к файлу — env YUMMY_DB_PATH (persistent-диск на
+хостинге), по умолчанию — рядом с проектом.
+"""
 from __future__ import annotations
 
+import os
 import sqlite3
 import threading
 from datetime import datetime, timezone
@@ -8,7 +15,7 @@ from pathlib import Path
 
 from .models import Box, Order, Partner
 
-_DB = Path(__file__).parent.parent / "spasibox.db"
+_DB = Path(os.getenv("YUMMY_DB_PATH", str(Path(__file__).parent.parent / "spasibox.db")))
 
 
 def _now_iso() -> str:
@@ -19,13 +26,18 @@ class Store:
     """Потокобезопасная обёртка над SQLite."""
 
     def __init__(self, path: Path = _DB) -> None:
-        self._path = path
+        self._path = Path(path)
+        self._path.parent.mkdir(parents=True, exist_ok=True)
         self._lock = threading.RLock()
         self._init()
 
     def _conn(self) -> sqlite3.Connection:
-        c = sqlite3.connect(self._path)
+        c = sqlite3.connect(self._path, timeout=5.0)
         c.row_factory = sqlite3.Row
+        c.execute("PRAGMA journal_mode=WAL")
+        c.execute("PRAGMA busy_timeout=5000")
+        c.execute("PRAGMA foreign_keys=ON")
+        c.execute("PRAGMA synchronous=NORMAL")  # безопасно с WAL, заметно быстрее FULL
         return c
 
     def _init(self) -> None:
@@ -36,15 +48,24 @@ class Store:
                     id TEXT PRIMARY KEY, name TEXT, district TEXT, address TEXT,
                     rating REAL, lat REAL, lng REAL);
                 CREATE TABLE IF NOT EXISTS boxes(
-                    id TEXT PRIMARY KEY, partner_id TEXT, category TEXT, title TEXT,
+                    id TEXT PRIMARY KEY,
+                    partner_id TEXT REFERENCES partners(id),
+                    category TEXT, title TEXT,
                     price INTEGER, value_est INTEGER, qty_total INTEGER, qty_left INTEGER,
                     pickup_from TEXT, pickup_to TEXT, description TEXT, created_at TEXT,
                     status TEXT DEFAULT 'active');
                 CREATE TABLE IF NOT EXISTS orders(
-                    id TEXT PRIMARY KEY, code TEXT UNIQUE, box_id TEXT, partner_id TEXT,
+                    id TEXT PRIMARY KEY, code TEXT UNIQUE,
+                    box_id TEXT REFERENCES boxes(id),
+                    partner_id TEXT REFERENCES partners(id),
                     category TEXT, price INTEGER, user_name TEXT, user_phone TEXT,
                     status TEXT, pickup_from TEXT, pickup_to TEXT, created_at TEXT,
                     user_id TEXT);
+                CREATE INDEX IF NOT EXISTS ix_boxes_partner  ON boxes(partner_id);
+                CREATE INDEX IF NOT EXISTS ix_boxes_status   ON boxes(status, qty_left);
+                CREATE INDEX IF NOT EXISTS ix_orders_partner ON orders(partner_id, created_at);
+                CREATE INDEX IF NOT EXISTS ix_orders_user    ON orders(user_id, created_at);
+                CREATE INDEX IF NOT EXISTS ix_orders_status  ON orders(status);
                 """
             )
             # миграция существующих БД: добиваем user_id, если колонки ещё нет

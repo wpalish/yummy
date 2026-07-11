@@ -187,3 +187,32 @@ def test_me_orders_cross_device(tmp_path, monkeypatch):
     mine = c.get("/me/orders", headers={"Authorization": f"Bearer {tok}"}).json()
     assert len(mine) == 1 and mine[0]["code"] == r.json()["order"]["code"]
     assert c.get("/me/orders").status_code == 401  # без токена — закрыто
+
+
+# ---- отзыв сессий и fail-fast конфиг ---------------------------------------- #
+def test_change_password_revokes_old_tokens(tmp_path, monkeypatch):
+    """Смена пароля отзывает ВСЕ старые токены; ответ содержит свежий."""
+    c = _client(tmp_path, monkeypatch)
+    old_tok = c.post("/auth/register", json={"email": "rv@yummy.kz", "password": "Secret123"}).json()["access_token"]
+    assert c.get("/auth/me", headers={"Authorization": f"Bearer {old_tok}"}).status_code == 200
+
+    r = c.post("/auth/change-password", headers={"Authorization": f"Bearer {old_tok}"},
+               json={"old_password": "Secret123", "new_password": "Newpass123"})
+    assert r.status_code == 200
+    new_tok = r.json()["access_token"]
+
+    dead = c.get("/auth/me", headers={"Authorization": f"Bearer {old_tok}"})
+    assert dead.status_code == 401                       # украденный токен мёртв
+    alive = c.get("/auth/me", headers={"Authorization": f"Bearer {new_tok}"})
+    assert alive.status_code == 200                      # текущее устройство живо
+
+
+def test_prod_config_fail_fast(monkeypatch):
+    import app.accounts as A
+
+    monkeypatch.setenv("YUMMY_ENFORCE_AUTH", "1")
+    monkeypatch.setattr(A, "_SECRET", A._DEFAULT_SECRET)
+    with pytest.raises(RuntimeError, match="YUMMY_SECRET_KEY"):
+        A.assert_prod_config()
+    monkeypatch.setattr(A, "_SECRET", "real-secret-0123456789abcdef")
+    A.assert_prod_config()  # с настоящим секретом — ок

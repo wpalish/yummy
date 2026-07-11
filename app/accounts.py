@@ -30,8 +30,18 @@ from fastapi import APIRouter, Depends, Header, HTTPException
 from fastapi import Request as HttpRequest
 from pydantic import BaseModel, field_validator
 
-_DB = Path(__file__).parent.parent / "spasibox.db"
-_SECRET = os.getenv("YUMMY_SECRET_KEY", "dev-only-secret-change-in-prod")
+_DB = Path(os.getenv("YUMMY_DB_PATH", str(Path(__file__).parent.parent / "spasibox.db")))
+_DEFAULT_SECRET = "dev-only-secret-change-in-prod"  # nosec B105 — сентинел, прод с ним не стартует (assert_prod_config)
+_SECRET = os.getenv("YUMMY_SECRET_KEY", _DEFAULT_SECRET)
+
+
+def assert_prod_config() -> None:
+    """Fail-fast на старте: прод-режим с dev-секретом = любые токены подделываемы."""
+    if os.getenv("YUMMY_ENFORCE_AUTH", "").lower() in {"1", "true", "yes"} and _SECRET == _DEFAULT_SECRET:
+        raise RuntimeError(
+            "YUMMY_ENFORCE_AUTH=1 требует настоящий YUMMY_SECRET_KEY "
+            "(python -c 'import secrets;print(secrets.token_hex(32))'; см. .env.example)"
+        )
 _PBKDF2_ROUNDS = 200_000
 _TOKEN_TTL = 7 * 24 * 3600  # 7 дней
 _EMAIL_RE = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
@@ -66,9 +76,19 @@ def _jail_reset(email: str) -> None:
     _jail.pop(email, None)
 
 
+def _purge_hits(hits_map: dict, window: float) -> None:
+    """Не даём карте лимитера расти бесконечно (память при массовых IP)."""
+    if len(hits_map) < 4096:
+        return
+    now = time.monotonic()
+    for key in [k for k, q in hits_map.items() if not q or now - q[-1] > window]:
+        hits_map.pop(key, None)
+
+
 def auth_rate_limit(req: HttpRequest) -> None:
     ip = req.client.host if req.client else "?"
     now = time.monotonic()
+    _purge_hits(_auth_hits, _AUTH_WINDOW)
     hits = _auth_hits.setdefault(ip, deque())
     while hits and now - hits[0] > _AUTH_WINDOW:
         hits.popleft()
@@ -109,10 +129,10 @@ def _b64u_dec(s: str) -> bytes:
 _ISSUER = "yummy"  # строгая проверка издателя (паттерн из spring-security)
 
 
-def create_token(sub: str, role: str, ttl: int = _TOKEN_TTL) -> str:
+def create_token(sub: str, role: str, ttl: int = _TOKEN_TTL, ver: int = 0) -> str:
     header = _b64u(b'{"alg":"HS256","typ":"JWT"}')
     payload = _b64u(json.dumps(
-        {"iss": _ISSUER, "sub": sub, "role": role, "exp": int(time.time()) + ttl}
+        {"iss": _ISSUER, "sub": sub, "role": role, "ver": ver, "exp": int(time.time()) + ttl}
     ).encode())
     signing = f"{header}.{payload}".encode()
     sig = _b64u(hmac.new(_SECRET.encode(), signing, hashlib.sha256).digest())
@@ -141,18 +161,25 @@ def decode_token(token: str) -> dict:
 # --------------------------------------------------------------------------- #
 class Accounts:
     def __init__(self, path: Path = _DB) -> None:
-        self._path = path
+        self._path = Path(path)
         self._lock = threading.RLock()
         with self._lock, self._conn() as c:
             c.execute(
                 """CREATE TABLE IF NOT EXISTS users(
                     id TEXT PRIMARY KEY, email TEXT UNIQUE, pw_hash TEXT, role TEXT,
-                    brand_name TEXT, address TEXT, is_active INTEGER DEFAULT 1, created_at TEXT)"""
+                    brand_name TEXT, address TEXT, is_active INTEGER DEFAULT 1,
+                    created_at TEXT, token_ver INTEGER DEFAULT 0)"""
             )
+            # миграция: token_ver для отзыва сессий при смене пароля
+            cols = {r[1] for r in c.execute("PRAGMA table_info(users)").fetchall()}
+            if "token_ver" not in cols:
+                c.execute("ALTER TABLE users ADD COLUMN token_ver INTEGER DEFAULT 0")
 
     def _conn(self) -> sqlite3.Connection:
-        c = sqlite3.connect(self._path)
+        c = sqlite3.connect(self._path, timeout=5.0)
         c.row_factory = sqlite3.Row
+        c.execute("PRAGMA journal_mode=WAL")
+        c.execute("PRAGMA busy_timeout=5000")
         return c
 
     def by_email(self, email: str) -> sqlite3.Row | None:
@@ -249,7 +276,7 @@ def register(data: RegisterInput, request: HttpRequest) -> AuthResult:
     uid = accounts.create(data.email, hash_password(data.password), role, brand, addr)
     row = accounts.by_id(uid)
     audit.info("register OK id=%s role=%s email=%s ip=%s", uid, role, data.email, _ip(request))
-    return AuthResult(access_token=create_token(uid, role), user=_public(row))
+    return AuthResult(access_token=create_token(uid, role, ver=_row_token_ver(row)), user=_public(row))
 
 
 @router.post("/auth/login", response_model=AuthResult, dependencies=[Depends(auth_rate_limit)])
@@ -266,7 +293,15 @@ def login(data: LoginInput, request: HttpRequest) -> AuthResult:
         raise HTTPException(403, "Аккаунт отключён")
     _jail_reset(email)
     audit.info("login OK id=%s ip=%s", row["id"], _ip(request))
-    return AuthResult(access_token=create_token(row["id"], row["role"]), user=_public(row))
+    return AuthResult(access_token=create_token(row["id"], row["role"], ver=_row_token_ver(row)),
+                      user=_public(row))
+
+
+def _row_token_ver(row) -> int:
+    try:
+        return int(row["token_ver"] or 0)
+    except (KeyError, IndexError, TypeError):
+        return 0
 
 
 def optional_user(authorization: str | None = Header(default=None)) -> PublicUser | None:
@@ -276,7 +311,9 @@ def optional_user(authorization: str | None = Header(default=None)) -> PublicUse
     try:
         payload = decode_token(authorization.split(" ", 1)[1])
         row = accounts.by_id(payload["sub"])
-        return _public(row) if row else None
+        if not row or payload.get("ver", 0) != _row_token_ver(row):
+            return None
+        return _public(row)
     except ValueError:
         return None
 
@@ -291,6 +328,9 @@ def current_user(authorization: str | None = Header(default=None)) -> PublicUser
     row = accounts.by_id(payload["sub"])
     if not row:
         raise HTTPException(401, "Пользователь не найден")
+    if payload.get("ver", 0) != _row_token_ver(row):
+        # пароль менялся после выпуска токена — все старые сессии отозваны
+        raise HTTPException(401, "Сессия недействительна, войдите заново")
     return _public(row)
 
 
@@ -318,10 +358,14 @@ def change_password(data: ChangePasswordInput,
         audit.warning("change-password FAIL id=%s ip=%s", user.id, _ip(request))
         raise HTTPException(401, "Текущий пароль неверен")
     with accounts._lock, accounts._conn() as c:
-        c.execute("UPDATE users SET pw_hash=? WHERE id=?",
+        # token_ver+1 отзывает ВСЕ ранее выданные токены (украденный JWT умирает)
+        c.execute("UPDATE users SET pw_hash=?, token_ver=COALESCE(token_ver,0)+1 WHERE id=?",
                   (hash_password(data.new_password), user.id))
-    audit.info("change-password OK id=%s ip=%s", user.id, _ip(request))
-    return {"status": "ok"}
+    row = accounts.by_id(user.id)
+    audit.info("change-password OK id=%s ip=%s (сессии отозваны)", user.id, _ip(request))
+    # свежий токен — чтобы текущее устройство осталось залогиненным
+    return {"status": "ok",
+            "access_token": create_token(user.id, row["role"], ver=_row_token_ver(row))}
 
 
 # --------------------------------------------------------------------------- #

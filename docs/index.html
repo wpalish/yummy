@@ -868,8 +868,9 @@ window.changePwForm=()=>{
   $("#pwBtn").onclick=async()=>{
     const old=$("#pwOld").value, nw=$("#pwNew").value;
     const pe=_pwErr(nw); if(pe){$("#pw_err").textContent=pe;return;}
-    try{ await post("/auth/change-password",{old_password:old,new_password:nw});
-      closeModal(); toast("Пароль изменён ✓"); }
+    try{ const r=await post("/auth/change-password",{old_password:old,new_password:nw});
+      if(r&&r.access_token){const a=account();a.token=r.access_token;setAccount(a);}  // старые сессии отозваны, эта — обновлена
+      closeModal(); toast("Пароль изменён ✓ Остальные устройства разлогинены"); }
     catch(e){ $("#pw_err").textContent=e.message; }
   };
 };

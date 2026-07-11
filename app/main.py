@@ -20,7 +20,13 @@ from fastapi.responses import FileResponse, PlainTextResponse
 from fastapi.staticfiles import StaticFiles
 
 from . import __version__
-from .accounts import PublicUser, current_user, optional_user, require_role
+from .accounts import (
+    PublicUser,
+    assert_prod_config,
+    current_user,
+    optional_user,
+    require_role,
+)
 from .accounts import router as accounts_router
 from .auth_telegram import router as telegram_router
 from .db import Store
@@ -73,6 +79,7 @@ _SEC_HEADERS = {
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    assert_prod_config()  # fail-fast: прод-режим не стартует с dev-секретом
     if store.count() == (0, 0, 0):
         from .seed import seed
         seed(store)
@@ -128,8 +135,10 @@ _rate_hits: dict[str, deque[float]] = {}
 
 def rate_limit_orders(req: HttpRequest) -> None:
     """Не более _RATE_MAX заказов с одного IP за _RATE_WINDOW секунд."""
+    from .accounts import _purge_hits
     ip = req.client.host if req.client else "?"
     now = time.monotonic()
+    _purge_hits(_rate_hits, _RATE_WINDOW)
     hits = _rate_hits.setdefault(ip, deque())
     while hits and now - hits[0] > _RATE_WINDOW:
         hits.popleft()
@@ -270,8 +279,13 @@ def admin_orders() -> list[Order]:
 
 @app.post("/admin/refund/{order_id}", tags=["Admin"],
           dependencies=[Depends(require_role("admin"))])
-def admin_refund(order_id: str) -> dict:
-    return {"refunded": store.refund(order_id)}
+def admin_refund(order_id: str, req: HttpRequest,
+                 user: PublicUser | None = Depends(optional_user)) -> dict:
+    ok = store.refund(order_id)
+    log.info("audit: refund order=%s ok=%s by=%s ip=%s",
+             order_id, ok, user.id if user else "demo",
+             req.client.host if req.client else "?")
+    return {"refunded": ok}
 
 
 @app.post("/admin/seed", tags=["Dev"], dependencies=[Depends(local_only)])
