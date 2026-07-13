@@ -6,9 +6,16 @@ docs/index.html (единственный источник правды посл
 """
 from __future__ import annotations
 
+import os
 import pathlib
 import shutil
 import sys
+
+# Адрес задеплоенного бэкенда для витрины на Pages.
+#   пусто          → демо-режим (данные в браузере, как сейчас)
+#   https://…      → все запросы Pages идут в реальный сервер
+# Задаётся: YUMMY_PAGES_API_BASE=https://yummy-astana.onrender.com make docs
+PAGES_API_BASE = os.getenv("YUMMY_PAGES_API_BASE", "").rstrip("/")
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 STATIC = ROOT / "app" / "static"
@@ -32,7 +39,10 @@ def extract_client_store() -> str:
     """Достать client-store из прошлой сборки docs/index.html."""
     old = (DOCS / "index.html").read_text(encoding="utf-8")
     start = old.index("/* ===== CLIENT-SIDE STORE")
-    end = old.index("const STATUS_RU=", start)
+    # стоп ПЕРЕД диспетчером (если он уже вставлялся в прошлой сборке) — иначе
+    # каждая пересборка дублировала бы API_BASE/api. Иначе — до STATUS_RU.
+    marker = old.find("/* Переключатель бэкенда", start)
+    end = marker if marker != -1 else old.index("const STATUS_RU=", start)
     return old[start:end].rstrip()
 
 
@@ -46,7 +56,24 @@ def main() -> int:
     if API_BLOCK not in html:
         print("ОШИБКА: api-блок не найден в app/static/index.html", file=sys.stderr)
         return 1
-    html = html.replace(API_BLOCK, client)
+
+    # client-store → внутренние _demoGet/_demoPost; поверх — диспетчер по API_BASE
+    client = (client.replace("async function get(u){", "async function _demoGet(u){")
+                    .replace("async function post(u,body){", "async function _demoPost(u,body){"))
+    dispatcher = f'''
+/* Переключатель бэкенда: пусто → демо (данные в браузере); URL → реальный сервер */
+const API_BASE = "{PAGES_API_BASE}";
+async function api(m,u,b,_retry){{const h=b?{{"Content-Type":"application/json"}}:{{}};
+  const a=account(); if(a&&a.token)h["Authorization"]="Bearer "+a.token;
+  const r=await fetch(API_BASE+u,{{method:m,headers:h,body:b?JSON.stringify(b):undefined}});
+  if(r.status===401&&!_retry&&a&&a.refresh&&!u.startsWith("/auth/")){{
+    try{{const rr=await fetch(API_BASE+"/auth/refresh",{{method:"POST",headers:{{"Content-Type":"application/json"}},body:JSON.stringify({{refresh_token:a.refresh}})}});
+      if(rr.ok){{const j=await rr.json();a.token=j.access_token;a.refresh=j.refresh_token;setAccount(a);return api(m,u,b,true);}}}}catch(e){{}}
+  }}
+  if(!r.ok){{let d;try{{d=await r.json();}}catch(e){{}} throw new Error((d&&d.detail)||("Ошибка "+r.status));}} return r.status===204?null:r.json();}}
+const get=(u)=>API_BASE?api("GET",u):_demoGet(u);
+const post=(u,b)=>API_BASE?api("POST",u,b):_demoPost(u,b);'''
+    html = html.replace(API_BLOCK, client + dispatcher)
     html = html.replace(LEAFLET_TAG, QR_TAG)
     (DOCS / "index.html").write_text(html, encoding="utf-8")
 
@@ -55,8 +82,9 @@ def main() -> int:
         if src.exists():
             shutil.copy(src, DOCS / name)
 
-    ok = "fetch(u,{method" not in html
-    print(f"docs/index.html: {len(html)} байт | fetch убран: {ok}")
+    ok = "_demoGet" in html and "const API_BASE" in html
+    mode = f"бэкенд {PAGES_API_BASE}" if PAGES_API_BASE else "демо (данные в браузере)"
+    print(f"docs/index.html: {len(html)} байт | режим: {mode} | сборка ок: {ok}")
     return 0 if ok else 1
 
 

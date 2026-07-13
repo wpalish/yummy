@@ -859,7 +859,7 @@ function statsCalc(){let gmv=0,issued=0,no_show=0,active=0,refunds=0;
     if(s==="issued")issued++;else if(s==="expired")no_show++;else if(s==="paid")active++;else if(s==="refunded")refunds++;});
   const total=ST.orders.length;
   return {orders_total:total,issued,active,no_show,refunds,gmv,fill_rate:total?Math.round(issued/total*100):0};}
-async function get(u){
+async function _demoGet(u){
   const [path,q]=u.split("?"); const qs=new URLSearchParams(q||""); let m;
   if(path==="/districts")return [...new Set(PARTNERS.map(p=>p.district))].sort();
   if(path==="/boxes"){const d=qs.get("district");
@@ -874,7 +874,7 @@ async function get(u){
   if(path==="/admin/orders")return ST.orders.slice().reverse().map(orderView);
   throw new Error("404 "+path);
 }
-async function post(u,body){ let m;
+async function _demoPost(u,body){ let m;
   if(u==="/orders"){const b=ST.boxes.find(x=>x.id===body.box_id);if(!b)throw new Error("Бокс не найден");
     if(b.qty_left<=0)throw new Error("Боксы закончились"); b.qty_left--;
     const o={id:"o"+(ST.seq++),code:newCode(),box_id:b.id,partner_id:b.partner_id,category:b.category,price:b.price,
@@ -897,6 +897,18 @@ async function post(u,body){ let m;
     o.status="refunded";const b=ST.boxes.find(x=>x.id===o.box_id);if(b)b.qty_left++;persist();return{refunded:true};}
   throw new Error("404 "+u);
 }
+/* Переключатель бэкенда: пусто → демо (данные в браузере); URL → реальный сервер */
+const API_BASE = "";
+async function api(m,u,b,_retry){const h=b?{"Content-Type":"application/json"}:{};
+  const a=account(); if(a&&a.token)h["Authorization"]="Bearer "+a.token;
+  const r=await fetch(API_BASE+u,{method:m,headers:h,body:b?JSON.stringify(b):undefined});
+  if(r.status===401&&!_retry&&a&&a.refresh&&!u.startsWith("/auth/")){
+    try{const rr=await fetch(API_BASE+"/auth/refresh",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({refresh_token:a.refresh})});
+      if(rr.ok){const j=await rr.json();a.token=j.access_token;a.refresh=j.refresh_token;setAccount(a);return api(m,u,b,true);}}catch(e){}
+  }
+  if(!r.ok){let d;try{d=await r.json();}catch(e){} throw new Error((d&&d.detail)||("Ошибка "+r.status));} return r.status===204?null:r.json();}
+const get=(u)=>API_BASE?api("GET",u):_demoGet(u);
+const post=(u,b)=>API_BASE?api("POST",u,b):_demoPost(u,b);
 const STATUS_RU={paid:"оплачен",issued:"выдан",expired:"не забран",refunded:"возврат",cancelled:"отменён"};
 /* Kaspi Pay deep-link: после регистрации мерчанта в Kaspi Pay вставь свой
    service_id — в модалке оплаты появится настоящая кнопка Kaspi. */
