@@ -164,6 +164,7 @@ def decode_token(token: str) -> dict:
 class Accounts:
     def __init__(self, path: Path = _DB) -> None:
         self._path = Path(path)
+        self._path.parent.mkdir(parents=True, exist_ok=True)  # вложенный путь (напр. /var/data)
         self._lock = threading.RLock()
         with self._lock, self._conn() as c:
             c.execute(

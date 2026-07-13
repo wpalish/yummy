@@ -1,10 +1,35 @@
-# Деплой Yummy в один клик:
-#   render.com → New → Blueprint → выбрать репозиторий yummy → Apply
-#   через ~2 мин будет https://yummy-astana.onrender.com (магазин/партнёр/админ, /docs)
+# Деплой Yummy в один клик (Render Blueprint):
+#   render.com → New → Blueprint → выбрать репозиторий wpalish/yummy → Apply
+# Render сам сгенерирует YUMMY_SECRET_KEY. После деплоя проверь /health и /docs.
+# Полная инструкция и апгрейд до персистентной БД — в DEPLOY.md.
 services:
   - type: web
     name: yummy-astana
     runtime: python
-    plan: free
+    plan: free                    # $0. Минус free: спин-даун через 15 мин простоя
     buildCommand: pip install -r requirements.txt
     startCommand: uvicorn app.main:app --host 0.0.0.0 --port $PORT --no-server-header
+    healthCheckPath: /health
+    autoDeploy: true
+    envVars:
+      - key: YUMMY_DB_PATH        # БД в ФС инстанса. На free НЕ переживает редеплой —
+        value: ./data/yummy.db    # для постоянной БД см. DEPLOY.md (Starter + disk)
+      - key: YUMMY_ENFORCE_AUTH   # включить серверную защиту эндпоинтов
+        value: "1"
+      - key: YUMMY_SECRET_KEY     # подпись JWT — Render сгенерирует случайное значение
+        generateValue: true
+      - key: YUMMY_ADMIN_EMAILS   # регистрация с этим email получит роль admin
+        value: alisher.nursain@gmail.com
+      - key: YUMMY_CORS_ORIGINS   # с каких доменов фронт ходит в API
+        value: https://wpalish.github.io
+      - key: PYTHON_VERSION
+        value: "3.12"
+
+# ─── Персистентная БД (когда появится первый реальный партнёр) ───────────────
+# Смени plan на "starter" (~$7/мес) и добавь диск + путь на него:
+#   plan: starter
+#   disk:
+#     name: yummy-data
+#     mountPath: /var/data
+#     sizeGB: 1
+#   envVars: YUMMY_DB_PATH = /var/data/yummy.db
