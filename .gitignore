@@ -5,3 +5,6 @@ __pycache__/
 *.db
 .DS_Store
 backups/
+
+# Local delivery archives
+/yummy-*.zip
