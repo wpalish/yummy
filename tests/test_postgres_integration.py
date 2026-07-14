@@ -4,6 +4,7 @@ from __future__ import annotations
 import os
 import subprocess
 import sys
+from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
@@ -41,6 +42,17 @@ def test_postgres_migration_and_transactional_order_flow():
         value_est=2000, qty=1, pickup_from=now.isoformat(),
         pickup_to=(now + timedelta(hours=2)).isoformat(),
     ))
-    order = store.create_order("pg-order", "YM-PG001-PG001", box, "User", "+77000", uid)
-    assert order and store.box("pg-box").qty_left == 0
-    assert store.create_order("pg-order-2", "YM-PG002-PG002", box, "User", "+77000", uid) is None
+    replica_a = Store(database_url=URL)
+    replica_b = Store(database_url=URL)
+
+    def buy(replica, order_id, code):
+        return replica.create_order(order_id, code, box, "User", "+77000", uid)
+
+    with ThreadPoolExecutor(max_workers=2) as executor:
+        futures = [
+            executor.submit(buy, replica_a, "pg-order-a", "YM-PG001-PG001"),
+            executor.submit(buy, replica_b, "pg-order-b", "YM-PG002-PG002"),
+        ]
+    results = [future.result() for future in futures]
+    assert sum(result is not None for result in results) == 1
+    assert store.box("pg-box").qty_left == 0

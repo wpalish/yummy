@@ -59,6 +59,8 @@ psycopg==3.3.4
     # via -r requirements.txt
 psycopg-binary==3.3.4
     # via psycopg
+psycopg-pool==3.3.1
+    # via -r requirements.txt
 pycparser==3.0
     # via cffi
 pydantic==2.13.4
@@ -89,6 +91,7 @@ typing-extensions==4.16.0
     #   anyio
     #   fastapi
     #   psycopg
+    #   psycopg-pool
     #   pydantic
     #   pydantic-core
     #   sqlalchemy

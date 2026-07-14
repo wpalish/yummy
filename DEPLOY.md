@@ -92,6 +92,8 @@ uvicorn app.main:app
 ```
 
 Schema нельзя менять startup-DDL или вручную: только новая Alembic revision.
+`YUMMY_DB_POOL_MAX × replicas` должен укладываться в connection limit managed DB;
+pool ленивый, bounded, с 5-секундным checkout timeout и rollback при exception.
 Managed backup/PITR настраивается у DB provider; `make backup` остаётся только для
 локального SQLite fallback.
 

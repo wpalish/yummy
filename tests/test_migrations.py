@@ -7,7 +7,7 @@ import subprocess
 import sys
 from pathlib import Path
 
-from app.database import CompatRow, Database, _pg_sql
+from app.database import CompatRow, Database, _pg_sql, close_all_pools
 
 ROOT = Path(__file__).resolve().parent.parent
 
@@ -18,6 +18,14 @@ def test_placeholder_translation_and_compat_row():
     )
     row = CompatRow([("id", "u1"), ("email", "a@example.com")])
     assert row[0] == row["id"] == "u1" and dict(row)["email"] == "a@example.com"
+
+
+def test_postgres_databases_share_a_lazy_pool():
+    url = "postgresql://user:pass@localhost/yummy"
+    first = Database(Path("ignored.db"), database_url=url)
+    second = Database(Path("ignored2.db"), database_url=url)
+    assert first.is_postgres and first.pool is second.pool and first.pool.closed
+    close_all_pools()
 
 
 def test_explicit_path_keeps_sqlite_even_if_database_url_exists(tmp_path, monkeypatch):

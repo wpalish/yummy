@@ -36,6 +36,7 @@ from .accounts import (
 )
 from .accounts import router as accounts_router
 from .auth_telegram import router as telegram_router
+from .database import close_all_pools
 from .db import Store
 from .distributed_limit import limiter as distributed_limiter
 from .email_delivery import assert_email_config
@@ -202,7 +203,10 @@ async def lifespan(app: FastAPI):
     if store.count() == (0, 0, 0):
         from .seed import seed
         seed(store)
-    yield
+    try:
+        yield
+    finally:
+        close_all_pools()
 
 
 app = FastAPI(

@@ -158,7 +158,7 @@ refund request ownership/admin workflow уже реализован, но реа
 | SSRF | LOW SURFACE | AI URL константный; не добавлять user-controlled fetch |
 | File upload controls | N/A | upload endpoints отсутствуют; вводить полным пакетом |
 | AES-256 database encryption | **GAP — P0** | encrypted managed disk/SQLCipher + key manager evidence |
-| PostgreSQL/Alembic | IMPLEMENTED | psycopg adapter, versioned initial schema, production fail-fast, PG integration slot |
+| PostgreSQL/Alembic/pool | IMPLEMENTED | versioned schema, shared bounded psycopg pool, production fail-fast, replica race test |
 | Private DB network/RLS | EXTERNAL/P1 | managed private network and least-privilege DB role; RLS if needed |
 | Daily/PITR/immutable/offsite backup | **GAP — P0** | managed retention/PITR and restore drill still require provider evidence |
 | SIEM/IDS/IPS/24x7 alerts | EXTERNAL | log drain + alert routing + on-call |

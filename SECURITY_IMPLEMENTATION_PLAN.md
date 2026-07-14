@@ -127,7 +127,8 @@ sequenceDiagram
 | 0 | BOLA, admin bootstrap, Argon2id, refresh reuse, request policy, CI baseline | 4–6 | repository checks green |
 | 1 | Redis distributed limits | done | atomic/fail-closed/pseudonymous-key tests pass |
 | 1b | PostgreSQL adapter + initial Alembic schema | done | SQLite apply + PostgreSQL DDL + optional real-PG integration |
-| 1c | Pool/load/failover/PITR tuning | 3–5 | 2+ replicas meet SLO under failure/load |
+| 1c | Shared bounded psycopg pool + two-replica oversell test | done | commit/rollback/checkout semantics tested |
+| 1d | Load/failover/PITR tuning | 2–4 | 2+ replicas meet SLO under DB failure/load |
 | 2 | Encrypted admin TOTP/recovery + replay-safe assurance | done | MFA bypass/replay/refresh tests pass |
 | 2a | Partner approval/suspension control plane | done | pending bypass and revoke tests pass |
 | 2b | Email verification/password recovery token flows | done | expiry/replay/enumeration/session tests pass |
@@ -155,7 +156,8 @@ gantt
     section P0 before real payments
     Redis distributed limiter              :done, p0r, 2026-07-14, 3d
     PostgreSQL adapter and Alembic          :done, p1, 2026-07-14, 6d
-    Pool load failover PITR tuning          :crit, p1c, after b2, 5d
+    Bounded psycopg connection pool         :done, p1c, 2026-07-14, 3d
+    Load failover PITR tuning               :crit, p1d, after b2, 4d
     Encrypted admin TOTP and recovery       :done, p2, 2026-07-14, 4d
     Email verification and recovery flows  :done, p2b, 2026-07-14, 4d
     WebAuthn and production mail setup      :crit, p2c, after b2, 8d

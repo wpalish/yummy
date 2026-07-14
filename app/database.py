@@ -1,17 +1,20 @@
-"""Small DB-API compatibility layer for SQLite (dev/tests) and PostgreSQL.
-
-Repositories keep parameterized SQL with ``?`` placeholders; the adapter converts
-those placeholders to psycopg's ``%s``. PostgreSQL schema is owned by Alembic.
-"""
+"""DB-API compatibility layer: SQLite dev/tests and pooled PostgreSQL production."""
 from __future__ import annotations
 
+import hashlib
 import os
 import sqlite3
+import threading
 from pathlib import Path
 
-import psycopg
+from psycopg_pool import ConnectionPool
 
 DATABASE_URL = os.getenv("DATABASE_URL", "").strip()
+_POOL_MIN = max(1, min(int(os.getenv("YUMMY_DB_POOL_MIN", "1")), 20))
+_POOL_MAX = max(_POOL_MIN, min(int(os.getenv("YUMMY_DB_POOL_MAX", "10")), 100))
+_POOL_TIMEOUT = max(1.0, min(float(os.getenv("YUMMY_DB_POOL_TIMEOUT", "5")), 30.0))
+_POOLS: dict[str, ConnectionPool] = {}
+_POOLS_LOCK = threading.Lock()
 
 
 class CompatRow(dict):
@@ -34,16 +37,48 @@ def _pg_sql(sql: str) -> str:
     return sql.replace("?", "%s")
 
 
+def _pool_for(url: str) -> ConnectionPool:
+    with _POOLS_LOCK:
+        pool = _POOLS.get(url)
+        if pool is None:
+            name = "yummy-" + hashlib.sha256(url.encode()).hexdigest()[:10]
+            pool = ConnectionPool(
+                conninfo=url, min_size=_POOL_MIN, max_size=_POOL_MAX,
+                timeout=_POOL_TIMEOUT, open=False, name=name,
+                kwargs={"row_factory": _row_factory},
+            )
+            _POOLS[url] = pool
+        return pool
+
+
+def close_all_pools() -> None:
+    with _POOLS_LOCK:
+        pools = list(_POOLS.values())
+        _POOLS.clear()
+    for pool in pools:
+        pool.close()
+
+
 class PostgresConnection:
-    def __init__(self, url: str):
-        self.raw = psycopg.connect(url, row_factory=_row_factory)
+    """Context manager returning a pooled transaction-scoped connection."""
+
+    def __init__(self, pool: ConnectionPool):
+        self.pool = pool
+        self.raw = None
+        self._context = None
 
     def __enter__(self):
-        self.raw.__enter__()
+        if self.pool.closed:
+            # Lazy opening lets Alembic run before application repositories connect.
+            self.pool.open(wait=True, timeout=_POOL_TIMEOUT)
+        self._context = self.pool.connection(timeout=_POOL_TIMEOUT)
+        self.raw = self._context.__enter__()
         return self
 
     def __exit__(self, exc_type, exc, tb):
-        return self.raw.__exit__(exc_type, exc, tb)
+        # psycopg connection context commits on success, rolls back on exception,
+        # then psycopg_pool returns the clean connection to the shared pool.
+        return self._context.__exit__(exc_type, exc, tb)
 
     def execute(self, sql: str, params=()):
         return self.raw.execute(_pg_sql(sql), params)
@@ -64,12 +99,13 @@ class Database:
         self.path = Path(path)
         self.url = database_url if database_url is not None else (DATABASE_URL if use_env else "")
         self.is_postgres = self.url.startswith(("postgresql://", "postgres://"))
+        self.pool = _pool_for(self.url) if self.is_postgres else None
         if not self.is_postgres:
             self.path.parent.mkdir(parents=True, exist_ok=True)
 
     def connect(self):
         if self.is_postgres:
-            return PostgresConnection(self.url)
+            return PostgresConnection(self.pool)
         connection = sqlite3.connect(self.path, timeout=5.0)
         connection.row_factory = sqlite3.Row
         connection.execute("PRAGMA journal_mode=WAL")
@@ -77,3 +113,6 @@ class Database:
         connection.execute("PRAGMA foreign_keys=ON")
         connection.execute("PRAGMA synchronous=NORMAL")
         return connection
+
+    def pool_stats(self) -> dict:
+        return self.pool.get_stats() if self.pool else {}

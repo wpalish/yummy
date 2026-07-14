@@ -23,6 +23,12 @@ services:
         fromDatabase:
           name: yummy-db
           property: connectionString
+      - key: YUMMY_DB_POOL_MIN
+        value: "1"
+      - key: YUMMY_DB_POOL_MAX    # умножается на число replicas; не превышай DB budget
+        value: "5"
+      - key: YUMMY_DB_POOL_TIMEOUT
+        value: "5"
       - key: YUMMY_ENV            # fail-fast прод-конфига; private API всегда требует JWT
         value: production
       - key: YUMMY_SECRET_KEY     # подпись JWT — Render сгенерирует случайное значение
