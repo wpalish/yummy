@@ -1,7 +1,9 @@
 # Yummy — технический план security hardening
 
-**Baseline:** 2026-07-14  
-**Текущий стек:** FastAPI, SQLite, vanilla JS, Render/GitHub Pages  
+**Baseline:** 2026-07-14
+
+**Текущий стек:** FastAPI, SQLite, vanilla JS, Render/GitHub Pages
+
 **Целевой уровень:** архитектура, допускающая проверку по OWASP ASVS Level 3.
 Это не заявление о compliance: статус L3 появляется только после evidence review
 по каждому требованию и независимого тестирования.
