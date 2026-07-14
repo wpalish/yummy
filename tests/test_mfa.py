@@ -86,9 +86,11 @@ def test_admin_login_requires_mfa_and_refresh_preserves_assurance(client):
     body = logged.json()
     assert "auth_methods" not in body["user"] and "mfa_enabled" not in body["user"]
     assert "mfa" in A.decode_token(body["access_token"])["amr"]
-    assert c.get("/admin/stats", headers={
-        "Authorization": f"Bearer {body['access_token']}"
-    }).status_code == 200
+    admin_headers = {"Authorization": f"Bearer {body['access_token']}"}
+    assert c.get("/admin/stats", headers=admin_headers).status_code == 200
+    database = c.get("/admin/system/database", headers=admin_headers)
+    assert database.status_code == 200
+    assert database.json()["backend"] == "sqlite" and "url" not in str(database.json()).lower()
 
     refreshed = c.post("/auth/refresh", json={"refresh_token": body["refresh_token"]})
     assert refreshed.status_code == 200

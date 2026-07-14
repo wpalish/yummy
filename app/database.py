@@ -13,6 +13,9 @@ DATABASE_URL = os.getenv("DATABASE_URL", "").strip()
 _POOL_MIN = max(1, min(int(os.getenv("YUMMY_DB_POOL_MIN", "1")), 20))
 _POOL_MAX = max(_POOL_MIN, min(int(os.getenv("YUMMY_DB_POOL_MAX", "10")), 100))
 _POOL_TIMEOUT = max(1.0, min(float(os.getenv("YUMMY_DB_POOL_TIMEOUT", "5")), 30.0))
+_STATEMENT_TIMEOUT_MS = max(500, min(int(os.getenv("YUMMY_DB_STATEMENT_TIMEOUT_MS", "5000")), 60_000))
+_LOCK_TIMEOUT_MS = max(100, min(int(os.getenv("YUMMY_DB_LOCK_TIMEOUT_MS", "2000")), 30_000))
+_IDLE_TX_TIMEOUT_MS = max(1_000, min(int(os.getenv("YUMMY_DB_IDLE_TX_TIMEOUT_MS", "10000")), 120_000))
 _POOLS: dict[str, ConnectionPool] = {}
 _POOLS_LOCK = threading.Lock()
 
@@ -45,7 +48,15 @@ def _pool_for(url: str) -> ConnectionPool:
             pool = ConnectionPool(
                 conninfo=url, min_size=_POOL_MIN, max_size=_POOL_MAX,
                 timeout=_POOL_TIMEOUT, open=False, name=name,
-                kwargs={"row_factory": _row_factory},
+                kwargs={
+                    "row_factory": _row_factory,
+                    "application_name": "yummy-api",
+                    "options": (
+                        f"-c statement_timeout={_STATEMENT_TIMEOUT_MS} "
+                        f"-c lock_timeout={_LOCK_TIMEOUT_MS} "
+                        f"-c idle_in_transaction_session_timeout={_IDLE_TX_TIMEOUT_MS}"
+                    ),
+                },
             )
             _POOLS[url] = pool
         return pool

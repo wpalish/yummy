@@ -396,6 +396,10 @@ class Store:
             "fill_rate": round(issued / closed * 100) if closed else 0,
         }
 
+    def ping(self) -> bool:
+        with self._conn() as connection:
+            return connection.execute("SELECT 1").fetchone()[0] == 1
+
     def count(self) -> tuple[int, int, int]:
         with self._lock, self._conn() as c:
             p = c.execute("SELECT COUNT(*) FROM partners").fetchone()[0]

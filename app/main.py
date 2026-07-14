@@ -455,8 +455,20 @@ def index() -> FileResponse:
     return FileResponse(_STATIC / "index.html")
 
 
+@app.get("/live", tags=["Dev"])
+def liveness() -> dict:
+    """Process liveness only; does not consume a DB connection."""
+    return {"status": "alive"}
+
+
 @app.get("/health", tags=["Dev"])
 def health() -> dict:
+    """Readiness: fails if PostgreSQL/pool checkout/query is unavailable."""
+    try:
+        store.ping()
+    except Exception as exc:
+        log.error("readiness database unavailable: %s", type(exc).__name__)
+        raise HTTPException(503, "database unavailable") from exc
     if _PRODUCTION:
         return {"status": "ok"}
     p, b, o = store.count()
@@ -784,6 +796,25 @@ def admin_set_partner_status(
         address=row["address"] or "", district=row["district"] or "",
         status=row["partner_status"], created_at=row["created_at"],
     )
+
+
+@app.get("/admin/system/database", tags=["Admin"])
+def admin_database_status(
+    user: PublicUser = Depends(require_role("admin")),
+) -> dict:
+    del user
+    stats = store._database.pool_stats()
+    allowed = {
+        "pool_min", "pool_max", "pool_size", "pool_available",
+        "requests_waiting", "requests_num", "requests_queued",
+        "usage_ms", "requests_wait_ms", "connections_num",
+        "connections_errors", "connections_lost",
+    }
+    return {
+        "backend": "postgresql" if store._database.is_postgres else "sqlite",
+        "ready": store.ping(),
+        "pool": {key: value for key, value in stats.items() if key in allowed},
+    }
 
 
 @app.get("/admin/stats", tags=["Admin"], dependencies=[Depends(require_role("admin"))])

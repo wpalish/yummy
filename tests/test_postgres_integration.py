@@ -25,6 +25,10 @@ def test_postgres_migration_and_transactional_order_flow():
                    cwd=ROOT, env=env, check=True, capture_output=True)
     accounts = Accounts(database_url=URL)
     store = Store(database_url=URL)
+    with store._conn() as connection:
+        assert connection.execute("SHOW statement_timeout").fetchone()[0] == "5s"
+        assert connection.execute("SHOW lock_timeout").fetchone()[0] == "2s"
+        assert connection.execute("SHOW application_name").fetchone()[0] == "yummy-api"
     with accounts._conn() as connection:
         connection.executescript(
             "DELETE FROM mfa_recovery_codes; DELETE FROM action_tokens; "

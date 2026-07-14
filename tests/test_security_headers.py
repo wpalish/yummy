@@ -76,6 +76,16 @@ def test_root_scope_pwa_assets_are_served():
     assert worker.headers["service-worker-allowed"] == "/"
 
 
+def test_liveness_does_not_depend_on_database_but_readiness_does(monkeypatch):
+    import app.main as main_mod
+
+    client = _client()
+    monkeypatch.setattr(main_mod.store, "ping", lambda: (_ for _ in ()).throw(RuntimeError("down")))
+    assert client.get("/live").status_code == 200
+    readiness = client.get("/health")
+    assert readiness.status_code == 503 and readiness.json()["detail"] == "database unavailable"
+
+
 def test_host_header_allowlist_rejects_unknown_host():
     from fastapi.testclient import TestClient
     from app.main import app
