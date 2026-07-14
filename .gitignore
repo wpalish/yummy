@@ -4,6 +4,8 @@ __pycache__/
 .pytest_cache/
 *.db
 .DS_Store
-.github/
+# workflows игнорируем: git-токен без scope `workflow` не может их пушить
+# (dependabot.yml — не workflow, пушится обычным токеном)
+.github/workflows/
 backups/
 .env

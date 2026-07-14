@@ -8,6 +8,7 @@ from __future__ import annotations
 import logging
 import os
 import time
+import secrets
 import uuid
 from collections import deque
 from contextlib import asynccontextmanager
@@ -81,6 +82,10 @@ _SEC_HEADERS = {
     "Referrer-Policy": "strict-origin-when-cross-origin",
     "Permissions-Policy": "camera=(self), microphone=(), geolocation=()",
     "Strict-Transport-Security": "max-age=31536000; includeSubDomains",
+    # изоляция от cross-origin атак (Spectre-класс): окно не шарит browsing
+    # context group; ресурсы API читает только своя витрина (CORS уже правит)
+    "Cross-Origin-Opener-Policy": "same-origin",
+    "Cross-Origin-Resource-Policy": "cross-origin",
 }
 
 
@@ -176,8 +181,13 @@ def _new(prefix: str, n: int = 8) -> str:
     return f"{prefix}{uuid.uuid4().hex[:n]}"
 
 
+# Алфавит без похожих символов (0/O, 1/I/L, 8/B…) — легко продиктовать на
+# кассе, трудно подобрать: 27^6 ≈ 387 млн вместо 16^4 = 65 тыс. у hex-кода.
+_CODE_ALPHABET = "23456789ACDEFHJKMNPQRTVWXYZ"
+
+
 def _order_code() -> str:
-    return "YM-" + uuid.uuid4().hex[:4].upper()
+    return "YM-" + "".join(secrets.choice(_CODE_ALPHABET) for _ in range(6))
 
 
 # --------------------------------------------------------------------------- #

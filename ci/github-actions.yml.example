@@ -1,0 +1,80 @@
+# CI-шаблон для GitHub Actions (по мотивам Arena-ревью, PR #6).
+#
+# Почему example, а не .github/workflows/ci.yml: текущий git-токен без scope
+# `workflow` не может пушить воркфлоу (см. историю проекта). Когда обновишь
+# токен (gh auth refresh -s workflow), просто скопируй:
+#   cp ci/github-actions.yml.example .github/workflows/ci.yml
+name: CI
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  quality:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: requirements.txt
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt bandit
+      - name: Test
+        run: pytest -q
+      - name: SAST (bandit)
+        run: bandit -q -r app tools
+      - name: Compile and verify generated docs
+        run: |
+          python -m compileall -q app tools
+          python tools/build_docs.py
+          git diff --exit-code -- docs
+      - name: Build production container
+        run: docker build -t yummy:${{ github.sha }} .
+
+  codeql:
+    name: CodeQL (${{ matrix.language }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      security-events: write
+    strategy:
+      fail-fast: false
+      matrix:
+        language: [python, javascript-typescript]
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: github/codeql-action/init@v3
+        with:
+          languages: ${{ matrix.language }}
+      - uses: github/codeql-action/analyze@v3
+        with:
+          category: /language:${{ matrix.language }}
+
+  repository-scan:
+    name: Secrets and IaC scan
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: aquasecurity/trivy-action@0.28.0
+        with:
+          scan-type: fs
+          scan-ref: .
+          scanners: secret,misconfig
+          format: table
+          exit-code: "1"
+          severity: HIGH,CRITICAL
