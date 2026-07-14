@@ -5,8 +5,10 @@
 """
 from __future__ import annotations
 
+import hmac
 import logging
 import os
+import secrets
 import time
 import uuid
 from collections import deque
@@ -16,13 +18,17 @@ from pathlib import Path
 from fastapi import Depends, FastAPI, HTTPException
 from fastapi import Request as HttpRequest
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse, PlainTextResponse
+from fastapi.responses import FileResponse, JSONResponse, PlainTextResponse
 from fastapi.staticfiles import StaticFiles
+from starlette.middleware.trustedhost import TrustedHostMiddleware
 
 from . import __version__
 from . import ai as ai_mod
 from .accounts import (
     PublicUser,
+    _ACCESS_COOKIE,
+    _CSRF_COOKIE,
+    _REFRESH_COOKIE,
     assert_prod_config,
     current_user,
     optional_user,
@@ -31,9 +37,11 @@ from .accounts import (
 from .accounts import router as accounts_router
 from .auth_telegram import router as telegram_router
 from .db import Store
+from .email_delivery import assert_email_config
 from .models import (
     CATEGORY_RU,
     Box,
+    ManualEmailVerifyInput,
     BoxCreate,
     BoxDescribeInput,
     BoxDescribeResult,
@@ -41,7 +49,13 @@ from .models import (
     OrderCreate,
     OrderResult,
     Partner,
+    PartnerApplication,
+    PartnerStatusUpdate,
+    PublicOrder,
     RedeemInput,
+    RefundDecision,
+    RefundRequest,
+    RefundRequestCreate,
     Review,
     ReviewCreate,
 )
@@ -62,17 +76,33 @@ _CORS = [o.strip() for o in os.getenv(
     "YUMMY_CORS_ORIGINS",
     "http://localhost:8021,http://127.0.0.1:8021,https://wpalish.github.io",
 ).split(",") if o.strip()]
+_PRODUCTION = (
+    os.getenv("YUMMY_ENV", "").lower() == "production"
+    or os.getenv("YUMMY_ENFORCE_AUTH", "").lower() in {"1", "true", "yes"}
+)
+_ALLOWED_HOSTS = [h.strip() for h in os.getenv(
+    "YUMMY_ALLOWED_HOSTS", "localhost,127.0.0.1,testserver"
+).split(",") if h.strip()]
+try:
+    _MAX_REQUEST_BYTES = min(max(int(os.getenv("YUMMY_MAX_REQUEST_BYTES", "65536")), 1024),
+                             1_048_576)
+except ValueError:
+    _MAX_REQUEST_BYTES = 65_536
 
-# CSP допускает inline (в приложении много inline-обработчиков) и CDN, с которых
-# грузятся Leaflet/qrcode/html5-qrcode и Swagger UI. Строже сделать нельзя без
-# перевода фронта на nonce — это отдельная большая работа.
+# Исполняемый JS только из внешних файлов; inline event attributes запрещены.
+# Единственный inline script — статичный JSON-LD с фиксированным SHA-256 hash.
+_JSON_LD_HASH = "'sha256-NCY2nlvfh72CFfH+MrdaRIq/GKbQ6lFVHKzGONOrzZE='"
+_LEAFLET_HASH = "'sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo='"
 _CSP = (
     "default-src 'self'; "
-    "script-src 'self' 'unsafe-inline' https://unpkg.com https://cdn.jsdelivr.net; "
+    f"script-src 'self' {_JSON_LD_HASH} {_LEAFLET_HASH}; script-src-attr 'none'; "
     "style-src 'self' 'unsafe-inline' https://unpkg.com https://cdn.jsdelivr.net https://fonts.googleapis.com; "
     "img-src 'self' data: https:; font-src 'self' data: https://fonts.gstatic.com; "
-    "connect-src 'self'; frame-ancestors 'none'; object-src 'none'; base-uri 'self'"
+    "connect-src 'self'; worker-src 'self'; form-action 'self'; "
+    "frame-ancestors 'none'; object-src 'none'; base-uri 'self'"
 )
+if _PRODUCTION:
+    _CSP += "; upgrade-insecure-requests"
 _SEC_HEADERS = {
     "Content-Security-Policy": _CSP,
     "X-Frame-Options": "DENY",
@@ -80,32 +110,164 @@ _SEC_HEADERS = {
     "Referrer-Policy": "strict-origin-when-cross-origin",
     "Permissions-Policy": "camera=(self), microphone=(), geolocation=()",
     "Strict-Transport-Security": "max-age=31536000; includeSubDomains",
+    "Cross-Origin-Opener-Policy": "same-origin",
+    # API намеренно доступен Pages-витрине через строгий CORS allowlist.
+    "Cross-Origin-Resource-Policy": "cross-origin",
+    "X-Permitted-Cross-Domain-Policies": "none",
+    "X-DNS-Prefetch-Control": "off",
 }
+
+
+class _RequestTooLarge(Exception):
+    pass
+
+
+class RequestPolicyMiddleware:
+    """Fail-closed лимит тела и Content-Type policy, включая chunked body."""
+
+    def __init__(self, app, max_bytes: int = 65_536):
+        self.app = app
+        self.max_bytes = max_bytes
+
+    async def __call__(self, scope, receive, send):
+        if scope["type"] != "http":
+            await self.app(scope, receive, send)
+            return
+        headers = {k.lower(): v for k, v in scope.get("headers", [])}
+        raw_length = headers.get(b"content-length")
+        if raw_length:
+            try:
+                if int(raw_length) > self.max_bytes:
+                    await JSONResponse({"detail": "Тело запроса слишком большое"}, status_code=413)(
+                        scope, receive, send
+                    )
+                    return
+            except ValueError:
+                await JSONResponse({"detail": "Некорректный Content-Length"}, status_code=400)(
+                    scope, receive, send
+                )
+                return
+        method = scope.get("method", "GET").upper()
+        has_body = raw_length not in (None, b"0") or b"transfer-encoding" in headers
+        if method in {"POST", "PUT", "PATCH"} and has_body:
+            content_type = headers.get(b"content-type", b"").split(b";", 1)[0].strip().lower()
+            if content_type != b"application/json" and not content_type.endswith(b"+json"):
+                await JSONResponse(
+                    {"detail": "Для этого API требуется Content-Type: application/json"},
+                    status_code=415,
+                )(scope, receive, send)
+                return
+
+        received = 0
+
+        async def limited_receive():
+            nonlocal received
+            message = await receive()
+            if message.get("type") == "http.request":
+                received += len(message.get("body", b""))
+                if received > self.max_bytes:
+                    raise _RequestTooLarge
+            return message
+
+        try:
+            await self.app(scope, limited_receive, send)
+        except _RequestTooLarge:
+            await JSONResponse({"detail": "Тело запроса слишком большое"}, status_code=413)(
+                scope, receive, send
+            )
+
+
+def _assert_edge_config() -> None:
+    if not _PRODUCTION:
+        return
+    configured_hosts = os.getenv("YUMMY_ALLOWED_HOSTS", "")
+    if not configured_hosts or "*" in _ALLOWED_HOSTS:
+        raise RuntimeError("production требует явный YUMMY_ALLOWED_HOSTS без wildcard")
+    if not _CORS or any(origin == "*" or not origin.startswith("https://") for origin in _CORS):
+        raise RuntimeError("production требует HTTPS allowlist в YUMMY_CORS_ORIGINS")
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     assert_prod_config()  # fail-fast: прод-режим не стартует с dev-секретом
+    assert_email_config()
+    _assert_edge_config()
     if store.count() == (0, 0, 0):
         from .seed import seed
         seed(store)
     yield
 
 
-app = FastAPI(title="Yummy MVP", version=__version__, lifespan=lifespan)
+app = FastAPI(
+    title="Yummy MVP",
+    version=__version__,
+    lifespan=lifespan,
+    # Swagger/Redoc требуют inline bootstrap scripts; не ослабляем CSP ради UI.
+    docs_url=None,
+    redoc_url=None,
+    openapi_url=None if _PRODUCTION else "/openapi.json",
+)
+app.add_middleware(RequestPolicyMiddleware, max_bytes=_MAX_REQUEST_BYTES)
+app.add_middleware(TrustedHostMiddleware, allowed_hosts=_ALLOWED_HOSTS)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=_CORS,
-    allow_methods=["GET", "POST"],
-    allow_headers=["Authorization", "Content-Type"],
+    allow_methods=["GET", "POST", "DELETE"],
+    allow_headers=["Authorization", "Content-Type", "X-CSRF-Token"],
 )
 
 
 @app.middleware("http")
+async def csrf_guard(request: HttpRequest, call_next):
+    """Double-submit CSRF для cookie session; Bearer API остаётся CSRF-independent."""
+    if request.method in {"POST", "PUT", "PATCH", "DELETE"}:
+        authorization = request.headers.get("authorization", "")
+        uses_bearer = authorization.lower().startswith("bearer ")
+        uses_cookie = bool(
+            request.cookies.get(_ACCESS_COOKIE) or request.cookies.get(_REFRESH_COOKIE)
+        )
+        if uses_cookie and not uses_bearer:
+            cookie_token = request.cookies.get(_CSRF_COOKIE, "")
+            header_token = request.headers.get("x-csrf-token", "")
+            if (not cookie_token or not header_token
+                    or not hmac.compare_digest(cookie_token, header_token)):
+                return JSONResponse({"detail": "CSRF-проверка не пройдена"}, status_code=403)
+            # Дополнительная browser-boundary проверка; CSRF token остаётся
+            # основной защитой для non-browser клиентов без Origin.
+            origin = request.headers.get("origin")
+            if origin:
+                proto = request.headers.get("x-forwarded-proto", request.url.scheme)
+                expected = f"{proto}://{request.headers.get('host', '')}"
+                if origin.rstrip("/") != expected.rstrip("/"):
+                    return JSONResponse({"detail": "Недопустимый Origin"}, status_code=403)
+    return await call_next(request)
+
+
+@app.middleware("http")
 async def security_headers(request: HttpRequest, call_next):
-    response = await call_next(request)
+    request_id = uuid.uuid4().hex
+    request.state.request_id = request_id
+    started = time.monotonic()
+    raw_path = request.url.path
+    audit_path = "/orders/{code}" if raw_path.startswith("/orders/") else raw_path
+    try:
+        response = await call_next(request)
+    except Exception:
+        log.exception("request ERROR id=%s method=%s path=%s", request_id,
+                      request.method, audit_path)
+        raise
     for k, v in _SEC_HEADERS.items():
         response.headers.setdefault(k, v)
+    response.headers["X-Request-ID"] = request_id
+    if request.url.path.startswith("/static/img/"):
+        response.headers.setdefault("Cache-Control", "public, max-age=604800, immutable")
+    else:
+        # Auth/PII/API ответы не должны оставаться в shared/browser caches.
+        response.headers.setdefault("Cache-Control", "no-store")
+        response.headers.setdefault("Pragma", "no-cache")
+    log.info("request id=%s method=%s path=%s status=%s duration_ms=%s",
+             request_id, request.method, audit_path, response.status_code,
+             round((time.monotonic() - started) * 1000))
     # fingerprint-заголовок Server снимается флагом uvicorn --no-server-header
     # (см. Procfile/render.yaml/Dockerfile) — на уровне middleware его не убрать.
     return response
@@ -115,8 +277,22 @@ async def security_headers(request: HttpRequest, call_next):
 def security_txt() -> PlainTextResponse:
     return PlainTextResponse(
         "Contact: mailto:alisher.nursain@gmail.com\n"
+        "Expires: 2027-07-14T00:00:00Z\n"
         "Preferred-Languages: ru, en\n"
         "Policy: ответственное раскрытие; без DoS и доступа к чужим данным\n"
+    )
+
+
+@app.get("/manifest.json", include_in_schema=False)
+def web_manifest() -> FileResponse:
+    return FileResponse(_STATIC / "manifest.json", media_type="application/manifest+json")
+
+
+@app.get("/sw.js", include_in_schema=False)
+def service_worker() -> FileResponse:
+    return FileResponse(
+        _STATIC / "sw.js", media_type="application/javascript",
+        headers={"Service-Worker-Allowed": "/", "Cache-Control": "no-cache"},
     )
 
 
@@ -175,8 +351,58 @@ def _new(prefix: str, n: int = 8) -> str:
     return f"{prefix}{uuid.uuid4().hex[:n]}"
 
 
+_CODE_ALPHABET = "23456789ABCDEFGHJKLMNPQRSTUVWXYZ"  # без 0/O/1/I
+
+
 def _order_code() -> str:
-    return "YM-" + uuid.uuid4().hex[:4].upper()
+    """50 бит энтропии, но код остаётся удобным для ручного ввода: YM-XXXXX-XXXXX."""
+    raw = "".join(secrets.choice(_CODE_ALPHABET) for _ in range(10))
+    return f"YM-{raw[:5]}-{raw[5:]}"
+
+
+def _partner_for_user(user: PublicUser, *, require_approved: bool = True) -> Partner:
+    """Вернуть tenant партнёра, не публикуя pending/rejected профиль в Store."""
+    if user.role != "partner" or not user.partner_id:
+        raise HTTPException(403, "Аккаунт не привязан к заведению")
+    if require_approved and user.partner_status != "approved":
+        raise HTTPException(403, f"Заведение не одобрено: {user.partner_status or 'pending'}")
+    partner = store.partner(user.partner_id)
+    if partner:
+        if not store.partner_owned_by(partner.id, user.id):
+            raise HTTPException(403, "Заведение принадлежит другому аккаунту")
+        return partner
+    partner = Partner(
+        id=user.partner_id,
+        name=(user.brand_name or "Новое заведение").strip(),
+        district=(user.district or "Астана").strip(),
+        address=(user.address or "Адрес не указан").strip(),
+    )
+    if user.partner_status != "approved":
+        return partner
+    store.upsert_partner(partner, owner_user_id=user.id)
+    if not store.partner_owned_by(partner.id, user.id):
+        raise HTTPException(409, "Не удалось привязать профиль заведения")
+    return store.partner(partner.id) or partner
+
+
+def _authorized_partner_id(user: PublicUser, requested_id: str | None = None) -> str:
+    """Tenant guard для private partner API; admin может указать любую точку."""
+    if user.role == "admin":
+        if not requested_id or not store.partner(requested_id):
+            raise HTTPException(404, "Заведение не найдено")
+        return requested_id
+    partner = _partner_for_user(user)
+    if requested_id is not None and requested_id != partner.id:
+        raise HTTPException(403, "Нет доступа к чужому заведению")
+    return partner.id
+
+
+def require_approved_partner(
+    user: PublicUser = Depends(require_role("partner", "admin")),
+) -> PublicUser:
+    if user.role == "partner":
+        _partner_for_user(user)
+    return user
 
 
 # --------------------------------------------------------------------------- #
@@ -189,6 +415,8 @@ def index() -> FileResponse:
 
 @app.get("/health", tags=["Dev"])
 def health() -> dict:
+    if _PRODUCTION:
+        return {"status": "ok"}
     p, b, o = store.count()
     return {"status": "ok", "partners": p, "boxes": b, "orders": o}
 
@@ -216,7 +444,7 @@ def get_box(box_id: str) -> Box:
 
 @app.post("/orders", response_model=OrderResult, status_code=201, tags=["Store"],
           dependencies=[Depends(rate_limit_orders)])
-def create_order(payload: OrderCreate,
+def create_order(payload: OrderCreate, req: HttpRequest,
                  user: PublicUser | None = Depends(optional_user)) -> OrderResult:
     """Забронировать и оплатить бокс (оплата — демо; в проде Kaspi Pay/QR).
 
@@ -224,10 +452,13 @@ def create_order(payload: OrderCreate,
     с любого устройства; без токена работает как гостевой (по коду).
     """
     box = store.box(payload.box_id)
-    if not box:
+    state = store.box_orderability(payload.box_id)
+    if not box or state == "missing":
         raise HTTPException(404, "Бокс не найден")
-    if box.qty_left <= 0:
+    if state == "sold_out":
         raise HTTPException(409, "Боксы закончились")
+    if state == "expired":
+        raise HTTPException(409, "Окно выдачи этого бокса уже завершилось")
 
     order = store.create_order(
         _new("o"), _order_code(), box, payload.user_name.strip(), payload.user_phone.strip(),
@@ -235,6 +466,9 @@ def create_order(payload: OrderCreate,
     )
     if order is None:
         raise HTTPException(409, "Боксы только что закончились")
+    log.info("audit: order-create id=%s partner=%s actor=%s ip=%s",
+             order.id, order.partner_id, user.id if user else "guest",
+             req.client.host if req.client else "?")
     return OrderResult(order=order, qr_svg=qr_svg(order.code))
 
 
@@ -244,14 +478,43 @@ def my_orders(user: PublicUser = Depends(current_user)) -> list[Order]:
     return store.user_orders(user.id)
 
 
+@app.post("/me/orders/{order_id}/refund-requests", response_model=RefundRequest,
+          status_code=201, tags=["Store"])
+def create_my_refund_request(
+    order_id: str,
+    payload: RefundRequestCreate,
+    req: HttpRequest,
+    user: PublicUser = Depends(current_user),
+) -> RefundRequest:
+    refund = store.create_refund_request(
+        _new("rr"), order_id, user.id, payload.reason, payload.details.strip()
+    )
+    if not refund:
+        raise HTTPException(409, "Заявка невозможна, уже существует или заказ не подходит")
+    log.info("audit: refund-request id=%s order=%s actor=%s ip=%s",
+             refund.id, order_id, user.id, req.client.host if req.client else "?")
+    return refund
+
+
+@app.get("/me/refund-requests", response_model=list[RefundRequest], tags=["Store"])
+def my_refund_requests(user: PublicUser = Depends(current_user)) -> list[RefundRequest]:
+    return store.user_refund_requests(user.id)
+
+
 @app.get("/me/export", tags=["Store"])
 def export_me(user: PublicUser = Depends(current_user)) -> dict:
     """Privacy: скачать все свои данные одним JSON (профиль + заказы)."""
     from .accounts import accounts as users_db
     row = users_db.by_id(user.id)
-    profile = {k: row[k] for k in ("id", "email", "role", "brand_name", "address", "created_at")}
-    return {"profile": profile,
-            "orders": [o.model_dump() for o in store.user_orders(user.id)]}
+    profile = {k: row[k] for k in (
+        "id", "email", "role", "brand_name", "address", "district", "created_at",
+        "terms_accepted_at", "terms_version",
+    )}
+    return {
+        "profile": profile,
+        "orders": [o.model_dump() for o in store.user_orders(user.id)],
+        "refund_requests": [r.model_dump() for r in store.user_refund_requests(user.id)],
+    }
 
 
 @app.delete("/me", tags=["Store"])
@@ -278,12 +541,13 @@ def my_recommendations(user: PublicUser = Depends(current_user)) -> list[Box]:
     return store.recommend_boxes(user.id)
 
 
-@app.get("/orders/{code}", response_model=Order, tags=["Store"])
-def order_status(code: str) -> Order:
+@app.get("/orders/{code}", response_model=PublicOrder, tags=["Store"])
+def order_status(code: str) -> PublicOrder:
+    """Гостевая проверка по высокоэнтропийному коду — без PII и internal id."""
     order = store.order_by_code(code)
     if not order:
         raise HTTPException(404, "Заказ не найден")
-    return order
+    return PublicOrder.from_order(order)
 
 
 # --------------------------------------------------------------------------- #
@@ -294,17 +558,24 @@ def list_partners() -> list[Partner]:
     return store.partners()
 
 
-@app.post("/boxes", response_model=Box, status_code=201, tags=["Partner"],
-          dependencies=[Depends(require_role("partner", "admin"))])
-def create_box(payload: BoxCreate) -> Box:
-    """Партнёр публикует бокс."""
+@app.post("/boxes", response_model=Box, status_code=201, tags=["Partner"])
+def create_box(
+    payload: BoxCreate,
+    req: HttpRequest,
+    user: PublicUser = Depends(require_role("partner", "admin")),
+) -> Box:
+    """Партнёр публикует бокс только в своём tenant; admin — в указанном."""
+    partner_id = _authorized_partner_id(user, payload.partner_id)
     if payload.value_est < payload.price:
         raise HTTPException(400, "Ценность содержимого должна быть не ниже цены бокса")
-    return store.create_box(_new("b"), payload)
+    box = store.create_box(_new("b"), payload.model_copy(update={"partner_id": partner_id}))
+    log.info("audit: box-create id=%s partner=%s actor=%s ip=%s",
+             box.id, partner_id, user.id, req.client.host if req.client else "?")
+    return box
 
 
 @app.post("/ai/describe-box", response_model=BoxDescribeResult, tags=["Partner"],
-          dependencies=[Depends(require_role("partner", "admin")), Depends(rate_limit_ai)])
+          dependencies=[Depends(require_approved_partner), Depends(rate_limit_ai)])
 async def describe_box(payload: BoxDescribeInput) -> BoxDescribeResult:
     """Партнёр пишет черновик («остались круассаны») → продающее описание.
     Без ANTHROPIC_API_KEY — деградирует на детерминированный шаблон, не 501:
@@ -320,12 +591,39 @@ async def describe_box(payload: BoxDescribeInput) -> BoxDescribeResult:
 
 @app.get("/partners/{partner_id}/boxes", response_model=list[Box], tags=["Partner"])
 def partner_boxes(partner_id: str) -> list[Box]:
+    """Публичные карточки точки; PII здесь нет."""
     return store.partner_boxes(partner_id)
 
 
-@app.get("/partners/{partner_id}/orders", response_model=list[Order], tags=["Partner"])
-def partner_orders(partner_id: str) -> list[Order]:
-    return store.partner_orders(partner_id)
+@app.get("/partner/me", response_model=Partner, tags=["Partner"])
+def my_partner_profile(
+    user: PublicUser = Depends(require_role("partner")),
+) -> Partner:
+    return _partner_for_user(user, require_approved=False)
+
+
+@app.get("/partner/me/boxes", response_model=list[Box], tags=["Partner"])
+def my_partner_boxes(
+    user: PublicUser = Depends(require_role("partner")),
+) -> list[Box]:
+    return store.partner_boxes(_partner_for_user(user).id)
+
+
+@app.get("/partner/me/orders", response_model=list[Order], tags=["Partner"])
+def my_partner_orders(
+    user: PublicUser = Depends(require_role("partner")),
+) -> list[Order]:
+    return store.partner_orders(_partner_for_user(user).id)
+
+
+@app.get("/partners/{partner_id}/orders", response_model=list[Order], tags=["Partner"],
+         deprecated=True)
+def partner_orders(
+    partner_id: str,
+    user: PublicUser = Depends(require_role("partner", "admin")),
+) -> list[Order]:
+    """Совместимый private endpoint с обязательным tenant guard."""
+    return store.partner_orders(_authorized_partner_id(user, partner_id))
 
 
 # --------------------------------------------------------------------------- #
@@ -361,17 +659,91 @@ async def submit_review(partner_id: str, payload: ReviewCreate,
     )
 
 
-@app.post("/redeem", tags=["Partner"],
-          dependencies=[Depends(require_role("partner", "admin"))])
-def redeem(payload: RedeemInput) -> dict:
-    """Выдать заказ по коду (сотрудник партнёра)."""
-    ok, message, order = store.redeem(payload.code)
+@app.post("/redeem", tags=["Partner"])
+def redeem(
+    payload: RedeemInput,
+    req: HttpRequest,
+    user: PublicUser = Depends(require_role("partner", "admin")),
+) -> dict:
+    """Выдать заказ: партнёр — только свой, admin — любой."""
+    partner_id = None if user.role == "admin" else _partner_for_user(user).id
+    ok, message, order = store.redeem(payload.code, partner_id=partner_id)
+    log.info("audit: redeem ok=%s order=%s partner=%s actor=%s ip=%s",
+             ok, order.id if order else "not-found", partner_id or "admin-any",
+             user.id, req.client.host if req.client else "?")
     return {"ok": ok, "message": message, "order": order.model_dump() if order else None}
 
 
 # --------------------------------------------------------------------------- #
 #  Админка
 # --------------------------------------------------------------------------- #
+@app.get("/admin/partner-applications", response_model=list[PartnerApplication], tags=["Admin"])
+def admin_partner_applications(
+    status: str | None = None,
+    user: PublicUser = Depends(require_role("admin")),
+) -> list[PartnerApplication]:
+    del user  # dependency documents and enforces admin MFA
+    from .accounts import accounts as users_db
+    if status and status not in {"pending", "approved", "suspended", "rejected"}:
+        raise HTTPException(422, "Неизвестный partner status")
+    return [PartnerApplication(
+        user_id=row["id"], email=row["email"], email_verified=bool(row["email_verified"]),
+        brand_name=row["brand_name"] or "",
+        address=row["address"] or "", district=row["district"] or "",
+        status=row["partner_status"], created_at=row["created_at"],
+    ) for row in users_db.partner_accounts(status)]
+
+
+@app.post("/admin/users/{user_id}/verify-email", tags=["Admin"])
+def admin_verify_email_manually(
+    user_id: str,
+    payload: ManualEmailVerifyInput,
+    req: HttpRequest,
+    admin: PublicUser = Depends(require_role("admin")),
+) -> dict:
+    from .accounts import accounts as users_db
+    try:
+        users_db.mark_email_verified(user_id)
+    except ValueError as exc:
+        raise HTTPException(404, str(exc)) from exc
+    reason = payload.reason.replace("\r", " ").replace("\n", " ")[:120]
+    log.warning("audit: email-manual-verify user=%s actor=%s reason=%s ip=%s",
+                user_id, admin.id, reason, req.client.host if req.client else "?")
+    return {"status": "verified", "user_id": user_id}
+
+
+@app.post("/admin/partners/{user_id}/status", response_model=PartnerApplication, tags=["Admin"])
+def admin_set_partner_status(
+    user_id: str,
+    payload: PartnerStatusUpdate,
+    req: HttpRequest,
+    admin: PublicUser = Depends(require_role("admin")),
+) -> PartnerApplication:
+    from .accounts import _public, accounts as users_db
+    target = users_db.by_id(user_id)
+    if payload.status == "approved" and target and not target["email_verified"]:
+        raise HTTPException(409, "Сначала подтвердите email заведения")
+    try:
+        row = users_db.set_partner_status(user_id, payload.status)
+    except ValueError as exc:
+        raise HTTPException(404, str(exc)) from exc
+    public = _public(row)
+    if payload.status == "approved":
+        _partner_for_user(public)
+    elif payload.status != "approved" and public.partner_id:
+        store.suspend_partner(public.partner_id)
+    safe_reason = payload.reason.replace("\r", " ").replace("\n", " ")[:120]
+    log.info("audit: partner-status user=%s status=%s actor=%s reason=%s ip=%s",
+             user_id, payload.status, admin.id, safe_reason or "-",
+             req.client.host if req.client else "?")
+    return PartnerApplication(
+        user_id=row["id"], email=row["email"], email_verified=bool(row["email_verified"]),
+        brand_name=row["brand_name"] or "",
+        address=row["address"] or "", district=row["district"] or "",
+        status=row["partner_status"], created_at=row["created_at"],
+    )
+
+
 @app.get("/admin/stats", tags=["Admin"], dependencies=[Depends(require_role("admin"))])
 def admin_stats() -> dict:
     return store.stats()
@@ -383,13 +755,46 @@ def admin_orders() -> list[Order]:
     return store.orders()
 
 
-@app.post("/admin/refund/{order_id}", tags=["Admin"],
-          dependencies=[Depends(require_role("admin"))])
-def admin_refund(order_id: str, req: HttpRequest,
-                 user: PublicUser | None = Depends(optional_user)) -> dict:
+@app.get("/admin/refund-requests", response_model=list[RefundRequest], tags=["Admin"])
+def admin_refund_requests(
+    status: str | None = None,
+    user: PublicUser = Depends(require_role("admin")),
+) -> list[RefundRequest]:
+    del user
+    if status and status not in {"pending", "reviewing", "rejected", "refunded"}:
+        raise HTTPException(422, "Неизвестный refund status")
+    return store.refund_requests(status)
+
+
+@app.post("/admin/refund-requests/{request_id}/decision", response_model=RefundRequest,
+          tags=["Admin"])
+def admin_decide_refund(
+    request_id: str,
+    payload: RefundDecision,
+    req: HttpRequest,
+    admin: PublicUser = Depends(require_role("admin")),
+) -> RefundRequest:
+    resolved = store.resolve_refund_request(
+        request_id, payload.action, payload.resolution.strip(), admin.id
+    )
+    if not resolved:
+        raise HTTPException(409, "Заявка уже решена или возврат невозможен")
+    safe_resolution = payload.resolution.replace("\r", " ").replace("\n", " ")[:120]
+    log.warning("audit: refund-decision id=%s action=%s actor=%s resolution=%s ip=%s",
+                request_id, payload.action, admin.id, safe_resolution,
+                req.client.host if req.client else "?")
+    return resolved
+
+
+@app.post("/admin/refund/{order_id}", tags=["Admin"], deprecated=True)
+def admin_refund(
+    order_id: str,
+    req: HttpRequest,
+    user: PublicUser = Depends(require_role("admin")),
+) -> dict:
     ok = store.refund(order_id)
     log.info("audit: refund order=%s ok=%s by=%s ip=%s",
-             order_id, ok, user.id if user else "demo",
+             order_id, ok, user.id,
              req.client.host if req.client else "?")
     return {"refunded": ok}
 

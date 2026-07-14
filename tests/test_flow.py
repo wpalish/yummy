@@ -56,14 +56,13 @@ def test_redeem_issues_then_blocks_double(store):
 
 
 def test_no_show_when_window_passed(store):
-    # окно выдачи уже истекло
-    now = datetime.now(timezone.utc)
-    store.create_box("b1", BoxCreate(
-        partner_id="p1", category="sweet", title="Box", price=900, value_est=2500,
-        qty=2, pickup_from=(now - timedelta(hours=3)).isoformat(),
-        pickup_to=(now - timedelta(hours=1)).isoformat(),
-    ))
+    # DTO запрещает публиковать уже истёкшее окно. Для проверки перехода времени
+    # создаём валидный заказ, затем сдвигаем сохранённое окно в прошлое.
+    _box(store, qty=2)
     store.create_order("o1", "SB-AAAA", store.box("b1"), "Имя", "+770")
+    past = (datetime.now(timezone.utc) - timedelta(hours=1)).isoformat()
+    with store._conn() as conn:
+        conn.execute("UPDATE orders SET pickup_to=? WHERE id='o1'", (past,))
     order = store.order_by_code("SB-AAAA")
     assert order.status == "expired"                  # no-show
     ok, msg, _ = store.redeem("SB-AAAA")
@@ -81,15 +80,29 @@ def test_refund_returns_box_and_excludes_gmv(store):
     assert stats["gmv"] == 0                          # возврат не в обороте
 
 
-def test_stats_fill_rate(store):
+def test_stats_fill_rate_uses_only_closed_orders(store):
     _box(store, qty=5)
     for i in range(3):
         store.create_order(f"o{i}", f"SB-{i:04d}", store.box("b1"), "Имя", "+770")
-    store.redeem("SB-0000")                            # 1 из 3 выдан
+    store.redeem("SB-0000")                            # 1 closed + 2 active
     stats = store.stats()
     assert stats["orders_total"] == 3
     assert stats["issued"] == 1
-    assert stats["fill_rate"] == 33
+    assert stats["fill_rate"] == 100                   # active не занижают выкуп
+
+
+def test_no_show_is_retained_in_gmv_and_fill_rate(store):
+    _box(store, qty=3, price=900)
+    for i in range(2):
+        store.create_order(f"o{i}", f"SB-X{i}", store.box("b1"), "Имя", "+770")
+    store.redeem("SB-X0")
+    past = (datetime.now(timezone.utc) - timedelta(hours=1)).isoformat()
+    with store._conn() as conn:
+        conn.execute("UPDATE orders SET pickup_to=? WHERE id='o1'", (past,))
+    stats = store.stats()
+    assert stats["no_show"] == 1
+    assert stats["gmv"] == 1800                        # no-show не возвращается
+    assert stats["fill_rate"] == 50                    # 1 issued / 2 closed
 
 
 def test_order_binds_user_and_user_orders(store):
@@ -145,7 +158,7 @@ def test_recommend_boxes_prefers_ordered_category(tmp_path):
 
     sweet = mk("b1", "sweet")
     mk("b2", "snack")
-    order = s.create_order("o1", "YM-X", sweet, "Т", "+7700", user_id="u1")
+    s.create_order("o1", "YM-X", sweet, "Т", "+7700", user_id="u1")
     s.redeem("YM-X")
     recs = s.recommend_boxes("u1")
     assert recs[0].category == "sweet"  # тот же вкус, что уже заказывал

@@ -13,7 +13,7 @@ import threading
 from datetime import datetime, timezone
 from pathlib import Path
 
-from .models import Box, Order, Partner, Review
+from .models import Box, Order, Partner, RefundRequest, Review
 
 _DB = Path(os.getenv("YUMMY_DB_PATH", str(Path(__file__).parent.parent / "spasibox.db")))
 
@@ -46,7 +46,7 @@ class Store:
                 """
                 CREATE TABLE IF NOT EXISTS partners(
                     id TEXT PRIMARY KEY, name TEXT, district TEXT, address TEXT,
-                    rating REAL, lat REAL, lng REAL);
+                    rating REAL, lat REAL, lng REAL, owner_user_id TEXT);
                 CREATE TABLE IF NOT EXISTS boxes(
                     id TEXT PRIMARY KEY,
                     partner_id TEXT REFERENCES partners(id),
@@ -69,18 +69,32 @@ class Store:
                     rating INTEGER, text TEXT,
                     status TEXT DEFAULT 'approved', reject_reason TEXT,
                     created_at TEXT);
+                CREATE TABLE IF NOT EXISTS refund_requests(
+                    id TEXT PRIMARY KEY,
+                    order_id TEXT UNIQUE REFERENCES orders(id),
+                    user_id TEXT, partner_id TEXT,
+                    reason TEXT, details TEXT, status TEXT DEFAULT 'pending',
+                    resolution TEXT DEFAULT '', created_at TEXT, updated_at TEXT,
+                    resolved_by TEXT);
                 CREATE INDEX IF NOT EXISTS ix_boxes_partner  ON boxes(partner_id);
                 CREATE INDEX IF NOT EXISTS ix_boxes_status   ON boxes(status, qty_left);
                 CREATE INDEX IF NOT EXISTS ix_orders_partner ON orders(partner_id, created_at);
                 CREATE INDEX IF NOT EXISTS ix_orders_user    ON orders(user_id, created_at);
                 CREATE INDEX IF NOT EXISTS ix_orders_status  ON orders(status);
                 CREATE INDEX IF NOT EXISTS ix_reviews_partner ON reviews(partner_id, status, created_at);
+                CREATE INDEX IF NOT EXISTS ix_refunds_user ON refund_requests(user_id, created_at);
+                CREATE INDEX IF NOT EXISTS ix_refunds_status ON refund_requests(status, created_at);
                 """
             )
-            # миграция существующих БД: добиваем user_id, если колонки ещё нет
+            # Аддитивные миграции существующих БД.
             cols = {r[1] for r in c.execute("PRAGMA table_info(orders)").fetchall()}
             if "user_id" not in cols:
                 c.execute("ALTER TABLE orders ADD COLUMN user_id TEXT")
+            partner_cols = {r[1] for r in c.execute("PRAGMA table_info(partners)").fetchall()}
+            if "owner_user_id" not in partner_cols:
+                c.execute("ALTER TABLE partners ADD COLUMN owner_user_id TEXT")
+            c.execute("CREATE UNIQUE INDEX IF NOT EXISTS ux_partners_owner "
+                      "ON partners(owner_user_id) WHERE owner_user_id IS NOT NULL")
 
     # ------------------------------------------------------------------ #
     #  Партнёры
@@ -90,18 +104,33 @@ class Store:
             rows = c.execute("SELECT * FROM partners ORDER BY name").fetchall()
         return [Partner(**dict(r)) for r in rows]
 
+    def partner(self, partner_id: str) -> Partner | None:
+        with self._lock, self._conn() as c:
+            row = self._partner_row(c, partner_id)
+            return Partner(**dict(row)) if row else None
+
+    def partner_owned_by(self, partner_id: str, user_id: str) -> bool:
+        with self._lock, self._conn() as c:
+            row = c.execute(
+                "SELECT 1 FROM partners WHERE id=? AND owner_user_id=?",
+                (partner_id, user_id),
+            ).fetchone()
+            return row is not None
+
     def _partner_row(self, c: sqlite3.Connection, pid: str) -> sqlite3.Row | None:
         return c.execute("SELECT * FROM partners WHERE id=?", (pid,)).fetchone()
 
-    def upsert_partner(self, p: Partner) -> None:
+    def upsert_partner(self, p: Partner, *, owner_user_id: str | None = None) -> None:
         with self._lock, self._conn() as c:
             c.execute(
-                """INSERT INTO partners(id,name,district,address,rating,lat,lng)
-                   VALUES(?,?,?,?,?,?,?)
+                """INSERT INTO partners(id,name,district,address,rating,lat,lng,owner_user_id)
+                   VALUES(?,?,?,?,?,?,?,?)
                    ON CONFLICT(id) DO UPDATE SET name=excluded.name,
                        district=excluded.district, address=excluded.address,
-                       rating=excluded.rating, lat=excluded.lat, lng=excluded.lng""",
-                (p.id, p.name, p.district, p.address, p.rating, p.lat, p.lng),
+                       rating=excluded.rating, lat=excluded.lat, lng=excluded.lng,
+                       owner_user_id=COALESCE(partners.owner_user_id, excluded.owner_user_id)""",
+                (p.id, p.name, p.district, p.address, p.rating, p.lat, p.lng,
+                 owner_user_id),
             )
 
     # ------------------------------------------------------------------ #
@@ -139,13 +168,39 @@ class Store:
             r = c.execute("SELECT * FROM boxes WHERE id=?", (box_id,)).fetchone()
             return self._box_from_row(c, r) if r else None
 
+    def box_orderability(self, box_id: str) -> str:
+        """Причина недоступности: available / missing / sold_out / expired."""
+        with self._lock, self._conn() as c:
+            row = c.execute("SELECT status,qty_left,pickup_to FROM boxes WHERE id=?",
+                            (box_id,)).fetchone()
+        if not row or row["status"] != "active":
+            return "missing"
+        if row["qty_left"] <= 0:
+            return "sold_out"
+        if not self._pickup_is_open(row["pickup_to"]):
+            return "expired"
+        return "available"
+
+    @staticmethod
+    def _pickup_is_open(pickup_to: str) -> bool:
+        try:
+            end = datetime.fromisoformat(pickup_to.replace("Z", "+00:00"))
+            if end.tzinfo is None:
+                return False
+            return end > datetime.now(timezone.utc)
+        except (AttributeError, TypeError, ValueError):
+            return False
+
     def boxes_available(self, district: str | None = None) -> list[Box]:
         with self._lock, self._conn() as c:
             rows = c.execute(
                 "SELECT * FROM boxes WHERE status='active' AND qty_left>0 "
                 "ORDER BY created_at DESC"
             ).fetchall()
-            boxes = [self._box_from_row(c, r) for r in rows]
+            # ISO-строки могут иметь разные UTC-offset; сравнение делаем как
+            # datetime, а не лексикографически в SQL.
+            boxes = [self._box_from_row(c, r) for r in rows
+                     if self._pickup_is_open(r["pickup_to"])]
         if district and district != "all":
             boxes = [b for b in boxes if b.district == district]
         return boxes
@@ -186,25 +241,34 @@ class Store:
     @staticmethod
     def _effective_status(stored: str, pickup_to: str) -> str:
         """Заказ со статусом paid, чьё окно выдачи прошло, считается просроченным."""
-        if stored == "paid":
-            try:
-                if datetime.now(timezone.utc) > datetime.fromisoformat(pickup_to):
-                    return "expired"
-            except ValueError:
-                pass
+        if stored == "paid" and not Store._pickup_is_open(pickup_to):
+            # Malformed legacy timestamp трактуется fail-closed: выдать такой
+            # заказ нельзя до ручной проверки, а не оставлять paid навсегда.
+            return "expired"
         return stored
 
     def create_order(self, order_id: str, code: str, box: Box, name: str, phone: str,
                      user_id: str | None = None) -> Order | None:
+        """Создать заказ в одной транзакции с резервированием остатка.
+
+        Перед записью перечитываем authoritative box: вызывающий код мог получить
+        устаревший объект, а окно выдачи могло закрыться между GET и POST.
+        """
         with self._lock, self._conn() as c:
-            if not self._take_one(c, box.id):
-                return None                 # боксы закончились
+            row = c.execute("SELECT * FROM boxes WHERE id=?", (box.id,)).fetchone()
+            if (not row or row["status"] != "active" or row["qty_left"] <= 0
+                    or not self._pickup_is_open(row["pickup_to"])):
+                return None
+            actual = self._box_from_row(c, row)
+            if not self._take_one(c, actual.id):
+                return None                 # конкурент успел забрать последний
             c.execute(
                 """INSERT INTO orders(id,code,box_id,partner_id,category,price,
                        user_name,user_phone,status,pickup_from,pickup_to,created_at,user_id)
                    VALUES(?,?,?,?,?,?,?,?, 'paid', ?,?,?,?)""",
-                (order_id, code, box.id, box.partner_id, box.category, box.price,
-                 name, phone, box.pickup_from, box.pickup_to, _now_iso(), user_id),
+                (order_id, code, actual.id, actual.partner_id, actual.category,
+                 actual.price, name, phone, actual.pickup_from, actual.pickup_to,
+                 _now_iso(), user_id),
             )
             r = c.execute("SELECT * FROM orders WHERE id=?", (order_id,)).fetchone()
             return self._order_from_row(c, r)
@@ -243,6 +307,15 @@ class Store:
             rows = c.execute("SELECT * FROM orders ORDER BY created_at DESC").fetchall()
             return [self._order_from_row(c, r) for r in rows]
 
+    def suspend_partner(self, partner_id: str) -> int:
+        """Снять активный inventory при suspension/rejection аккаунта."""
+        with self._lock, self._conn() as c:
+            cur = c.execute(
+                "UPDATE boxes SET status='suspended' WHERE partner_id=? AND status='active'",
+                (partner_id,),
+            )
+            return cur.rowcount
+
     def partner_orders(self, partner_id: str) -> list[Order]:
         with self._lock, self._conn() as c:
             rows = c.execute(
@@ -251,11 +324,16 @@ class Store:
             ).fetchall()
             return [self._order_from_row(c, r) for r in rows]
 
-    def redeem(self, code: str) -> tuple[bool, str, Order | None]:
-        """Выдать заказ по коду. Возвращает (ок, сообщение, заказ)."""
+    def redeem(self, code: str, *, partner_id: str | None = None) -> tuple[bool, str, Order | None]:
+        """Выдать заказ по коду.
+
+        ``partner_id`` ограничивает операцию tenant'ом. ``None`` разрешён только
+        для доверенного admin/internal вызова на уровне API.
+        """
         with self._lock, self._conn() as c:
             r = c.execute("SELECT * FROM orders WHERE code=?", (code.strip().upper(),)).fetchone()
-            if not r:
+            if not r or (partner_id is not None and r["partner_id"] != partner_id):
+                # Не подтверждаем чужому заведению существование валидного кода.
                 return False, "Заказ с таким кодом не найден", None
             eff = self._effective_status(r["status"], r["pickup_to"])
             if eff == "issued":
@@ -264,8 +342,14 @@ class Store:
                 return False, "Заказ отменён/возвращён", self._order_from_row(c, r)
             if eff == "expired":
                 return False, "Окно выдачи истекло (no-show)", self._order_from_row(c, r)
-            c.execute("UPDATE orders SET status='issued' WHERE id=?", (r["id"],))
+            updated = c.execute(
+                "UPDATE orders SET status='issued' WHERE id=? AND status='paid'",
+                (r["id"],),
+            )
             r2 = c.execute("SELECT * FROM orders WHERE id=?", (r["id"],)).fetchone()
+            if updated.rowcount != 1:
+                # Другой worker/process успел выдать после нашего SELECT.
+                return False, "Этот заказ уже выдан", self._order_from_row(c, r2)
             return True, "Выдано ✓", self._order_from_row(c, r2)
 
     def refund(self, order_id: str) -> bool:
@@ -274,7 +358,13 @@ class Store:
             r = c.execute("SELECT * FROM orders WHERE id=?", (order_id,)).fetchone()
             if not r or r["status"] in ("issued", "refunded", "cancelled"):
                 return False
-            c.execute("UPDATE orders SET status='refunded' WHERE id=?", (order_id,))
+            updated = c.execute(
+                "UPDATE orders SET status='refunded' "
+                "WHERE id=? AND status NOT IN ('issued','refunded','cancelled')",
+                (order_id,),
+            )
+            if updated.rowcount != 1:
+                return False
             self._return_one(c, r["box_id"])
             return True
 
@@ -288,7 +378,8 @@ class Store:
         issued = no_show = active = refunds = 0
         for o in orders:
             st = self._effective_status(o["status"], o["pickup_to"])
-            if st in ("paid", "issued"):
+            # No-show оплачен и по правилам не возвращается — это оборот.
+            if st in ("paid", "issued", "expired"):
                 gmv += o["price"]
             if st == "issued":
                 issued += 1
@@ -299,10 +390,12 @@ class Store:
             elif st == "refunded":
                 refunds += 1
         total = len(orders)
+        closed = issued + no_show
         return {
             "orders_total": total, "issued": issued, "active": active,
             "no_show": no_show, "refunds": refunds, "gmv": gmv,
-            "fill_rate": round(issued / total * 100) if total else 0,
+            # Активные и refunded не должны занижать операционный выкуп.
+            "fill_rate": round(issued / closed * 100) if closed else 0,
         }
 
     def count(self) -> tuple[int, int, int]:
@@ -314,7 +407,104 @@ class Store:
 
     def reset(self) -> None:
         with self._lock, self._conn() as c:
-            c.executescript("DELETE FROM partners; DELETE FROM boxes; DELETE FROM orders;")
+            # Порядок учитывает foreign keys и позволяет безопасно reseed'ить
+            # непустую базу в dev/test окружении.
+            c.executescript(
+                "DELETE FROM reviews; DELETE FROM refund_requests; DELETE FROM orders; "
+                "DELETE FROM boxes; DELETE FROM partners;"
+            )
+
+    # ------------------------------------------------------------------ #
+    #  Refund requests: customer opens, MFA-admin resolves atomically.
+    # ------------------------------------------------------------------ #
+    @staticmethod
+    def _refund_from_row(row: sqlite3.Row) -> RefundRequest:
+        return RefundRequest(**dict(row))
+
+    def create_refund_request(self, request_id: str, order_id: str, user_id: str,
+                              reason: str, details: str) -> RefundRequest | None:
+        with self._lock, self._conn() as c:
+            order = c.execute(
+                "SELECT * FROM orders WHERE id=? AND user_id=?", (order_id, user_id)
+            ).fetchone()
+            if not order or self._effective_status(order["status"], order["pickup_to"]) not in {
+                "paid", "expired"
+            }:
+                return None
+            if reason in {"not_issued", "venue_closed"}:
+                try:
+                    pickup_from = datetime.fromisoformat(order["pickup_from"].replace("Z", "+00:00"))
+                except (AttributeError, ValueError):
+                    return None
+                if datetime.now(timezone.utc) < pickup_from:
+                    return None
+            now = _now_iso()
+            try:
+                c.execute(
+                    """INSERT INTO refund_requests(
+                           id,order_id,user_id,partner_id,reason,details,status,
+                           resolution,created_at,updated_at)
+                       VALUES(?,?,?,?,?,?,'pending','',?,?)""",
+                    (request_id, order_id, user_id, order["partner_id"], reason,
+                     details, now, now),
+                )
+            except sqlite3.IntegrityError:
+                return None
+            row = c.execute("SELECT * FROM refund_requests WHERE id=?", (request_id,)).fetchone()
+            return self._refund_from_row(row)
+
+    def user_refund_requests(self, user_id: str) -> list[RefundRequest]:
+        with self._lock, self._conn() as c:
+            rows = c.execute(
+                "SELECT * FROM refund_requests WHERE user_id=? ORDER BY created_at DESC",
+                (user_id,),
+            ).fetchall()
+            return [self._refund_from_row(r) for r in rows]
+
+    def refund_requests(self, status: str | None = None) -> list[RefundRequest]:
+        with self._lock, self._conn() as c:
+            if status:
+                rows = c.execute(
+                    "SELECT * FROM refund_requests WHERE status=? ORDER BY created_at", (status,)
+                ).fetchall()
+            else:
+                rows = c.execute(
+                    "SELECT * FROM refund_requests ORDER BY created_at DESC"
+                ).fetchall()
+            return [self._refund_from_row(r) for r in rows]
+
+    def resolve_refund_request(self, request_id: str, action: str, resolution: str,
+                               admin_id: str) -> RefundRequest | None:
+        with self._lock, self._conn() as c:
+            req = c.execute("SELECT * FROM refund_requests WHERE id=?", (request_id,)).fetchone()
+            if not req or req["status"] not in {"pending", "reviewing"}:
+                return None
+            now = _now_iso()
+            if action == "reviewing":
+                status = "reviewing"
+            elif action == "reject":
+                status = "rejected"
+            elif action == "approve":
+                order = c.execute("SELECT * FROM orders WHERE id=?", (req["order_id"],)).fetchone()
+                if not order:
+                    return None
+                updated = c.execute(
+                    "UPDATE orders SET status='refunded' WHERE id=? AND status='paid'",
+                    (order["id"],),
+                )
+                if updated.rowcount != 1:
+                    return None
+                self._return_one(c, order["box_id"])
+                status = "refunded"
+            else:
+                return None
+            c.execute(
+                """UPDATE refund_requests SET status=?,resolution=?,updated_at=?,resolved_by=?
+                   WHERE id=?""",
+                (status, resolution, now, admin_id, request_id),
+            )
+            row = c.execute("SELECT * FROM refund_requests WHERE id=?", (request_id,)).fetchone()
+            return self._refund_from_row(row)
 
     # ------------------------------------------------------------------ #
     #  Отзывы (только по завершённому — issued — заказу; одна ревью на заказ)

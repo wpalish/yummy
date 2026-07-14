@@ -7,21 +7,29 @@ services:
     name: yummy-astana
     runtime: python
     plan: free                    # $0. Минус free: спин-даун через 15 мин простоя
-    buildCommand: pip install -r requirements.txt
+    buildCommand: pip install -r requirements.lock
     startCommand: uvicorn app.main:app --host 0.0.0.0 --port $PORT --no-server-header
     healthCheckPath: /health
     autoDeploy: true
     envVars:
       - key: YUMMY_DB_PATH        # БД в ФС инстанса. На free НЕ переживает редеплой —
         value: ./data/yummy.db    # для постоянной БД см. DEPLOY.md (Starter + disk)
-      - key: YUMMY_ENFORCE_AUTH   # включить серверную защиту эндпоинтов
-        value: "1"
+      - key: YUMMY_ENV            # fail-fast прод-конфига; private API всегда требует JWT
+        value: production
       - key: YUMMY_SECRET_KEY     # подпись JWT — Render сгенерирует случайное значение
         generateValue: true
-      - key: YUMMY_ADMIN_EMAILS   # регистрация с этим email получит роль admin
-        value: alisher.nursain@gmail.com
+      - key: YUMMY_DATA_KEY       # отдельный AES-256-GCM key material для MFA secrets
+        generateValue: true
       - key: YUMMY_CORS_ORIGINS   # с каких доменов фронт ходит в API
         value: https://wpalish.github.io
+      - key: YUMMY_ALLOWED_HOSTS  # защита от Host Header Injection
+        value: yummy-astana.onrender.com
+      - key: YUMMY_MAX_REQUEST_BYTES
+        value: "65536"
+      - key: YUMMY_EMAIL_MODE     # disabled до подключения Resend; admin может verify вручную
+        value: disabled
+      - key: YUMMY_PUBLIC_URL
+        value: https://yummy-astana.onrender.com
       - key: PYTHON_VERSION
         value: "3.12"
 

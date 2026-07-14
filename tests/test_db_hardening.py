@@ -20,8 +20,21 @@ def test_indexes_created(tmp_path):
         names = {r[0] for r in c.execute(
             "SELECT name FROM sqlite_master WHERE type='index'").fetchall()}
     for ix in ("ix_boxes_partner", "ix_boxes_status", "ix_orders_partner",
-               "ix_orders_user", "ix_orders_status"):
+               "ix_orders_user", "ix_orders_status", "ux_partners_owner"):
         assert ix in names, f"нет индекса {ix}"
+
+
+def test_store_migrates_legacy_partner_schema(tmp_path):
+    path = tmp_path / "legacy-store.db"
+    with sqlite3.connect(path) as conn:
+        conn.execute(
+            "CREATE TABLE partners(id TEXT PRIMARY KEY,name TEXT,district TEXT,address TEXT,"
+            "rating REAL,lat REAL,lng REAL)"
+        )
+    store = Store(path=path)
+    with store._conn() as conn:
+        columns = {row[1] for row in conn.execute("PRAGMA table_info(partners)")}
+    assert "owner_user_id" in columns
 
 
 def test_db_path_env(tmp_path, monkeypatch):
@@ -31,7 +44,7 @@ def test_db_path_env(tmp_path, monkeypatch):
     import app.db as dbmod
     monkeypatch.setenv("YUMMY_DB_PATH", str(tmp_path / "sub" / "custom.db"))
     importlib.reload(dbmod)
-    s = dbmod.Store()  # каталог создаётся сам
+    dbmod.Store()  # каталог создаётся сам
     assert (tmp_path / "sub" / "custom.db").exists()
     monkeypatch.delenv("YUMMY_DB_PATH")
     importlib.reload(dbmod)  # вернуть модулю дефолтный путь для остальных тестов

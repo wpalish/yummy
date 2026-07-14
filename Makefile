@@ -1,7 +1,7 @@
 # Yummy — весь проект одной командой (DX-паттерн из wasp)
 PY := .venv/bin/python
 
-.PHONY: dev test docs zip seed clean help
+.PHONY: dev test docs zip seed admin lock clean help
 
 help:            ## список команд
 	@grep -E '^[a-z]+:.*##' $(MAKEFILE_LIST) | awk -F':.*## ' '{printf "  make %-8s %s\n", $$1, $$2}'
@@ -20,6 +20,14 @@ seed:            ## пересоздать демо-данные
 
 backup:          ## консистентный бэкап БД в backups/ (безопасен при живом WAL)
 	$(PY) tools/backup_db.py
+
+admin:           ## создать/повысить admin + настроить TOTP (EMAIL=owner@example.com)
+	@test -n "$(EMAIL)" || (echo "Использование: make admin EMAIL=owner@example.com" && exit 2)
+	$(PY) tools/create_admin.py "$(EMAIL)"
+
+lock:            ## обновить production/dev lock-файлы
+	$(PY) -m piptools compile --strip-extras -q -o requirements.lock requirements.txt
+	$(PY) -m piptools compile --strip-extras -q -o requirements-dev.lock requirements-dev.txt
 
 zip:             ## собрать архив проекта в ~/Downloads/yummy.zip
 	cd .. && rm -f ~/Downloads/yummy.zip && zip -r -q ~/Downloads/yummy.zip spasibox \

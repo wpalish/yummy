@@ -2,20 +2,20 @@
   "name": "Yummy — спасай еду, экономь",
   "short_name": "Yummy",
   "description": "Сюрприз-боксы из кофеен и пекарен Астаны со скидкой до 70%",
-  "start_url": "./",
-  "scope": "./",
+  "start_url": "/",
+  "scope": "/",
   "display": "standalone",
   "background_color": "#FAF4E8",
   "theme_color": "#2E241C",
   "lang": "ru",
   "icons": [
-    { "src": "img/favicon.png", "sizes": "64x64", "type": "image/png" },
-    { "src": "img/logo.png", "sizes": "1024x1024", "type": "image/png", "purpose": "any maskable" }
+    { "src": "/static/img/favicon.png", "sizes": "64x64", "type": "image/png" },
+    { "src": "/static/img/logo.png", "sizes": "1024x1024", "type": "image/png", "purpose": "any maskable" }
   ],
   "shortcuts": [
-    { "name": "Мои заказы", "url": "./?nav=orders",
-      "icons": [{ "src": "img/favicon.png", "sizes": "64x64" }] },
-    { "name": "Заведения рядом", "url": "./?nav=venues",
-      "icons": [{ "src": "img/favicon.png", "sizes": "64x64" }] }
+    { "name": "Мои заказы", "url": "/?nav=orders",
+      "icons": [{ "src": "/static/img/favicon.png", "sizes": "64x64" }] },
+    { "name": "Заведения рядом", "url": "/?nav=venues",
+      "icons": [{ "src": "/static/img/favicon.png", "sizes": "64x64" }] }
   ]
 }

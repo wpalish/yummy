@@ -1,5 +1,8 @@
 # Yummy — аудит безопасности и функционала
 
+Актуальная trust-boundary схема, STRIDE и честная ASVS gap-матрица находятся в
+[SECURITY_ARCHITECTURE.md](SECURITY_ARCHITECTURE.md).
+
 Разбор по присланным open-source проектам: что взято, что уже было, что осталось.
 
 ## Источники
@@ -22,12 +25,12 @@
 | Пункт чеклиста | Статус в Yummy |
 |---|---|
 | Не Basic Auth, стандартная авторизация | ✅ JWT (HS256, stdlib) |
-| Не изобретать хеш пароля | ✅ PBKDF2-HMAC-SHA256, соль+200k, constant-time |
+| Не изобретать хеш пароля | ✅ Argon2id через `argon2-cffi`; legacy PBKDF2 только для миграции |
 | Max Retry / jail на логине | ✅ rate-limit 6/мин на /auth/*; 8/мин на /orders |
 | Шифрование чувствительных данных | ✅ пароли только хешем; хеш не в ответе |
 | Throttling против DDoS/brute-force | ✅ in-memory rate-limit по IP |
 | HTTPS + HSTS | ✅ HSTS-заголовок; TLS даёт Pages/Render |
-| **Все эндпоинты за аутентификацией** | ✅ **добавлено:** ролевые `require_role` на /boxes, /redeem, /admin/* (env `YUMMY_ENFORCE_AUTH=1`) |
+| **Private endpoints за аутентификацией** | ✅ deny-by-default: `require_role` на /boxes, /redeem, /partner/me/*, /admin/*; env-флаг не может открыть API |
 | `/me/orders` вместо `/user/{id}/orders` | 🟡 есть /partners/{id} (id — UUID); /auth/me реализован |
 | UUID вместо auto-increment | ✅ uuid4 для заказов и пользователей |
 | Валидация content-type / входа | ✅ Pydantic; FastAPI требует JSON |
@@ -41,7 +44,7 @@
 | Не возвращать секреты | ✅ pw_hash никогда не в ответе |
 | Правильные HTTP-статусы | ✅ 201/401/403/409/422/429 |
 | DEBUG off | ✅ FastAPI без debug; /docs можно скрыть в проде |
-| Тесты (unit/integration) | ✅ 31 тест (крипто/JWT/флоу/заголовки/ролевой доступ) |
+| Тесты (unit/integration) | ✅ security suite: миграции, BOLA/tenant isolation, PII-redaction, request policy и просроченные окна |
 | Централизованные логи, без секретов | ✅ аудит-лог logging (register/login/IP, без паролей) |
 | security.txt | ✅ **добавлено:** /.well-known/security.txt |
 | CORS без wildcard+credentials | ✅ явные origin из env |
@@ -75,12 +78,25 @@ PWA-установка, маршрут в 2ГИС, deep-link на бокс, ре
 - **Отзыв сессий**: смена пароля инкрементирует `users.token_ver` → все ранее
   выданные JWT (в т.ч. украденные) мгновенно мертвы; текущему устройству
   возвращается свежий токен. Проверено live: 200 → 401 → 200.
-- **Fail-fast конфиг**: `YUMMY_ENFORCE_AUTH=1` с dev-секретом — сервер
-  отказывается стартовать с ясной ошибкой (проверено).
+- **Fail-fast конфиг**: `YUMMY_ENV=production` с dev-секретом — сервер
+  отказывается стартовать с ясной ошибкой; private API защищён независимо от env.
 - Rate-limiter: защита от роста памяти (purge стухших IP при >4096 записей).
 - Аудит возвратов админа (кто/какой заказ/IP).
 - Bandit-скан: 0 issues (единственный сигнал — намеренный dev-сентинел, nosec).
 - Секретов в репозитории нет (grep по паттернам токенов — чисто).
+
+**Object-level authorization и PII:**
+- партнёрский аккаунт получает неизменяемый `partner_id`; private API использует
+  `/partner/me/*` и сверяет tenant на создании бокса, чтении заказов и выдаче;
+- legacy `/partners/{id}/orders` оставлен только как authenticated/deprecated и
+  также проходит tenant guard;
+- гостевой `GET /orders/{code}` возвращает отдельную redacted-модель без имени,
+  телефона, внутренних id и `partner_id`;
+- коды выдачи — `YM-XXXXX-XXXXX`, 50 бит CSPRNG-энтропии, без неоднозначных символов;
+- публичная регистрация не может выдать admin; bootstrap — только операторским
+  `tools/create_admin.py`, с отзывом старых сессий;
+- согласие с документами обязательно валидируется сервером, дата и версия
+  сохраняются в `users.terms_accepted_at/terms_version`.
 
 ## Карта по Sentinel-спеке (честно: что есть, чего нет)
 
@@ -89,19 +105,23 @@ PWA-установка, маршрут в 2ГИС, deep-link на бокс, ре
 | Sentinel-пункт | Статус |
 |---|---|
 | Короткий access-токен (15 мин) | ✅ `_TOKEN_TTL = 15 мин` |
-| Refresh-токен с ротацией | ✅ /auth/refresh; в БД только SHA-256-хеш; использованный сгорает (проверено live) |
+| Refresh-токен с ротацией | ✅ SHA-256 hash, atomic rotation, token families и reuse detection с отзывом семейства |
 | Выйти со всех устройств | ✅ /auth/logout-all (token_ver+1 + отзыв всех refresh) |
-| Argon2id | ❌ **не заявляем** — PBKDF2-HMAC-SHA256 600k итераций (OWASP-уровень), без нативных зависимостей; старые хеши совместимы |
+| Argon2id | ✅ 64 MiB / 3 прохода / parallelism 4; legacy PBKDF2 совместим и rehash'ится после входа |
 | Пароли не хранятся | ✅ только солёный хеш |
 | RBAC | ✅ customer / partner / admin (`require_role`) |
 | Brute force / credential stuffing | ✅ rate-limit по IP + jail по email (5 неудач → 10 мин) |
+| Admin MFA | ✅ обязательный TOTP/recovery; AES-256-GCM seed; replay counter; JWT/refresh assurance |
+| Partner trust | ✅ pending-by-default; MFA admin approval; suspension отзывает sessions/inventory |
+| Refund abuse | ✅ owner-only single request; issued-order guard; MFA admin decision; atomic inventory/order update |
 | SQLi / XSS / Clickjacking | ✅ параметризованный SQL / esc()+CSP / X-Frame-Options DENY |
-| CSRF | ✅ N/A — cookies не используются (токен в заголовке) |
+| CSRF | ✅ Browser: SameSite=Strict + double-submit token + Origin; Bearer API cookie-independent |
 | Аудит: регистрация/вход/смена пароля/заказы/возвраты | ✅ логируются с IP, без паролей |
 | Privacy: скачать свои данные | ✅ GET /me/export (профиль + заказы, JSON) |
 | Privacy: удалить аккаунт | ✅ DELETE /me — вход невозможен, PII в заказах обезличен (проверено) |
 | Резервные копии | ✅ make backup (шифрование бэкапов — нет, не заявляем) |
-| Email verification / OAuth / 2FA / CAPTCHA / гео-детект / уведомления о входе | ❌ **не реализовано** — требуют внешних сервисов (SMTP, OAuth-ключи, SMS). Заготовка: Telegram-вход |
+| Email verification/recovery | ✅ hashed single-use tokens, expiry/reissue, non-enumerating forgot; delivery provider external |
+| OAuth / WebAuthn / CAPTCHA / гео-детект / login alerts | ❌ следующий этап |
 | TLS 1.3 / AES-256 at rest | 🟡 TLS даёт хостинг; шифрование БД (SQLCipher) — прод-этап, не заявляем |
 
 ## Пак «AI-фичи» (описания, рекомендации, отзывы+модерация, скрипт продаж)

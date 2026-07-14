@@ -17,6 +17,7 @@ from app.accounts import (
 # ---- пароль: PBKDF2 + соль (без внешних зависимостей) --------------------- #
 def test_password_roundtrip():
     h = hash_password("Secret123")
+    assert h.startswith("$argon2id$")
     assert verify_password("Secret123", h)
     assert not verify_password("wrong123", h)
 
@@ -53,12 +54,45 @@ def test_jwt_expired():
         decode_token(tok)
 
 
+def test_jwt_contains_strict_registered_claims():
+    data = decode_token(create_token("u1", "customer"))
+    assert data["iss"] == "yummy" and data["aud"] == "yummy-api"
+    assert data["iat"] <= data["exp"] and data["nbf"] <= data["iat"]
+    assert len(data["jti"]) == 32
+
+
 # ---- хранилище ------------------------------------------------------------ #
 def test_accounts_create_and_lookup(tmp_path):
     acc = Accounts(path=tmp_path / "u.db")
-    uid = acc.create("a@b.kz", hash_password("Secret123"), "customer", None, None)
+    uid = acc.create("a@b.kz", hash_password("Secret123"), "customer")
     assert acc.by_id(uid)["email"] == "a@b.kz"
     assert acc.by_email("A@B.KZ")["id"] == uid  # регистронезависимо
+
+
+def test_accounts_migrate_legacy_partner_to_owned_tenant(tmp_path):
+    import sqlite3
+
+    path = tmp_path / "legacy-accounts.db"
+    with sqlite3.connect(path) as conn:
+        conn.execute(
+            """CREATE TABLE users(
+                id TEXT PRIMARY KEY,email TEXT UNIQUE,pw_hash TEXT,role TEXT,
+                brand_name TEXT,address TEXT,is_active INTEGER,created_at TEXT)"""
+        )
+        conn.execute(
+            "INSERT INTO users VALUES(?,?,?,?,?,?,1,?)",
+            ("legacy-user", "legacy@yummy.kz", "hash", "partner", "Legacy Cafe",
+             "ул. 1", "2025-01-01T00:00:00+00:00"),
+        )
+    acc = Accounts(path=path)
+    row = acc.by_id("legacy-user")
+    assert row["partner_id"] == "legacy-user"
+    assert row["partner_status"] == "pending"
+    assert row["token_ver"] == 0
+    with acc._conn() as conn:
+        refresh_cols = {r[1] for r in conn.execute("PRAGMA table_info(refresh_tokens)")}
+    assert {"family_id", "used_at", "mfa_verified"} <= refresh_cols
+    assert row["mfa_enabled"] == 0 and row["mfa_last_counter"] == -1
 
 
 # ---- полный флоу через API (нужен httpx → в CI; локально пропуск) ---------- #
@@ -87,9 +121,38 @@ def _client(tmp_path, monkeypatch):
     return TestClient(app)
 
 
+def _register_partner(c, email="partner@yummy.kz"):
+    r = c.post("/auth/register", json={
+        "email": email,
+        "password": "Secret123",
+        "role": "partner",
+        "brand_name": f"Cafe {email.split('@')[0]}",
+        "address": "пр. Мангилик Ел, 55",
+        "district": "Есильский р-н",
+        "accepted_terms": True,
+    })
+    assert r.status_code == 201, r.text
+    import app.accounts as accounts_mod
+    accounts_mod.accounts.mark_email_verified(r.json()["user"]["id"])
+    accounts_mod.accounts.set_partner_status(r.json()["user"]["id"], "approved")
+    return r.json()
+
+
+def _admin_headers(c):
+    import app.accounts as accounts_mod
+
+    uid = accounts_mod.accounts.create(
+        "admin@yummy.kz", hash_password("Secret123"), "admin", accepted_terms=True,
+    )
+    accounts_mod.accounts.configure_mfa(uid, "admin@yummy.kz")
+    row = accounts_mod.accounts.by_id(uid)
+    token = create_token(uid, "admin", ver=int(row["token_ver"] or 0), mfa_verified=True)
+    return {"Authorization": f"Bearer {token}"}
+
+
 def test_register_login_flow(tmp_path, monkeypatch):
     c = _client(tmp_path, monkeypatch)
-    r = c.post("/auth/register", json={"email": "buyer@yummy.kz", "password": "Secret123"})
+    r = c.post("/auth/register", json={"email": "buyer@yummy.kz", "password": "Secret123", "accepted_terms": True})
     assert r.status_code == 201
     body = r.json()
     assert body["user"]["role"] == "customer"
@@ -106,8 +169,8 @@ def test_register_login_flow(tmp_path, monkeypatch):
 
 def test_duplicate_email_rejected(tmp_path, monkeypatch):
     c = _client(tmp_path, monkeypatch)
-    c.post("/auth/register", json={"email": "dup@yummy.kz", "password": "Secret123"})
-    r = c.post("/auth/register", json={"email": "dup@yummy.kz", "password": "Secret123"})
+    c.post("/auth/register", json={"email": "dup@yummy.kz", "password": "Secret123", "accepted_terms": True})
+    r = c.post("/auth/register", json={"email": "dup@yummy.kz", "password": "Secret123", "accepted_terms": True})
     assert r.status_code == 409
 
 
@@ -119,7 +182,7 @@ def test_weak_password_rejected(tmp_path, monkeypatch):
 
 def test_wrong_password_rejected(tmp_path, monkeypatch):
     c = _client(tmp_path, monkeypatch)
-    c.post("/auth/register", json={"email": "y@yummy.kz", "password": "Secret123"})
+    c.post("/auth/register", json={"email": "y@yummy.kz", "password": "Secret123", "accepted_terms": True})
     r = c.post("/auth/login", json={"email": "y@yummy.kz", "password": "Nope1234"})
     assert r.status_code == 401
 
@@ -127,20 +190,29 @@ def test_wrong_password_rejected(tmp_path, monkeypatch):
 def test_partner_requires_brand(tmp_path, monkeypatch):
     c = _client(tmp_path, monkeypatch)
     r = c.post("/auth/register", json={
-        "email": "cafe@yummy.kz", "password": "Secret123", "role": "partner"})
+        "email": "cafe@yummy.kz", "password": "Secret123", "accepted_terms": True, "role": "partner"})
     assert r.status_code == 422
     r2 = c.post("/auth/register", json={
-        "email": "cafe@yummy.kz", "password": "Secret123", "role": "partner",
+        "email": "cafe@yummy.kz", "password": "Secret123", "accepted_terms": True, "role": "partner",
         "brand_name": "Coffee Point", "address": "пр. Мангилик Ел, 55"})
-    assert r2.status_code == 201 and r2.json()["user"]["brand_name"] == "Coffee Point"
+    assert r2.status_code == 201
+    assert r2.json()["user"]["brand_name"] == "Coffee Point"
+    assert r2.json()["user"]["partner_status"] == "pending"
 
 
 # ---- iss-клейм (spring-security паттерн) и login-jail (xapax) --------------- #
 def test_jwt_rejects_wrong_issuer():
     """Токен с чужим iss, но валидной подписью — отклоняется."""
-    import base64, hashlib as hl, hmac as hm, json as js
+    import base64
+    import hashlib as hl
+    import hmac as hm
+    import json as js
+
     from app.accounts import _SECRET, decode_token
-    b64 = lambda b: base64.urlsafe_b64encode(b).rstrip(b"=").decode()
+
+    def b64(raw):
+        return base64.urlsafe_b64encode(raw).rstrip(b"=").decode()
+
     head = b64(b'{"alg":"HS256","typ":"JWT"}')
     pay = b64(js.dumps({"iss": "evil", "sub": "u1", "role": "admin",
                         "exp": int(time.time()) + 999}).encode())
@@ -151,7 +223,7 @@ def test_jwt_rejects_wrong_issuer():
 
 def test_login_jail_locks_after_fails():
     from fastapi import HTTPException
-    from app.accounts import _jail, _jail_check, _jail_fail, _jail_reset
+    from app.accounts import _jail_check, _jail_fail, _jail_reset
 
     email = "jail@test.kz"
     _jail_reset(email)
@@ -166,18 +238,47 @@ def test_login_jail_locks_after_fails():
     _jail_check(email)
 
 
-# ---- production-фичи: admin-роль, смена пароля, /me/orders ------------------ #
-def test_admin_email_gets_admin_role(tmp_path, monkeypatch):
-    import app.accounts as A
+# ---- production-фичи: admin bootstrap, смена пароля, /me/orders ------------- #
+def test_public_registration_never_grants_admin(tmp_path, monkeypatch):
+    """Знание публичного email владельца не должно давать admin."""
     c = _client(tmp_path, monkeypatch)
-    monkeypatch.setattr(A, "_ADMIN_EMAILS", {"boss@yummy.kz"})
-    r = c.post("/auth/register", json={"email": "boss@yummy.kz", "password": "Secret123"})
-    assert r.status_code == 201 and r.json()["user"]["role"] == "admin"
+    r = c.post("/auth/register", json={
+        "email": "boss@yummy.kz", "password": "Secret123", "accepted_terms": True,
+    })
+    assert r.status_code == 201 and r.json()["user"]["role"] == "customer"
+
+
+def test_admin_created_by_operator_tool(tmp_path):
+    from tools.create_admin import create_or_promote_admin
+
+    acc = Accounts(path=tmp_path / "admin.db")
+    assert create_or_promote_admin(acc, "boss@yummy.kz", "Secret123") == "created"
+    assert acc.by_email("boss@yummy.kz")["role"] == "admin"
+
+    uid = acc.create("existing@yummy.kz", hash_password("Secret123"), "customer")
+    assert create_or_promote_admin(acc, "existing@yummy.kz", None) == "promoted"
+    assert acc.by_id(uid)["role"] == "admin"
+
+
+def test_registration_requires_terms_and_records_version(tmp_path, monkeypatch):
+    import app.accounts as accounts_mod
+
+    c = _client(tmp_path, monkeypatch)
+    denied = c.post("/auth/register", json={
+        "email": "terms@yummy.kz", "password": "Secret123",
+    })
+    assert denied.status_code == 422
+    accepted = c.post("/auth/register", json={
+        "email": "terms@yummy.kz", "password": "Secret123", "accepted_terms": True,
+    })
+    assert accepted.status_code == 201
+    row = accounts_mod.accounts.by_email("terms@yummy.kz")
+    assert row["terms_accepted_at"] and row["terms_version"]
 
 
 def test_change_password_flow(tmp_path, monkeypatch):
     c = _client(tmp_path, monkeypatch)
-    tok = c.post("/auth/register", json={"email": "cp@yummy.kz", "password": "Secret123"}).json()["access_token"]
+    tok = c.post("/auth/register", json={"email": "cp@yummy.kz", "password": "Secret123", "accepted_terms": True}).json()["access_token"]
     bad = c.post("/auth/change-password", headers={"Authorization": f"Bearer {tok}"},
                  json={"old_password": "WRONG999", "new_password": "Newpass123"})
     assert bad.status_code == 401
@@ -190,7 +291,7 @@ def test_change_password_flow(tmp_path, monkeypatch):
 def test_me_orders_cross_device(tmp_path, monkeypatch):
     """Заказ с токеном привязан к аккаунту и виден в /me/orders."""
     c = _client(tmp_path, monkeypatch)
-    tok = c.post("/auth/register", json={"email": "mo@yummy.kz", "password": "Secret123"}).json()["access_token"]
+    tok = c.post("/auth/register", json={"email": "mo@yummy.kz", "password": "Secret123", "accepted_terms": True}).json()["access_token"]
     bid = c.get("/boxes").json()[0]["id"]
     r = c.post("/orders", json={"box_id": bid, "user_name": "Т", "user_phone": "+77010000000"},
                headers={"Authorization": f"Bearer {tok}"})
@@ -204,7 +305,7 @@ def test_me_orders_cross_device(tmp_path, monkeypatch):
 def test_change_password_revokes_old_tokens(tmp_path, monkeypatch):
     """Смена пароля отзывает ВСЕ старые токены; ответ содержит свежий."""
     c = _client(tmp_path, monkeypatch)
-    old_tok = c.post("/auth/register", json={"email": "rv@yummy.kz", "password": "Secret123"}).json()["access_token"]
+    old_tok = c.post("/auth/register", json={"email": "rv@yummy.kz", "password": "Secret123", "accepted_terms": True}).json()["access_token"]
     assert c.get("/auth/me", headers={"Authorization": f"Bearer {old_tok}"}).status_code == 200
 
     r = c.post("/auth/change-password", headers={"Authorization": f"Bearer {old_tok}"},
@@ -221,12 +322,19 @@ def test_change_password_revokes_old_tokens(tmp_path, monkeypatch):
 def test_prod_config_fail_fast(monkeypatch):
     import app.accounts as A
 
-    monkeypatch.setenv("YUMMY_ENFORCE_AUTH", "1")
+    monkeypatch.setenv("YUMMY_ENV", "production")
     monkeypatch.setattr(A, "_SECRET", A._DEFAULT_SECRET)
     with pytest.raises(RuntimeError, match="YUMMY_SECRET_KEY"):
         A.assert_prod_config()
-    monkeypatch.setattr(A, "_SECRET", "real-secret-0123456789abcdef")
-    A.assert_prod_config()  # с настоящим секретом — ок
+    monkeypatch.setattr(A, "_SECRET", "too-short")
+    with pytest.raises(RuntimeError, match="32 байта"):
+        A.assert_prod_config()
+    monkeypatch.setattr(A, "_SECRET", "real-secret-0123456789abcdef-32-bytes-min")
+    monkeypatch.setattr(A, "_DATA_SECRET", A._SECRET)
+    with pytest.raises(RuntimeError, match="отдельный YUMMY_DATA_KEY"):
+        A.assert_prod_config()
+    monkeypatch.setattr(A, "_DATA_SECRET", "separate-data-key-0123456789abcdef-32-min")
+    A.assert_prod_config()  # с раздельными настоящими секретами — ок
 
 
 # ---- Sentinel-пак: refresh-ротация, logout-all, privacy --------------------- #
@@ -240,21 +348,41 @@ def test_pbkdf2_backward_compatible_rounds():
     assert verify_password("Secret123", legacy)
 
 
+def test_legacy_pbkdf2_rehashes_to_argon2_after_login(tmp_path, monkeypatch):
+    import hashlib as hl
+    import secrets as sec
+    import app.accounts as accounts_mod
+
+    c = _client(tmp_path, monkeypatch)
+    salt = sec.token_bytes(16)
+    dk = hl.pbkdf2_hmac("sha256", b"Secret123", salt, 200_000)
+    legacy = f"pbkdf2_sha256$200000${salt.hex()}${dk.hex()}"
+    accounts_mod.accounts.create("legacy@yummy.kz", legacy, "customer")
+
+    response = c.post("/auth/login", json={
+        "email": "legacy@yummy.kz", "password": "Secret123",
+    })
+    assert response.status_code == 200
+    assert accounts_mod.accounts.by_email("legacy@yummy.kz")["pw_hash"].startswith("$argon2id$")
+
+
 def test_refresh_rotation(tmp_path, monkeypatch):
     """Refresh обновляет access; использованный refresh сгорает (ротация)."""
     c = _client(tmp_path, monkeypatch)
-    r = c.post("/auth/register", json={"email": "rf@yummy.kz", "password": "Secret123"}).json()
+    r = c.post("/auth/register", json={"email": "rf@yummy.kz", "password": "Secret123", "accepted_terms": True}).json()
     assert r["refresh_token"]
     r2 = c.post("/auth/refresh", json={"refresh_token": r["refresh_token"]})
     assert r2.status_code == 200
     assert c.get("/auth/me", headers={"Authorization": f"Bearer {r2.json()['access_token']}"}).status_code == 200
-    # старый refresh уже отозван ротацией
+    new_refresh = r2.json()["refresh_token"]
+    # Повтор старого токена = reuse; отзывается всё семейство, включая новый.
     assert c.post("/auth/refresh", json={"refresh_token": r["refresh_token"]}).status_code == 401
+    assert c.post("/auth/refresh", json={"refresh_token": new_refresh}).status_code == 401
 
 
 def test_logout_all_revokes_everything(tmp_path, monkeypatch):
     c = _client(tmp_path, monkeypatch)
-    r = c.post("/auth/register", json={"email": "la@yummy.kz", "password": "Secret123"}).json()
+    r = c.post("/auth/register", json={"email": "la@yummy.kz", "password": "Secret123", "accepted_terms": True}).json()
     tok, ref = r["access_token"], r["refresh_token"]
     assert c.post("/auth/logout-all", headers={"Authorization": f"Bearer {tok}"}).status_code == 200
     assert c.get("/auth/me", headers={"Authorization": f"Bearer {tok}"}).status_code == 401
@@ -264,7 +392,7 @@ def test_logout_all_revokes_everything(tmp_path, monkeypatch):
 def test_export_and_delete_me(tmp_path, monkeypatch):
     """Privacy: экспорт данных и удаление аккаунта с обезличиванием заказов."""
     c = _client(tmp_path, monkeypatch)
-    tok = c.post("/auth/register", json={"email": "pr@yummy.kz", "password": "Secret123"}).json()["access_token"]
+    tok = c.post("/auth/register", json={"email": "pr@yummy.kz", "password": "Secret123", "accepted_terms": True}).json()["access_token"]
     bid = c.get("/boxes").json()[0]["id"]
     code = c.post("/orders", json={"box_id": bid, "user_name": "Алишер", "user_phone": "+77010000000"},
                   headers={"Authorization": f"Bearer {tok}"}).json()["order"]["code"]
@@ -277,17 +405,20 @@ def test_export_and_delete_me(tmp_path, monkeypatch):
     d = c.delete("/me", headers={"Authorization": f"Bearer {tok}"})
     assert d.status_code == 200 and d.json()["orders_anonymized"] == 1
     # вход невозможен, токен отозван, PII обезличен
-    assert c.post("/auth/login", json={"email": "pr@yummy.kz", "password": "Secret123"}).status_code == 401
+    assert c.post("/auth/login", json={"email": "pr@yummy.kz", "password": "Secret123", "accepted_terms": True}).status_code == 401
     assert c.get("/auth/me", headers={"Authorization": f"Bearer {tok}"}).status_code == 401
     pub = c.get(f"/orders/{code}").json()
-    assert pub["user_name"] == "(удалён)" and pub["user_phone"] == ""
+    assert "user_name" not in pub and "user_phone" not in pub and "id" not in pub
 
 
 # ---- AI-фичи: описание бокса, рекомендации, отзывы -------------------------- #
 def test_describe_box_fallback_without_key(tmp_path, monkeypatch):
     """Без ANTHROPIC_API_KEY — детерминированный фолбэк, не 501/ошибка."""
     c = _client(tmp_path, monkeypatch)
-    r = c.post("/ai/describe-box", json={"category": "sweet", "notes": "2 круассана, маффин"})
+    partner = _register_partner(c)
+    headers = {"Authorization": f"Bearer {partner['access_token']}"}
+    r = c.post("/ai/describe-box", headers=headers,
+               json={"category": "sweet", "notes": "2 круассана, маффин"})
     assert r.status_code == 200
     body = r.json()
     assert body["ai"] is False and "круассана" in body["description"]
@@ -295,7 +426,10 @@ def test_describe_box_fallback_without_key(tmp_path, monkeypatch):
 
 def test_describe_box_rejects_empty_notes(tmp_path, monkeypatch):
     c = _client(tmp_path, monkeypatch)
-    r = c.post("/ai/describe-box", json={"category": "sweet", "notes": ""})
+    partner = _register_partner(c)
+    headers = {"Authorization": f"Bearer {partner['access_token']}"}
+    r = c.post("/ai/describe-box", headers=headers,
+               json={"category": "sweet", "notes": ""})
     assert r.status_code == 422  # Pydantic min_length
 
 
@@ -306,7 +440,7 @@ def test_recommendations_requires_auth(tmp_path, monkeypatch):
 
 def test_recommendations_returns_boxes(tmp_path, monkeypatch):
     c = _client(tmp_path, monkeypatch)
-    tok = c.post("/auth/register", json={"email": "rec@yummy.kz", "password": "Secret123"}).json()["access_token"]
+    tok = c.post("/auth/register", json={"email": "rec@yummy.kz", "password": "Secret123", "accepted_terms": True}).json()["access_token"]
     r = c.get("/me/recommendations", headers={"Authorization": f"Bearer {tok}"})
     assert r.status_code == 200
     assert 0 < len(r.json()) <= 4
@@ -314,7 +448,7 @@ def test_recommendations_returns_boxes(tmp_path, monkeypatch):
 
 def test_review_full_flow(tmp_path, monkeypatch):
     c = _client(tmp_path, monkeypatch)
-    tok = c.post("/auth/register", json={"email": "rv@yummy.kz", "password": "Secret123"}).json()["access_token"]
+    tok = c.post("/auth/register", json={"email": "rv@yummy.kz", "password": "Secret123", "accepted_terms": True}).json()["access_token"]
     hdr = {"Authorization": f"Bearer {tok}"}
     box = c.get("/boxes").json()[0]
     order = c.post("/orders", json={"box_id": box["id"], "user_name": "Т", "user_phone": "+77010000000"},
@@ -325,7 +459,8 @@ def test_review_full_flow(tmp_path, monkeypatch):
                  json={"order_id": order["id"], "rating": 5, "text": "Отличный бокс!"}, headers=hdr)
     assert bad.status_code == 409
 
-    assert c.post("/redeem", json={"code": order["code"]}).json()["ok"] is True
+    assert c.post("/redeem", json={"code": order["code"]},
+                  headers=_admin_headers(c)).json()["ok"] is True
 
     ok = c.post(f"/partners/{box['partner_id']}/reviews",
                json={"order_id": order["id"], "rating": 5, "text": "Отличный бокс, всё свежее!"}, headers=hdr)
@@ -342,12 +477,12 @@ def test_review_full_flow(tmp_path, monkeypatch):
 
 def test_review_blocked_by_moderation(tmp_path, monkeypatch):
     c = _client(tmp_path, monkeypatch)
-    tok = c.post("/auth/register", json={"email": "rv2@yummy.kz", "password": "Secret123"}).json()["access_token"]
+    tok = c.post("/auth/register", json={"email": "rv2@yummy.kz", "password": "Secret123", "accepted_terms": True}).json()["access_token"]
     hdr = {"Authorization": f"Bearer {tok}"}
     box = c.get("/boxes").json()[0]
     order = c.post("/orders", json={"box_id": box["id"], "user_name": "Т", "user_phone": "+77010000000"},
                    headers=hdr).json()["order"]
-    c.post("/redeem", json={"code": order["code"]})
+    c.post("/redeem", json={"code": order["code"]}, headers=_admin_headers(c))
     r = c.post(f"/partners/{box['partner_id']}/reviews",
               json={"order_id": order["id"], "rating": 1, "text": "полная хуйня а не бокс"}, headers=hdr)
     assert r.status_code == 422
@@ -356,12 +491,12 @@ def test_review_blocked_by_moderation(tmp_path, monkeypatch):
 def test_review_rejects_other_users_order(tmp_path, monkeypatch):
     """Чужой order_id — нельзя оставить отзыв (проверка через user_orders(), не тело запроса)."""
     c = _client(tmp_path, monkeypatch)
-    tok1 = c.post("/auth/register", json={"email": "owner@yummy.kz", "password": "Secret123"}).json()["access_token"]
-    tok2 = c.post("/auth/register", json={"email": "intruder@yummy.kz", "password": "Secret123"}).json()["access_token"]
+    tok1 = c.post("/auth/register", json={"email": "owner@yummy.kz", "password": "Secret123", "accepted_terms": True}).json()["access_token"]
+    tok2 = c.post("/auth/register", json={"email": "intruder@yummy.kz", "password": "Secret123", "accepted_terms": True}).json()["access_token"]
     box = c.get("/boxes").json()[0]
     order = c.post("/orders", json={"box_id": box["id"], "user_name": "Т", "user_phone": "+77010000000"},
                    headers={"Authorization": f"Bearer {tok1}"}).json()["order"]
-    c.post("/redeem", json={"code": order["code"]})
+    c.post("/redeem", json={"code": order["code"]}, headers=_admin_headers(c))
     r = c.post(f"/partners/{box['partner_id']}/reviews",
               json={"order_id": order["id"], "rating": 5, "text": "Пытаюсь оставить чужой отзыв"},
               headers={"Authorization": f"Bearer {tok2}"})

@@ -1,90 +1,99 @@
-"""Сборка статической версии Yummy для GitHub Pages (docs/).
+"""Воспроизводимая сборка изолированной GitHub Pages демки (docs/).
 
-Берёт app/static/index.html, заменяет серверный api-слой на клиентский стор
-(localStorage) и чинит пути. Клиентский стор извлекается из предыдущей сборки
-docs/index.html (единственный источник правды после утери scratchpad-копии).
+Production работает same-origin через backend и HttpOnly cookies. Pages намеренно
+остаётся browser-only демо: подключать её cross-origin к живому API запрещено,
+иначе пришлось бы ослабить SameSite/CORS session boundary.
 """
 from __future__ import annotations
 
+import json
 import os
 import pathlib
 import shutil
 import sys
 
-# Адрес задеплоенного бэкенда для витрины на Pages.
-#   пусто          → демо-режим (данные в браузере, как сейчас)
-#   https://…      → все запросы Pages идут в реальный сервер
-# Задаётся: YUMMY_PAGES_API_BASE=https://yummy-astana.onrender.com make docs
 PAGES_API_BASE = os.getenv("YUMMY_PAGES_API_BASE", "").rstrip("/")
-
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 STATIC = ROOT / "app" / "static"
 DOCS = ROOT / "docs"
 
-API_BLOCK = '''async function api(m,u,b,_retry){const h=b?{"Content-Type":"application/json"}:{};
-  const a=account(); if(a&&a.token)h["Authorization"]="Bearer "+a.token;
-  const r=await fetch(u,{method:m,headers:h,body:b?JSON.stringify(b):undefined});
-  if(r.status===401&&!_retry&&a&&a.refresh&&!u.startsWith("/auth/")){
-    try{const rr=await fetch("/auth/refresh",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({refresh_token:a.refresh})});
-      if(rr.ok){const j=await rr.json();a.token=j.access_token;a.refresh=j.refresh_token;setAccount(a);return api(m,u,b,true);}}catch(e){}
-  }
-  if(!r.ok){let d;try{d=await r.json();}catch(e){} throw new Error((d&&d.detail)||("Ошибка "+r.status));} return r.status===204?null:r.json();}
-const get=u=>api("GET",u), post=(u,b)=>api("POST",u,b);'''
-
-LEAFLET_TAG = '<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>'
+API_START = "const cookieValue=name=>"
+API_END = 'const get=u=>api("GET",u), post=(u,b)=>api("POST",u,b);'
+LEAFLET_TAG = ('<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" '
+               'integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" '
+               'crossorigin="anonymous"></script>')
 QR_TAG = LEAFLET_TAG + '\n<script src="https://cdn.jsdelivr.net/npm/qrcode-generator@1.4.4/qrcode.js"></script>'
 
 
-def extract_client_store() -> str:
-    """Достать client-store из прошлой сборки docs/index.html."""
-    old = (DOCS / "index.html").read_text(encoding="utf-8")
-    start = old.index("/* ===== CLIENT-SIDE STORE")
-    # стоп ПЕРЕД диспетчером (если он уже вставлялся в прошлой сборке) — иначе
-    # каждая пересборка дублировала бы API_BASE/api. Иначе — до STATUS_RU.
-    marker = old.find("/* Переключатель бэкенда", start)
-    end = marker if marker != -1 else old.index("const STATUS_RU=", start)
-    return old[start:end].rstrip()
+def load_client_store() -> str:
+    return (STATIC / "demo-store.js").read_text(encoding="utf-8").rstrip()
+
+
+def build_demo_js() -> str:
+    js = (STATIC / "app.js").read_text(encoding="utf-8")
+    try:
+        start = js.index(API_START)
+        end = js.index(API_END, start) + len(API_END)
+    except ValueError as exc:
+        raise RuntimeError("api-блок не найден в app/static/app.js") from exc
+    dispatcher = '''
+/* GitHub Pages: изолированный browser-only store, без production API/cookies. */
+const API_BASE = "";
+const get=u=>_demoGet(u);
+const post=(u,b)=>_demoPost(u,b);
+const api=(m,u,b)=>m==="GET"?_demoGet(u):_demoPost(u,b);'''
+    built = js[:start] + load_client_store() + dispatcher + js[end:]
+    return (built.replace("/static/img/", "img/")
+                 .replace("/static/venues.json", "venues.json")
+                 .replace('register("/sw.js")', 'register("sw.js")'))
 
 
 def main() -> int:
-    client = extract_client_store()
+    if PAGES_API_BASE:
+        print(
+            "ОШИБКА: cross-origin live API для Pages отключён. "
+            "Production frontend обслуживается backend same-origin.",
+            file=sys.stderr,
+        )
+        return 2
+
     html = (STATIC / "index.html").read_text(encoding="utf-8")
     html = (html.replace("/static/img/", "img/")
-                .replace("/static/manifest.json", "manifest.json")
-                .replace("/static/sw.js", "sw.js")
+                .replace("/static/app.css", "app.css")
+                .replace("/static/app.js", "app.js")
+                .replace("/manifest.json", "manifest.json")
                 .replace("/static/venues.json", "venues.json"))
-    if API_BLOCK not in html:
-        print("ОШИБКА: api-блок не найден в app/static/index.html", file=sys.stderr)
-        return 1
-
-    # client-store → внутренние _demoGet/_demoPost; поверх — диспетчер по API_BASE
-    client = (client.replace("async function get(u){", "async function _demoGet(u){")
-                    .replace("async function post(u,body){", "async function _demoPost(u,body){"))
-    dispatcher = f'''
-/* Переключатель бэкенда: пусто → демо (данные в браузере); URL → реальный сервер */
-const API_BASE = "{PAGES_API_BASE}";
-async function api(m,u,b,_retry){{const h=b?{{"Content-Type":"application/json"}}:{{}};
-  const a=account(); if(a&&a.token)h["Authorization"]="Bearer "+a.token;
-  const r=await fetch(API_BASE+u,{{method:m,headers:h,body:b?JSON.stringify(b):undefined}});
-  if(r.status===401&&!_retry&&a&&a.refresh&&!u.startsWith("/auth/")){{
-    try{{const rr=await fetch(API_BASE+"/auth/refresh",{{method:"POST",headers:{{"Content-Type":"application/json"}},body:JSON.stringify({{refresh_token:a.refresh}})}});
-      if(rr.ok){{const j=await rr.json();a.token=j.access_token;a.refresh=j.refresh_token;setAccount(a);return api(m,u,b,true);}}}}catch(e){{}}
-  }}
-  if(!r.ok){{let d;try{{d=await r.json();}}catch(e){{}} throw new Error((d&&d.detail)||("Ошибка "+r.status));}} return r.status===204?null:r.json();}}
-const get=(u)=>API_BASE?api("GET",u):_demoGet(u);
-const post=(u,b)=>API_BASE?api("POST",u,b):_demoPost(u,b);'''
-    html = html.replace(API_BLOCK, client + dispatcher)
     html = html.replace(LEAFLET_TAG, QR_TAG)
+
+    DOCS.mkdir(parents=True, exist_ok=True)
     (DOCS / "index.html").write_text(html, encoding="utf-8")
+    (DOCS / "app.js").write_text(build_demo_js(), encoding="utf-8")
+    shutil.copy(STATIC / "app.css", DOCS / "app.css")
+    shutil.copy(STATIC / "venues.json", DOCS / "venues.json")
 
-    for name in ("manifest.json", "sw.js", "venues.json"):
-        src = STATIC / name
-        if src.exists():
-            shutil.copy(src, DOCS / name)
+    manifest = json.loads((STATIC / "manifest.json").read_text(encoding="utf-8"))
+    manifest["start_url"] = manifest["scope"] = "./"
+    for icon in manifest["icons"]:
+        icon["src"] = icon["src"].replace("/static/", "")
+    for shortcut in manifest["shortcuts"]:
+        shortcut["url"] = "." + shortcut["url"]
+        for icon in shortcut["icons"]:
+            icon["src"] = icon["src"].replace("/static/", "")
+    (DOCS / "manifest.json").write_text(
+        json.dumps(manifest, ensure_ascii=False, indent=2) + "\n", encoding="utf-8"
+    )
 
-    ok = "_demoGet" in html and "const API_BASE" in html
-    mode = f"бэкенд {PAGES_API_BASE}" if PAGES_API_BASE else "демо (данные в браузере)"
-    print(f"docs/index.html: {len(html)} байт | режим: {mode} | сборка ок: {ok}")
+    sw = (STATIC / "sw.js").read_text(encoding="utf-8")
+    sw = (sw.replace('"/"', '"./"')
+            .replace("/static/app.css", "app.css")
+            .replace("/static/app.js", "app.js")
+            .replace("/static/img/", "img/"))
+    (DOCS / "sw.js").write_text(sw, encoding="utf-8")
+
+    js = (DOCS / "app.js").read_text(encoding="utf-8")
+    ok = "_demoGet" in js and 'const API_BASE = ""' in js and "/session/login" in js
+    total = sum((DOCS / name).stat().st_size for name in ("index.html", "app.js", "app.css"))
+    print(f"docs bundle: {total} байт | browser-only demo | сборка ок: {ok}")
     return 0 if ok else 1
 
 

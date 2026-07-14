@@ -1,6 +1,9 @@
-/* Yummy service worker: оффлайн-доступ к странице (и кодам заказов в localStorage). */
-const V = "yummy-v1";
-const PRECACHE = ["./", "img/logo.png", "img/favicon.png"];
+/* Yummy service worker: network-first shell, cache-first immutable assets. */
+const V = "yummy-v3";
+const PRECACHE = [
+  "./", "app.css", "app.js",
+  "img/logo.png", "img/favicon.png"
+];
 
 self.addEventListener("install", e => {
   self.skipWaiting();
@@ -17,7 +20,6 @@ self.addEventListener("activate", e => {
 
 self.addEventListener("fetch", e => {
   const url = new URL(e.request.url);
-  // страница: сеть в приоритете (свежие боксы), офлайн — из кэша
   if (e.request.mode === "navigate") {
     e.respondWith(
       fetch(e.request)
@@ -26,8 +28,15 @@ self.addEventListener("fetch", e => {
     );
     return;
   }
-  // картинки: кэш в приоритете
-  if (url.pathname.includes("/img/")) {
+  if (url.pathname.endsWith("/app.css") || url.pathname.endsWith("/app.js")) {
+    e.respondWith(
+      fetch(e.request).then(res => {
+        const cl = res.clone(); caches.open(V).then(c => c.put(e.request, cl)); return res;
+      }).catch(() => caches.match(e.request))
+    );
+    return;
+  }
+  if (url.pathname.includes("img/")) {
     e.respondWith(
       caches.match(e.request).then(r => r || fetch(e.request).then(res => {
         const cl = res.clone(); caches.open(V).then(c => c.put(e.request, cl)); return res;

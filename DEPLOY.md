@@ -18,27 +18,49 @@
 
 ## Шаг 3. Проверка
 Открой в браузере (URL вида `https://yummy-astana.onrender.com`):
-- `…/health` → `{"status":"ok",...}` — сервер жив.
-- `…/docs` → Swagger со всеми эндпоинтами.
+- `…/health` → `{"status":"ok"}` — сервер жив, без внутренних счётчиков.
+- `…/docs` → `404` в production (Swagger не публикуется наружу).
 - `…/` → сам сайт Yummy с бэкендом.
 
-## Шаг 4. Стать админом
-На задеплоенном сайте зарегистрируйся с email **alisher.nursain@gmail.com**
-(он в `YUMMY_ADMIN_EMAILS`) — аккаунт получит роль **admin**, и раздел «Админ»
-откроется по твоему токену.
+Если Render выдал hostname с суффиксом или подключён custom domain, добавь его в
+`YUMMY_ALLOWED_HOSTS`, иначе Host-header middleware ожидаемо вернёт `400`.
 
-## Шаг 5. Связать витрину на Pages с бэкендом (одна команда)
-После деплоя возьми URL сервиса (напр. `https://yummy-astana.onrender.com`) и
-пересобери статику с ним:
+## Шаг 4. Создать администратора
+Не повышай роль через публичную регистрацию: без подтверждения email это позволило
+бы захватить админку. Открой **Render Shell** сервиса и выполни:
 ```bash
-YUMMY_PAGES_API_BASE=https://yummy-astana.onrender.com make docs
-git commit -am "chore: витрина Pages → живой бэкенд" && git push
+python tools/create_admin.py owner@example.com
 ```
-Теперь `wpalish.github.io/yummy` шлёт все запросы (регистрация, вход, заказы) в
-реальный сервер. Вернуть в демо-режим: `make docs` без переменной.
+Пароль вводится скрыто и не попадает в shell history. Команда также один раз
+печатает `otpauth://` URI, encrypted-at-rest TOTP secret и 10 одноразовых recovery
+codes — сохрани их офлайн. Admin login без MFA не выдаёт control-plane session.
+Если аккаунт уже существует, он повышается до `admin`, старые сессии отзываются.
+Ротация фактора: `python tools/create_admin.py owner@example.com --reset-mfa`.
 
-Проверка: открой `wpalish.github.io/yummy`, зарегистрируйся — аккаунт появится в
-БД сервера (виден через `…onrender.com/docs` или на другом устройстве).
+### Transactional email
+
+Для реальной email verification/password recovery настрой Resend:
+`YUMMY_EMAIL_MODE=resend`, `RESEND_API_KEY`, `YUMMY_EMAIL_FROM` и HTTPS
+`YUMMY_PUBLIC_URL`. В `disabled` регистрация остаётся unverified; MFA-admin может
+подтвердить email вручную с обязательной audit-причиной. Raw verification/reset
+tokens в БД и логах не сохраняются.
+
+После входа открой Admin → «Заявки заведений». Новое заведение имеет статус
+`pending` и не может публиковать/выдавать до verified email + `approved`.
+`suspended/rejected` мгновенно отзывает его сессии и снимает active inventory.
+
+## Шаг 5. Production frontend — только same-origin
+
+Открывай приложение прямо на URL backend (`https://yummy-astana.onrender.com/`)
+или привяжи к нему custom domain. Вход работает через `Secure + HttpOnly +
+SameSite=Strict` cookies и double-submit CSRF; access/refresh токены недоступны JS.
+
+`wpalish.github.io/yummy` остаётся **изолированной browser-only демкой** без
+доступа к production API. `make docs` намеренно отклоняет
+`YUMMY_PAGES_API_BASE`: cross-origin Pages потребовал бы ослабить cookie/CORS
+границу. Проверка production: регистрация на backend URL → `/session/me` отвечает
+профилем на том же origin, а mutation без `X-CSRF-Token` получает `403`.
+
 ---
 
 ## Важно про бесплатный план
@@ -67,9 +89,14 @@ disk:
 | Переменная | Значение | Зачем |
 |---|---|---|
 | `YUMMY_SECRET_KEY` | генерится Render | подпись JWT |
-| `YUMMY_ENFORCE_AUTH` | `1` | серверная защита эндпоинтов |
-| `YUMMY_ADMIN_EMAILS` | твой email | роль admin при регистрации |
+| `YUMMY_DATA_KEY` | отдельное generated value | AES-256-GCM для MFA secrets |
+| `YUMMY_ENV` | `production` | fail-fast при небезопасном конфиге |
 | `YUMMY_CORS_ORIGINS` | `https://wpalish.github.io` | доступ витрины к API |
+| `YUMMY_ALLOWED_HOSTS` | hostname Render/custom domain | Host Header allowlist |
+| `YUMMY_MAX_REQUEST_BYTES` | `65536` | лимит JSON body |
+| `YUMMY_EMAIL_MODE` | `disabled` или `resend` | transactional email adapter |
+| `RESEND_API_KEY` / `YUMMY_EMAIL_FROM` | secret/sender | verification и recovery |
+| `YUMMY_PUBLIC_URL` | HTTPS origin | безопасные action links |
 | `YUMMY_DB_PATH` | `./data/yummy.db` | путь к БД |
 | `TELEGRAM_BOT_TOKEN` | _(пусто)_ | добавишь для входа через Telegram |
 
