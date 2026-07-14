@@ -74,6 +74,9 @@ pytest                              # тесты бизнес-логики
 
 Разработка: `make help` (dev / test / docs / seed / zip).
 
+Horizontal deployment: задай `REDIS_URL` — включатся атомарные distributed limits;
+при configured Redis outage limiter fail-closed возвращает `503`, а не деградирует.
+
 Security baseline, STRIDE и честная ASVS gap-матрица:
 [SECURITY_ARCHITECTURE.md](SECURITY_ARCHITECTURE.md). Технический roadmap,
 Mermaid-схемы и pentest checklist: [SECURITY_IMPLEMENTATION_PLAN.md](SECURITY_IMPLEMENTATION_PLAN.md).

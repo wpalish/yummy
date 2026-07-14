@@ -17,6 +17,8 @@ argon2-cffi==25.1.0
     # via -r requirements.txt
 argon2-cffi-bindings==25.1.0
     # via argon2-cffi
+async-timeout==5.0.1
+    # via redis
 bandit==1.9.4
     # via -r requirements-dev.txt
 boolean-py==5.0
@@ -126,6 +128,8 @@ pyyaml==6.0.3
     # via
     #   bandit
     #   uvicorn
+redis==7.4.1
+    # via -r requirements.txt
 requests==2.34.2
     # via
     #   cachecontrol

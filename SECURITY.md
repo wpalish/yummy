@@ -28,7 +28,7 @@
 | Не изобретать хеш пароля | ✅ Argon2id через `argon2-cffi`; legacy PBKDF2 только для миграции |
 | Max Retry / jail на логине | ✅ rate-limit 6/мин на /auth/*; 8/мин на /orders |
 | Шифрование чувствительных данных | ✅ пароли только хешем; хеш не в ответе |
-| Throttling против DDoS/brute-force | ✅ in-memory rate-limit по IP |
+| Throttling против DDoS/brute-force | ✅ local guards + optional Redis atomic distributed limits, fail-closed |
 | HTTPS + HSTS | ✅ HSTS-заголовок; TLS даёт Pages/Render |
 | **Private endpoints за аутентификацией** | ✅ deny-by-default: `require_role` на /boxes, /redeem, /partner/me/*, /admin/*; env-флаг не может открыть API |
 | `/me/orders` вместо `/user/{id}/orders` | 🟡 есть /partners/{id} (id — UUID); /auth/me реализован |

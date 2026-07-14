@@ -72,6 +72,13 @@ SameSite=Strict` cookies и double-submit CSRF; access/refresh токены не
   сну, но исчезнут при новом деплое. Для демо — нормально; для реальных заказов —
   см. ниже.
 
+## Redis для нескольких replicas
+
+При horizontal scaling задай `REDIS_URL` и отдельный `YUMMY_RATE_LIMIT_KEY`.
+Auth/orders/redeem/general budgets считаются атомарно общими для всех instances.
+Если configured Redis недоступен, API fail-closed отвечает `503 + Retry-After`;
+локальные endpoint limits остаются вторым слоем.
+
 ## Переход на постоянную БД (когда будет первый партнёр, ~$7/мес)
 В `render.yaml`:
 ```yaml

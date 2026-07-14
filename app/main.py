@@ -37,6 +37,7 @@ from .accounts import (
 from .accounts import router as accounts_router
 from .auth_telegram import router as telegram_router
 from .db import Store
+from .distributed_limit import limiter as distributed_limiter
 from .email_delivery import assert_email_config
 from .models import (
     CATEGORY_RU,
@@ -215,6 +216,37 @@ app.add_middleware(
     allow_methods=["GET", "POST", "DELETE"],
     allow_headers=["Authorization", "Content-Type", "X-CSRF-Token"],
 )
+
+
+@app.middleware("http")
+async def distributed_rate_guard(request: HttpRequest, call_next):
+    path = request.url.path
+    if path.startswith(("/auth/", "/session/")):
+        bucket, limit, window = "auth", 30, 60
+    elif path == "/orders":
+        bucket, limit, window = "orders", 20, 60
+    elif path == "/redeem":
+        bucket, limit, window = "redeem", 60, 60
+    else:
+        bucket, limit, window = "general", 300, 60
+    identity = request.client.host if request.client else "unknown"
+    try:
+        allowed, retry_after = distributed_limiter.check(bucket, identity, limit, window)
+    except RuntimeError:
+        log.exception("distributed limiter unavailable bucket=%s", bucket)
+        return JSONResponse(
+            {"detail": "Сервис временно недоступен"}, status_code=503,
+            headers={"Retry-After": "5"},
+        )
+    if not allowed:
+        return JSONResponse(
+            {"detail": "Слишком много запросов"}, status_code=429,
+            headers={"Retry-After": str(retry_after)},
+        )
+    response = await call_next(request)
+    if distributed_limiter.configured:
+        response.headers["X-RateLimit-Policy"] = f"{limit};w={window}"
+    return response
 
 
 @app.middleware("http")

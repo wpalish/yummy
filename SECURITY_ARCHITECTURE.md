@@ -92,8 +92,9 @@ Encrypted offsite immutable backup  EXTERNAL — not provided by repository
 - Явный CORS origin allowlist, без wildcard credentials.
 - Parameterized SQLite queries; пользовательские строки не конкатенируются в SQL.
 - Atomic inventory decrement, redeem и refund guards против race/double action.
-- In-memory endpoint limits для auth/orders/AI. Для horizontal scaling нужен
-  distributed limiter на Cloudflare/API gateway/Redis.
+- Endpoint-local limits для auth/orders/AI + optional Redis distributed guard.
+  Redis использует atomic Lua INCR/EXPIRE, keyed pseudonymous identity и fail-closed
+  `503`; без `REDIS_URL` single-instance режим сохраняет локальные guards.
 
 ### Browser and HTTP
 
@@ -136,6 +137,7 @@ refund request ownership/admin workflow уже реализован, но реа
 
 | Control family | Status | Comment / release gate |
 |---|---|---|
+| Distributed rate limiting | IMPLEMENTED/PARTIAL | Redis atomic guard готов; managed Redis/edge rollout external |
 | DDoS L3/L4/L7, Anycast, CDN | EXTERNAL | Cloudflare plan/config, не код приложения |
 | WAF/OWASP CRS/bot/IP reputation | EXTERNAL | Cloudflare managed + custom rules |
 | TLS 1.3/PFS/OCSP/HTTP3 | EXTERNAL | Cloudflare/Render evidence required |

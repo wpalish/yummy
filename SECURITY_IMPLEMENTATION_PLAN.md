@@ -123,7 +123,8 @@ sequenceDiagram
 | Phase | Work | Estimate | Exit criterion |
 |---|---|---:|---|
 | 0 | BOLA, admin bootstrap, Argon2id, refresh reuse, request policy, CI baseline | 4–6 | repository checks green |
-| 1 | PostgreSQL migration + Alembic + Redis distributed limits | 5–8 | 2 app replicas pass concurrency tests |
+| 1 | Redis distributed limits | done | atomic/fail-closed/pseudonymous-key tests pass |
+| 1b | PostgreSQL migration + Alembic | 5–8 | 2 app replicas pass concurrency tests |
 | 2 | Encrypted admin TOTP/recovery + replay-safe assurance | done | MFA bypass/replay/refresh tests pass |
 | 2a | Partner approval/suspension control plane | done | pending bypass and revoke tests pass |
 | 2b | Email verification/password recovery token flows | done | expiry/replay/enumeration/session tests pass |
@@ -137,7 +138,7 @@ sequenceDiagram
 | 7 | Payment webhook signing/idempotency and refund workflow | 4–7 | replay/race/fraud tests pass |
 | 8 | DAST, load test, ASVS evidence review, external pentest/remediation | 7–15 | signed report; no open critical/high |
 
-**Remaining to defensible real-money baseline:** roughly **24–48 person-days**, plus
+**Remaining to defensible real-money baseline:** roughly **22–45 person-days**, plus
 external pentest and provider setup. “ASVS L3” may require more depending on final
 scope and evidence gaps.
 
@@ -149,7 +150,8 @@ gantt
     Application ownership and PII hardening :done, b1, 2026-07-14, 5d
     Argon2, refresh reuse, request policy, CI :done, b2, after b1, 4d
     section P0 before real payments
-    PostgreSQL and Redis                    :crit, p1, after b2, 8d
+    Redis distributed limiter              :done, p0r, 2026-07-14, 3d
+    PostgreSQL and Alembic                  :crit, p1, after b2, 8d
     Encrypted admin TOTP and recovery       :done, p2, 2026-07-14, 4d
     Email verification and recovery flows  :done, p2b, 2026-07-14, 4d
     WebAuthn and production mail setup      :crit, p2c, after b2, 8d
