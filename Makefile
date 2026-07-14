@@ -1,7 +1,7 @@
 # Yummy — весь проект одной командой (DX-паттерн из wasp)
 PY := .venv/bin/python
 
-.PHONY: dev test docs zip seed admin lock clean help
+.PHONY: dev test docs zip seed admin lock migrate migration clean help
 
 help:            ## список команд
 	@grep -E '^[a-z]+:.*##' $(MAKEFILE_LIST) | awk -F':.*## ' '{printf "  make %-8s %s\n", $$1, $$2}'
@@ -28,6 +28,13 @@ admin:           ## создать/повысить admin + настроить T
 lock:            ## обновить production/dev lock-файлы
 	$(PY) -m piptools compile --strip-extras -q -o requirements.lock requirements.txt
 	$(PY) -m piptools compile --strip-extras -q -o requirements-dev.lock requirements-dev.txt
+
+migrate:         ## применить Alembic migrations к DATABASE_URL
+	$(PY) -m alembic upgrade head
+
+migration:       ## создать revision (MSG="описание")
+	@test -n "$(MSG)" || (echo "Использование: make migration MSG='описание'" && exit 2)
+	$(PY) -m alembic revision -m "$(MSG)"
 
 zip:             ## собрать архив проекта в ~/Downloads/yummy.zip
 	cd .. && rm -f ~/Downloads/yummy.zip && zip -r -q ~/Downloads/yummy.zip spasibox \

@@ -26,7 +26,7 @@ FastAPI request policy              IMPLEMENTED — Host/body/type/schema/rate l
   └── Admin plane                   RBAC + mandatory TOTP; WebAuthn target
   │
   ▼
-SQLite persistent disk              parameterized SQL; encryption is EXTERNAL/GAP
+Managed PostgreSQL private data plane  psycopg transactions + Alembic; PITR external
   │
   ▼
 Encrypted offsite immutable backup  EXTERNAL — not provided by repository
@@ -90,7 +90,8 @@ Encrypted offsite immutable backup  EXTERNAL — not provided by repository
 - Body limit 64 KiB (настраивается 1 KiB–1 MiB), включая chunked body.
 - Host allowlist против Host Header Injection.
 - Явный CORS origin allowlist, без wildcard credentials.
-- Parameterized SQLite queries; пользовательские строки не конкатенируются в SQL.
+- Parameterized DB-API queries для PostgreSQL/SQLite; пользовательские строки не конкатенируются в SQL.
+- Production schema — только Alembic revisions; startup-DDL оставлен лишь SQLite dev/test.
 - Atomic inventory decrement, redeem и refund guards против race/double action.
 - Endpoint-local limits для auth/orders/AI + optional Redis distributed guard.
   Redis использует atomic Lua INCR/EXPIRE, keyed pseudonymous identity и fail-closed
@@ -157,8 +158,9 @@ refund request ownership/admin workflow уже реализован, но реа
 | SSRF | LOW SURFACE | AI URL константный; не добавлять user-controlled fetch |
 | File upload controls | N/A | upload endpoints отсутствуют; вводить полным пакетом |
 | AES-256 database encryption | **GAP — P0** | encrypted managed disk/SQLCipher + key manager evidence |
-| Private DB network/RLS | N/A/GAP | SQLite co-located; при PostgreSQL — private net + DB roles/RLS |
-| Daily/PITR/immutable/offsite backup | **GAP — P0** | текущий local SQLite backup не шифрован и не offsite |
+| PostgreSQL/Alembic | IMPLEMENTED | psycopg adapter, versioned initial schema, production fail-fast, PG integration slot |
+| Private DB network/RLS | EXTERNAL/P1 | managed private network and least-privilege DB role; RLS if needed |
+| Daily/PITR/immutable/offsite backup | **GAP — P0** | managed retention/PITR and restore drill still require provider evidence |
 | SIEM/IDS/IPS/24x7 alerts | EXTERNAL | log drain + alert routing + on-call |
 | SAST/SCA | IMPLEMENTED | Bandit/Ruff/pip-audit; CodeQL recommended |
 | DAST/pentest/bug bounty | EXTERNAL | staging target + written authorization/scope |

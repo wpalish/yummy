@@ -2,7 +2,7 @@
 
 **Baseline:** 2026-07-14
 
-**Текущий стек:** FastAPI, SQLite, vanilla JS, Render/GitHub Pages
+**Текущий стек:** FastAPI, PostgreSQL production / SQLite test, Alembic, Redis, vanilla JS, Render
 
 **Целевой уровень:** архитектура, допускающая проверку по OWASP ASVS Level 3.
 Это не заявление о compliance: статус L3 появляется только после evidence review
@@ -18,8 +18,8 @@
 - OAuth/OIDC нужен только при выборе внешнего identity provider.
 - Production browser использует same-origin HttpOnly cookie session и
   double-submit CSRF. Bearer API остаётся отдельным cookie-independent контуром.
-- 1000 RPS, HA 99.9%, PITR и horizontal scaling несовместимы с single-instance
-  SQLite. Для этих NFR целевой data plane — PostgreSQL + Redis.
+- PostgreSQL/Alembic и Redis boundary реализованы; 1000 RPS/HA 99.9% всё ещё
+  требуют load test, pool sizing, managed failover и подтверждённый PITR.
 - TLS, L3/L4 DDoS, WAF, private network, disk encryption и SIEM подтверждаются
   конфигурацией провайдера и evidence, а не Python-кодом.
 
@@ -126,7 +126,8 @@ sequenceDiagram
 |---|---|---:|---|
 | 0 | BOLA, admin bootstrap, Argon2id, refresh reuse, request policy, CI baseline | 4–6 | repository checks green |
 | 1 | Redis distributed limits | done | atomic/fail-closed/pseudonymous-key tests pass |
-| 1b | PostgreSQL migration + Alembic | 5–8 | 2 app replicas pass concurrency tests |
+| 1b | PostgreSQL adapter + initial Alembic schema | done | SQLite apply + PostgreSQL DDL + optional real-PG integration |
+| 1c | Pool/load/failover/PITR tuning | 3–5 | 2+ replicas meet SLO under failure/load |
 | 2 | Encrypted admin TOTP/recovery + replay-safe assurance | done | MFA bypass/replay/refresh tests pass |
 | 2a | Partner approval/suspension control plane | done | pending bypass and revoke tests pass |
 | 2b | Email verification/password recovery token flows | done | expiry/replay/enumeration/session tests pass |
@@ -140,7 +141,7 @@ sequenceDiagram
 | 7 | Payment webhook signing/idempotency and refund workflow | 4–7 | replay/race/fraud tests pass |
 | 8 | DAST, load test, ASVS evidence review, external pentest/remediation | 7–15 | signed report; no open critical/high |
 
-**Remaining to defensible real-money baseline:** roughly **22–45 person-days**, plus
+**Remaining to defensible real-money baseline:** roughly **17–38 person-days**, plus
 external pentest and provider setup. “ASVS L3” may require more depending on final
 scope and evidence gaps.
 
@@ -153,7 +154,8 @@ gantt
     Argon2, refresh reuse, request policy, CI :done, b2, after b1, 4d
     section P0 before real payments
     Redis distributed limiter              :done, p0r, 2026-07-14, 3d
-    PostgreSQL and Alembic                  :crit, p1, after b2, 8d
+    PostgreSQL adapter and Alembic          :done, p1, 2026-07-14, 6d
+    Pool load failover PITR tuning          :crit, p1c, after b2, 5d
     Encrypted admin TOTP and recovery       :done, p2, 2026-07-14, 4d
     Email verification and recovery flows  :done, p2b, 2026-07-14, 4d
     WebAuthn and production mail setup      :crit, p2c, after b2, 8d
@@ -174,7 +176,7 @@ gantt
 | Risk | Likelihood/impact | Mitigation |
 |---|---|---|
 | Claiming compliance without evidence | High/High | versioned ASVS matrix; independent reviewer |
-| SQLite limits HA/concurrency | High/High | PostgreSQL migration before scale/payment |
+| Untuned PostgreSQL pool/failover | Medium/High | load test, connection budget, managed failover/PITR drill |
 | Admin account takeover | Low–Medium/Critical | mandatory TOTP now; WebAuthn target; operator recovery; no email auto-admin |
 | XSS performs same-origin actions | Low–Medium/Critical | HttpOnly tokens + CSRF + strict script CSP; Trusted Types/style cleanup next |
 | WAF blocks real Kazakhstan users | Medium/High | simulate mode, dashboards, staged tuning, no blind geo block |

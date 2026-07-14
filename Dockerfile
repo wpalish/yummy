@@ -14,7 +14,9 @@ RUN pip install --no-cache-dir -r requirements.lock \
     && chown yummy:yummy /data
 COPY --chown=yummy:yummy app ./app
 COPY --chown=yummy:yummy tools ./tools
+COPY --chown=yummy:yummy migrations ./migrations
+COPY --chown=yummy:yummy alembic.ini ./alembic.ini
 
 USER yummy:yummy
 EXPOSE 8000
-CMD ["sh","-c","uvicorn app.main:app --host 0.0.0.0 --port ${PORT:-8000} --no-server-header"]
+CMD ["sh","-c","if [ -n \"${DATABASE_URL:-}\" ]; then alembic upgrade head; fi && uvicorn app.main:app --host 0.0.0.0 --port ${PORT:-8000} --no-server-header"]

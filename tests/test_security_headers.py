@@ -121,6 +121,17 @@ def test_cors_preflight_allows_only_configured_origin_and_methods():
     assert "access-control-allow-origin" not in denied.headers
 
 
+def test_production_requires_postgresql(monkeypatch):
+    import app.main as main_mod
+
+    monkeypatch.setattr(main_mod, "_PRODUCTION", True)
+    monkeypatch.setattr(main_mod.store._database, "is_postgres", False)
+    with pytest.raises(RuntimeError, match="PostgreSQL DATABASE_URL"):
+        main_mod._assert_database_config()
+    monkeypatch.setattr(main_mod.store._database, "is_postgres", True)
+    main_mod._assert_database_config()
+
+
 def test_production_edge_config_fails_closed(monkeypatch):
     import app.main as main_mod
 

@@ -66,13 +66,14 @@ PWA-установка, маршрут в 2ГИС, deep-link на бокс, ре
 
 ## Пак «БД и безопасность» (доделка)
 
-**БД (SQLite production-grade):**
+**БД (PostgreSQL production / SQLite dev):**
 - WAL + busy_timeout=5000 + synchronous=NORMAL — параллельные запросы без
   «database is locked»; foreign keys включены, схема с REFERENCES.
 - Индексы под реальные запросы: boxes(partner,status), orders(partner/user/status).
-- Путь к БД — env `YUMMY_DB_PATH` (persistent-диск на хостинге).
-- `make backup` — консистентный бэкап через официальный SQLite backup API
-  (безопасен при живом WAL), хранит последние 14 копий.
+- Production подключается только через PostgreSQL `DATABASE_URL`; SQLite разрешён
+  лишь dev/test и сохраняет WAL/busy-timeout fallback.
+- Schema — versioned Alembic migrations; Render применяет их pre-deploy.
+- `make backup` — только SQLite dev; production backup/PITR делегирован managed PostgreSQL.
 
 **Безопасность:**
 - **Отзыв сессий**: смена пароля инкрементирует `users.token_ver` → все ранее

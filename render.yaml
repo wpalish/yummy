@@ -2,18 +2,27 @@
 #   render.com → New → Blueprint → выбрать репозиторий wpalish/yummy → Apply
 # Render сам сгенерирует YUMMY_SECRET_KEY. После деплоя проверь /health и /docs.
 # Полная инструкция и апгрейд до персистентной БД — в DEPLOY.md.
+databases:
+  - name: yummy-db
+    plan: free
+    databaseName: yummy
+    user: yummy
+
 services:
   - type: web
     name: yummy-astana
     runtime: python
     plan: free                    # $0. Минус free: спин-даун через 15 мин простоя
     buildCommand: pip install -r requirements.lock
+    preDeployCommand: alembic upgrade head
     startCommand: uvicorn app.main:app --host 0.0.0.0 --port $PORT --no-server-header
     healthCheckPath: /health
     autoDeploy: true
     envVars:
-      - key: YUMMY_DB_PATH        # БД в ФС инстанса. На free НЕ переживает редеплой —
-        value: ./data/yummy.db    # для постоянной БД см. DEPLOY.md (Starter + disk)
+      - key: DATABASE_URL
+        fromDatabase:
+          name: yummy-db
+          property: connectionString
       - key: YUMMY_ENV            # fail-fast прод-конфига; private API всегда требует JWT
         value: production
       - key: YUMMY_SECRET_KEY     # подпись JWT — Render сгенерирует случайное значение
@@ -33,11 +42,8 @@ services:
       - key: PYTHON_VERSION
         value: "3.12"
 
-# ─── Персистентная БД (когда появится первый реальный партнёр) ───────────────
-# Смени plan на "starter" (~$7/мес) и добавь диск + путь на него:
-#   plan: starter
-#   disk:
-#     name: yummy-data
-#     mountPath: /var/data
-#     sizeGB: 1
-#   envVars: YUMMY_DB_PATH = /var/data/yummy.db
+databases:
+  - name: yummy-db
+    plan: free
+    databaseName: yummy
+    user: yummy

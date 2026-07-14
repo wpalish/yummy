@@ -178,6 +178,11 @@ class RequestPolicyMiddleware:
             )
 
 
+def _assert_database_config() -> None:
+    if _PRODUCTION and not store._database.is_postgres:
+        raise RuntimeError("production требует PostgreSQL DATABASE_URL; SQLite только dev/test")
+
+
 def _assert_edge_config() -> None:
     if not _PRODUCTION:
         return
@@ -192,6 +197,7 @@ def _assert_edge_config() -> None:
 async def lifespan(app: FastAPI):
     assert_prod_config()  # fail-fast: прод-режим не стартует с dev-секретом
     assert_email_config()
+    _assert_database_config()
     _assert_edge_config()
     if store.count() == (0, 0, 0):
         from .seed import seed

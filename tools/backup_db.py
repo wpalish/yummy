@@ -17,6 +17,9 @@ DST_DIR = ROOT / "backups"
 
 
 def main() -> int:
+    if os.getenv("DATABASE_URL"):
+        print("PostgreSQL backup: используйте managed PITR/pg_dump; SQLite backup tool отключён")
+        return 2
     if not SRC.exists():
         print(f"БД не найдена: {SRC}")
         return 1

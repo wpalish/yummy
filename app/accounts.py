@@ -35,6 +35,8 @@ from fastapi import APIRouter, Depends, Header, HTTPException, Response
 from fastapi import Request as HttpRequest
 from pydantic import BaseModel, Field, field_validator
 
+from .database import Database
+
 _DB = Path(os.getenv("YUMMY_DB_PATH", str(Path(__file__).parent.parent / "spasibox.db")))
 # Намеренный dev-сентинел; assert_prod_config не даст запустить его в production.
 _DEFAULT_SECRET = "dev-only-secret-change-in-prod"  # nosec B105
@@ -285,10 +287,16 @@ def decode_token(token: str) -> dict:
 #  Хранилище пользователей (та же SQLite-БД)
 # --------------------------------------------------------------------------- #
 class Accounts:
-    def __init__(self, path: Path = _DB) -> None:
-        self._path = Path(path)
-        self._path.parent.mkdir(parents=True, exist_ok=True)  # вложенный путь (напр. /var/data)
+    def __init__(self, path: Path | None = None, database_url: str | None = None) -> None:
+        self._path = Path(path or _DB)
+        self._database = Database(
+            self._path, database_url, use_env=path is None and database_url is None
+        )
         self._lock = threading.RLock()
+        if not self._database.is_postgres:
+            self._init_sqlite()
+
+    def _init_sqlite(self) -> None:
         with self._lock, self._conn() as c:
             c.execute(
                 """CREATE TABLE IF NOT EXISTS users(
@@ -358,12 +366,8 @@ class Accounts:
             c.execute("CREATE INDEX IF NOT EXISTS ix_refresh_user ON refresh_tokens(user_id)")
             c.execute("CREATE INDEX IF NOT EXISTS ix_refresh_family ON refresh_tokens(family_id)")
 
-    def _conn(self) -> sqlite3.Connection:
-        c = sqlite3.connect(self._path, timeout=5.0)
-        c.row_factory = sqlite3.Row
-        c.execute("PRAGMA journal_mode=WAL")
-        c.execute("PRAGMA busy_timeout=5000")
-        return c
+    def _conn(self):
+        return self._database.connect()
 
     def by_email(self, email: str) -> sqlite3.Row | None:
         with self._lock, self._conn() as c:
@@ -514,15 +518,18 @@ class Accounts:
         partner_status = "pending" if role == "partner" else None
         accepted_at = datetime.now(timezone.utc).isoformat() if accepted_terms else None
         with self._lock, self._conn() as c:
-            c.execute(
+            inserted = c.execute(
                 """INSERT INTO users(
                        id,email,email_verified,pw_hash,role,brand_name,address,district,partner_id,
                        partner_status,is_active,created_at,terms_accepted_at,terms_version)
-                   VALUES(?,?,?,?,?,?,?,?,?,?,1,?,?,?)""",
+                   VALUES(?,?,?,?,?,?,?,?,?,?,1,?,?,?)
+                   ON CONFLICT(email) DO NOTHING""",
                 (uid, email.lower(), int(email_verified), pw_hash, role, brand_name, address,
                  district, partner_id, partner_status, datetime.now(timezone.utc).isoformat(), accepted_at,
                  _TERMS_VERSION if accepted_terms else None),
             )
+            if inserted.rowcount != 1:
+                raise ValueError("email уже зарегистрирован")
         return uid
 
     def set_role(self, user_id: str, role: str) -> None:
@@ -772,10 +779,13 @@ def register(data: RegisterInput, request: HttpRequest) -> AuthResult:
     if data.role == "partner" and not addr:
         raise HTTPException(422, "Для заведения укажите адрес")
     role = data.role  # admin создаётся только оператором через tools/create_admin.py
-    uid = accounts.create(
-        data.email, hash_password(data.password), role, brand, addr, district,
-        accepted_terms=data.accepted_terms, email_verified=False,
-    )
+    try:
+        uid = accounts.create(
+            data.email, hash_password(data.password), role, brand, addr, district,
+            accepted_terms=data.accepted_terms, email_verified=False,
+        )
+    except ValueError as exc:
+        raise HTTPException(409, "Email уже зарегистрирован") from exc
     row = accounts.by_id(uid)
     from .email_delivery import send_verification
     verification = accounts.issue_action_token(uid, "verify_email", 24 * 3600)

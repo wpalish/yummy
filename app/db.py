@@ -13,6 +13,7 @@ import threading
 from datetime import datetime, timezone
 from pathlib import Path
 
+from .database import Database
 from .models import Box, Order, Partner, RefundRequest, Review
 
 _DB = Path(os.getenv("YUMMY_DB_PATH", str(Path(__file__).parent.parent / "spasibox.db")))
@@ -23,24 +24,21 @@ def _now_iso() -> str:
 
 
 class Store:
-    """Потокобезопасная обёртка над SQLite."""
+    """Repository over SQLite locally or PostgreSQL in production."""
 
-    def __init__(self, path: Path = _DB) -> None:
-        self._path = Path(path)
-        self._path.parent.mkdir(parents=True, exist_ok=True)
+    def __init__(self, path: Path | None = None, database_url: str | None = None) -> None:
+        self._path = Path(path or _DB)
+        self._database = Database(
+            self._path, database_url, use_env=path is None and database_url is None
+        )
         self._lock = threading.RLock()
-        self._init()
+        if not self._database.is_postgres:
+            self._init_sqlite()
 
-    def _conn(self) -> sqlite3.Connection:
-        c = sqlite3.connect(self._path, timeout=5.0)
-        c.row_factory = sqlite3.Row
-        c.execute("PRAGMA journal_mode=WAL")
-        c.execute("PRAGMA busy_timeout=5000")
-        c.execute("PRAGMA foreign_keys=ON")
-        c.execute("PRAGMA synchronous=NORMAL")  # безопасно с WAL, заметно быстрее FULL
-        return c
+    def _conn(self):
+        return self._database.connect()
 
-    def _init(self) -> None:
+    def _init_sqlite(self) -> None:
         with self._lock, self._conn() as c:
             c.executescript(
                 """
@@ -439,16 +437,16 @@ class Store:
                 if datetime.now(timezone.utc) < pickup_from:
                     return None
             now = _now_iso()
-            try:
-                c.execute(
-                    """INSERT INTO refund_requests(
-                           id,order_id,user_id,partner_id,reason,details,status,
-                           resolution,created_at,updated_at)
-                       VALUES(?,?,?,?,?,?,'pending','',?,?)""",
-                    (request_id, order_id, user_id, order["partner_id"], reason,
-                     details, now, now),
-                )
-            except sqlite3.IntegrityError:
+            inserted = c.execute(
+                """INSERT INTO refund_requests(
+                       id,order_id,user_id,partner_id,reason,details,status,
+                       resolution,created_at,updated_at)
+                   VALUES(?,?,?,?,?,?,'pending','',?,?)
+                   ON CONFLICT(order_id) DO NOTHING""",
+                (request_id, order_id, user_id, order["partner_id"], reason,
+                 details, now, now),
+            )
+            if inserted.rowcount != 1:
                 return None
             row = c.execute("SELECT * FROM refund_requests WHERE id=?", (request_id,)).fetchone()
             return self._refund_from_row(row)
