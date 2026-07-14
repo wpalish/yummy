@@ -964,7 +964,7 @@ async function _demoPost(u,body){ let m;
   throw new Error("404 "+u);
 }
 /* Переключатель бэкенда: пусто → демо (данные в браузере); URL → реальный сервер */
-const API_BASE = "";
+const API_BASE = "https://yummy-astana.onrender.com";
 async function api(m,u,b,_retry){const h=b?{"Content-Type":"application/json"}:{};
   const a=account(); if(a&&a.token)h["Authorization"]="Bearer "+a.token;
   const r=await fetch(API_BASE+u,{method:m,headers:h,body:b?JSON.stringify(b):undefined});
