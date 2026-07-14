@@ -13,7 +13,7 @@ import threading
 from datetime import datetime, timezone
 from pathlib import Path
 
-from .models import Box, Order, Partner
+from .models import Box, Order, Partner, Review
 
 _DB = Path(os.getenv("YUMMY_DB_PATH", str(Path(__file__).parent.parent / "spasibox.db")))
 
@@ -61,11 +61,20 @@ class Store:
                     category TEXT, price INTEGER, user_name TEXT, user_phone TEXT,
                     status TEXT, pickup_from TEXT, pickup_to TEXT, created_at TEXT,
                     user_id TEXT);
+                CREATE TABLE IF NOT EXISTS reviews(
+                    id TEXT PRIMARY KEY,
+                    partner_id TEXT REFERENCES partners(id),
+                    order_id TEXT UNIQUE REFERENCES orders(id),
+                    user_id TEXT, author_name TEXT,
+                    rating INTEGER, text TEXT,
+                    status TEXT DEFAULT 'approved', reject_reason TEXT,
+                    created_at TEXT);
                 CREATE INDEX IF NOT EXISTS ix_boxes_partner  ON boxes(partner_id);
                 CREATE INDEX IF NOT EXISTS ix_boxes_status   ON boxes(status, qty_left);
                 CREATE INDEX IF NOT EXISTS ix_orders_partner ON orders(partner_id, created_at);
                 CREATE INDEX IF NOT EXISTS ix_orders_user    ON orders(user_id, created_at);
                 CREATE INDEX IF NOT EXISTS ix_orders_status  ON orders(status);
+                CREATE INDEX IF NOT EXISTS ix_reviews_partner ON reviews(partner_id, status, created_at);
                 """
             )
             # миграция существующих БД: добиваем user_id, если колонки ещё нет
@@ -224,6 +233,11 @@ class Store:
             r = c.execute("SELECT * FROM orders WHERE code=?", (code.strip().upper(),)).fetchone()
             return self._order_from_row(c, r) if r else None
 
+    def order_by_id(self, order_id: str) -> Order | None:
+        with self._lock, self._conn() as c:
+            r = c.execute("SELECT * FROM orders WHERE id=?", (order_id,)).fetchone()
+            return self._order_from_row(c, r) if r else None
+
     def orders(self) -> list[Order]:
         with self._lock, self._conn() as c:
             rows = c.execute("SELECT * FROM orders ORDER BY created_at DESC").fetchall()
@@ -301,3 +315,63 @@ class Store:
     def reset(self) -> None:
         with self._lock, self._conn() as c:
             c.executescript("DELETE FROM partners; DELETE FROM boxes; DELETE FROM orders;")
+
+    # ------------------------------------------------------------------ #
+    #  Отзывы (только по завершённому — issued — заказу; одна ревью на заказ)
+    # ------------------------------------------------------------------ #
+    def _review_from_row(self, r: sqlite3.Row) -> Review:
+        return Review(
+            id=r["id"], partner_id=r["partner_id"], order_id=r["order_id"],
+            author_name=r["author_name"], rating=r["rating"], text=r["text"],
+            status=r["status"], created_at=r["created_at"],
+        )
+
+    def has_review(self, order_id: str) -> bool:
+        with self._lock, self._conn() as c:
+            r = c.execute("SELECT 1 FROM reviews WHERE order_id=?", (order_id,)).fetchone()
+            return r is not None
+
+    def create_review(self, review_id: str, partner_id: str, order_id: str,
+                      user_id: str | None, author_name: str, rating: int, text: str,
+                      status: str, reject_reason: str = "") -> Review:
+        with self._lock, self._conn() as c:
+            c.execute(
+                """INSERT INTO reviews(id,partner_id,order_id,user_id,author_name,
+                       rating,text,status,reject_reason,created_at)
+                   VALUES(?,?,?,?,?,?,?,?,?,?)""",
+                (review_id, partner_id, order_id, user_id, author_name, rating,
+                 text, status, reject_reason, _now_iso()),
+            )
+            r = c.execute("SELECT * FROM reviews WHERE id=?", (review_id,)).fetchone()
+            return self._review_from_row(r)
+
+    def partner_reviews(self, partner_id: str, limit: int = 20) -> list[Review]:
+        """Только одобренные — публичная витрина."""
+        with self._lock, self._conn() as c:
+            rows = c.execute(
+                "SELECT * FROM reviews WHERE partner_id=? AND status='approved' "
+                "ORDER BY created_at DESC LIMIT ?",
+                (partner_id, limit),
+            ).fetchall()
+            return [self._review_from_row(r) for r in rows]
+
+    # ------------------------------------------------------------------ #
+    #  Рекомендации: без AI — частота категорий/заведений в истории заказов
+    # ------------------------------------------------------------------ #
+    def recommend_boxes(self, user_id: str, limit: int = 4) -> list[Box]:
+        history = self.user_orders(user_id)
+        available = self.boxes_available(None)
+        if not history:
+            # нет истории — просто скоро закрывающиеся окна (тот же принцип, что в UI)
+            return sorted(available, key=lambda b: b.pickup_to)[:limit]
+        cat_count: dict[str, int] = {}
+        partner_count: dict[str, int] = {}
+        for o in history:
+            cat_count[o.category] = cat_count.get(o.category, 0) + 1
+            partner_count[o.partner_id] = partner_count.get(o.partner_id, 0) + 1
+
+        def score(b: Box) -> tuple[int, str]:
+            s = cat_count.get(b.category, 0) * 2 + partner_count.get(b.partner_id, 0) * 3
+            return (-s, b.pickup_to)  # выше очки — раньше; при равенстве — скорее закрывается
+
+        return sorted(available, key=score)[:limit]

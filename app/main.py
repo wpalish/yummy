@@ -20,6 +20,7 @@ from fastapi.responses import FileResponse, PlainTextResponse
 from fastapi.staticfiles import StaticFiles
 
 from . import __version__
+from . import ai as ai_mod
 from .accounts import (
     PublicUser,
     assert_prod_config,
@@ -31,13 +32,18 @@ from .accounts import router as accounts_router
 from .auth_telegram import router as telegram_router
 from .db import Store
 from .models import (
+    CATEGORY_RU,
     Box,
     BoxCreate,
+    BoxDescribeInput,
+    BoxDescribeResult,
     Order,
     OrderCreate,
     OrderResult,
     Partner,
     RedeemInput,
+    Review,
+    ReviewCreate,
 )
 from .qr import qr_svg
 
@@ -147,6 +153,24 @@ def rate_limit_orders(req: HttpRequest) -> None:
     hits.append(now)
 
 
+# AI-вызовы стоят денег — отдельный, более строгий лимит.
+_AI_MAX, _AI_WINDOW = 6, 60.0
+_ai_hits: dict[str, deque[float]] = {}
+
+
+def rate_limit_ai(req: HttpRequest) -> None:
+    from .accounts import _purge_hits
+    ip = req.client.host if req.client else "?"
+    now = time.monotonic()
+    _purge_hits(_ai_hits, _AI_WINDOW)
+    hits = _ai_hits.setdefault(ip, deque())
+    while hits and now - hits[0] > _AI_WINDOW:
+        hits.popleft()
+    if len(hits) >= _AI_MAX:
+        raise HTTPException(429, "Слишком много запросов к AI, подождите минуту")
+    hits.append(now)
+
+
 def _new(prefix: str, n: int = 8) -> str:
     return f"{prefix}{uuid.uuid4().hex[:n]}"
 
@@ -247,6 +271,13 @@ def delete_me(req: HttpRequest, user: PublicUser = Depends(current_user)) -> dic
     return {"status": "deleted", "orders_anonymized": scrubbed}
 
 
+@app.get("/me/recommendations", response_model=list[Box], tags=["Store"])
+def my_recommendations(user: PublicUser = Depends(current_user)) -> list[Box]:
+    """Без AI: чаще заказанная категория/заведение весят больше при подборе.
+    Нет истории — просто ближайшие по окну выдачи."""
+    return store.recommend_boxes(user.id)
+
+
 @app.get("/orders/{code}", response_model=Order, tags=["Store"])
 def order_status(code: str) -> Order:
     order = store.order_by_code(code)
@@ -272,6 +303,21 @@ def create_box(payload: BoxCreate) -> Box:
     return store.create_box(_new("b"), payload)
 
 
+@app.post("/ai/describe-box", response_model=BoxDescribeResult, tags=["Partner"],
+          dependencies=[Depends(require_role("partner", "admin")), Depends(rate_limit_ai)])
+async def describe_box(payload: BoxDescribeInput) -> BoxDescribeResult:
+    """Партнёр пишет черновик («остались круассаны») → продающее описание.
+    Без ANTHROPIC_API_KEY — деградирует на детерминированный шаблон, не 501:
+    это фича с очевидным офлайн-фолбэком, в отличие от Kaspi/Telegram-слотов."""
+    category_ru = CATEGORY_RU.get(payload.category, payload.category)
+    try:
+        text = await ai_mod.generate_box_description(category_ru, payload.notes)
+        return BoxDescribeResult(description=text, ai=True)
+    except ai_mod.AIUnavailable:
+        text = ai_mod.fallback_box_description(category_ru, payload.notes)
+        return BoxDescribeResult(description=text, ai=False)
+
+
 @app.get("/partners/{partner_id}/boxes", response_model=list[Box], tags=["Partner"])
 def partner_boxes(partner_id: str) -> list[Box]:
     return store.partner_boxes(partner_id)
@@ -280,6 +326,39 @@ def partner_boxes(partner_id: str) -> list[Box]:
 @app.get("/partners/{partner_id}/orders", response_model=list[Order], tags=["Partner"])
 def partner_orders(partner_id: str) -> list[Order]:
     return store.partner_orders(partner_id)
+
+
+# --------------------------------------------------------------------------- #
+#  Отзывы — только по завершённому (issued) заказу, «купил и ввёл код»
+# --------------------------------------------------------------------------- #
+@app.get("/partners/{partner_id}/reviews", response_model=list[Review], tags=["Store"])
+def list_reviews(partner_id: str) -> list[Review]:
+    return store.partner_reviews(partner_id)
+
+
+@app.post("/partners/{partner_id}/reviews", response_model=Review, status_code=201,
+          tags=["Store"], dependencies=[Depends(rate_limit_ai)])
+async def submit_review(partner_id: str, payload: ReviewCreate,
+                        user: PublicUser = Depends(current_user)) -> Review:
+    # Order не отдаёт user_id наружу — владение проверяем через user_orders()
+    # (та же WHERE user_id=? в БД), а не доверяем ID из тела запроса напрямую.
+    mine = {o.id: o for o in store.user_orders(user.id)}
+    order = mine.get(payload.order_id)
+    if not order or order.partner_id != partner_id:
+        raise HTTPException(404, "Заказ не найден или не принадлежит вам")
+    if order.status != "issued":
+        raise HTTPException(409, "Отзыв можно оставить только после получения заказа")
+    if store.has_review(order.id):
+        raise HTTPException(409, "Отзыв на этот заказ уже оставлен")
+    ok, reason = await ai_mod.moderate_review(payload.text)
+    status = "approved" if ok else "rejected"
+    if not ok:
+        raise HTTPException(422, f"Отзыв не прошёл модерацию: {reason}")
+    author = (order.user_name or "Покупатель").strip() or "Покупатель"
+    return store.create_review(
+        _new("rv"), partner_id, order.id, user.id, author,
+        payload.rating, payload.text.strip(), status, reason,
+    )
 
 
 @app.post("/redeem", tags=["Partner"],

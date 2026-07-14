@@ -65,14 +65,25 @@ def test_accounts_create_and_lookup(tmp_path):
 def _client(tmp_path, monkeypatch):
     pytest.importorskip("httpx")
     import app.accounts as accounts_mod
+    import app.main as main_mod
     from fastapi.testclient import TestClient
+    from app.db import Store
     from app.main import app
+    from app.seed import seed
 
     monkeypatch.setattr(accounts_mod, "accounts", Accounts(path=tmp_path / "api.db"))
+    # app.main.store — модульный синглтон, общий на все тесты процесса: без
+    # подмены заказы из разных тестов делят один и тот же посевной инвентарь и
+    # к концу сьюта боксы раскупаются («list index out of range» на /boxes).
+    fresh_store = Store(path=tmp_path / "store.db")
+    seed(fresh_store)
+    monkeypatch.setattr(main_mod, "store", fresh_store)
     # изоляция между тестами: rate-limit и jail общие по IP/email —
     # без сброса набегает 429 при быстром прогоне всего сьюта
     accounts_mod._auth_hits.clear()
     accounts_mod._jail.clear()
+    main_mod._rate_hits.clear()
+    main_mod._ai_hits.clear()
     return TestClient(app)
 
 
@@ -270,3 +281,88 @@ def test_export_and_delete_me(tmp_path, monkeypatch):
     assert c.get("/auth/me", headers={"Authorization": f"Bearer {tok}"}).status_code == 401
     pub = c.get(f"/orders/{code}").json()
     assert pub["user_name"] == "(удалён)" and pub["user_phone"] == ""
+
+
+# ---- AI-фичи: описание бокса, рекомендации, отзывы -------------------------- #
+def test_describe_box_fallback_without_key(tmp_path, monkeypatch):
+    """Без ANTHROPIC_API_KEY — детерминированный фолбэк, не 501/ошибка."""
+    c = _client(tmp_path, monkeypatch)
+    r = c.post("/ai/describe-box", json={"category": "sweet", "notes": "2 круассана, маффин"})
+    assert r.status_code == 200
+    body = r.json()
+    assert body["ai"] is False and "круассана" in body["description"]
+
+
+def test_describe_box_rejects_empty_notes(tmp_path, monkeypatch):
+    c = _client(tmp_path, monkeypatch)
+    r = c.post("/ai/describe-box", json={"category": "sweet", "notes": ""})
+    assert r.status_code == 422  # Pydantic min_length
+
+
+def test_recommendations_requires_auth(tmp_path, monkeypatch):
+    c = _client(tmp_path, monkeypatch)
+    assert c.get("/me/recommendations").status_code == 401
+
+
+def test_recommendations_returns_boxes(tmp_path, monkeypatch):
+    c = _client(tmp_path, monkeypatch)
+    tok = c.post("/auth/register", json={"email": "rec@yummy.kz", "password": "Secret123"}).json()["access_token"]
+    r = c.get("/me/recommendations", headers={"Authorization": f"Bearer {tok}"})
+    assert r.status_code == 200
+    assert 0 < len(r.json()) <= 4
+
+
+def test_review_full_flow(tmp_path, monkeypatch):
+    c = _client(tmp_path, monkeypatch)
+    tok = c.post("/auth/register", json={"email": "rv@yummy.kz", "password": "Secret123"}).json()["access_token"]
+    hdr = {"Authorization": f"Bearer {tok}"}
+    box = c.get("/boxes").json()[0]
+    order = c.post("/orders", json={"box_id": box["id"], "user_name": "Т", "user_phone": "+77010000000"},
+                   headers=hdr).json()["order"]
+
+    # заказ ещё не выдан — отзыв рано
+    bad = c.post(f"/partners/{box['partner_id']}/reviews",
+                 json={"order_id": order["id"], "rating": 5, "text": "Отличный бокс!"}, headers=hdr)
+    assert bad.status_code == 409
+
+    assert c.post("/redeem", json={"code": order["code"]}).json()["ok"] is True
+
+    ok = c.post(f"/partners/{box['partner_id']}/reviews",
+               json={"order_id": order["id"], "rating": 5, "text": "Отличный бокс, всё свежее!"}, headers=hdr)
+    assert ok.status_code == 201 and ok.json()["status"] == "approved"
+
+    # повторный отзыв на тот же заказ — нельзя
+    dup = c.post(f"/partners/{box['partner_id']}/reviews",
+                json={"order_id": order["id"], "rating": 4, "text": "Ещё раз попробовал"}, headers=hdr)
+    assert dup.status_code == 409
+
+    listed = c.get(f"/partners/{box['partner_id']}/reviews").json()
+    assert any(r["order_id"] == order["id"] for r in listed)
+
+
+def test_review_blocked_by_moderation(tmp_path, monkeypatch):
+    c = _client(tmp_path, monkeypatch)
+    tok = c.post("/auth/register", json={"email": "rv2@yummy.kz", "password": "Secret123"}).json()["access_token"]
+    hdr = {"Authorization": f"Bearer {tok}"}
+    box = c.get("/boxes").json()[0]
+    order = c.post("/orders", json={"box_id": box["id"], "user_name": "Т", "user_phone": "+77010000000"},
+                   headers=hdr).json()["order"]
+    c.post("/redeem", json={"code": order["code"]})
+    r = c.post(f"/partners/{box['partner_id']}/reviews",
+              json={"order_id": order["id"], "rating": 1, "text": "полная хуйня а не бокс"}, headers=hdr)
+    assert r.status_code == 422
+
+
+def test_review_rejects_other_users_order(tmp_path, monkeypatch):
+    """Чужой order_id — нельзя оставить отзыв (проверка через user_orders(), не тело запроса)."""
+    c = _client(tmp_path, monkeypatch)
+    tok1 = c.post("/auth/register", json={"email": "owner@yummy.kz", "password": "Secret123"}).json()["access_token"]
+    tok2 = c.post("/auth/register", json={"email": "intruder@yummy.kz", "password": "Secret123"}).json()["access_token"]
+    box = c.get("/boxes").json()[0]
+    order = c.post("/orders", json={"box_id": box["id"], "user_name": "Т", "user_phone": "+77010000000"},
+                   headers={"Authorization": f"Bearer {tok1}"}).json()["order"]
+    c.post("/redeem", json={"code": order["code"]})
+    r = c.post(f"/partners/{box['partner_id']}/reviews",
+              json={"order_id": order["id"], "rating": 5, "text": "Пытаюсь оставить чужой отзыв"},
+              headers={"Authorization": f"Bearer {tok2}"})
+    assert r.status_code == 404

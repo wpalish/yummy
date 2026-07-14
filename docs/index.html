@@ -501,6 +501,10 @@
           <span class="cta-note hidden" id="heroCnt"></span>
         </div>
       </div>
+      <div id="recoWrap" class="hidden">
+        <div class="sechead"><h2>✨ Тебе понравится</h2></div>
+        <div class="grid" id="recoBoxes"></div>
+      </div>
       <div class="dists" id="districts"></div>
       <div class="sechead">
         <h2 id="listTitle">Боксы рядом</h2>
@@ -565,6 +569,7 @@
               <div><label>Забрать до (часов от сейчас) <input id="bHours" type="number" min="1" max="12" value="4" /></label></div>
             </div>
             <label>Что обычно внутри <textarea id="bDesc" rows="2" placeholder="Например: 2 круассана, маффин, печенье"></textarea></label>
+            <button type="button" class="linkbtn" id="bAiBtn" style="margin:.3rem 0 0">✨ Улучшить описание с ИИ</button>
             <button class="btn" type="submit" style="margin-top:.7rem">Опубликовать бокс</button>
           </form>
         </div>
@@ -753,8 +758,20 @@ const KZ={
 "Нажми «Вернуть деньги» в «Моих заказах» или напиши в поддержку — если заказ не выдан по вине заведения, мы возвращаем полную сумму.":"«Менің тапсырыстарым» бөлімінде «Ақшаны қайтару» батырмасын бас немесе қолдауға жаз — тапсырыс мекеменің кінәсінен берілмесе, толық соманы қайтарамыз.",
 "Бронь сгорает, предоплата не возвращается — заведение резервировало бокс под тебя. Пожалуйста, приходи вовремя.":"Бронь күйіп кетеді, алдын ала төлем қайтарылмайды — мекеме боксты сен үшін сақтап қойған. Уақытында келуіңді сұраймыз.",
 "Продаётся только свежая еда текущего дня в допустимом окне реализации. Партнёры проходят проверку при подключении и отвечают за качество по стандартам сервиса; самовывоз — только день в день.":"Тек ағымдағы күннің жаңа тағамы рұқсат етілген сату уақытында сатылады. Серіктестер қосылу кезінде тексеруден өтеді және сервис стандарттары бойынша сапаға жауап береді; өзі алып кету — тек сол күні.",
+"✨ Тебе понравится":"✨ Саған ұнайды","✨ Улучшить описание с ИИ":"✨ ЖИ көмегімен сипаттаманы жақсарту",
+"Загружаем отзывы…":"Пікірлерді жүктеп жатырмыз…",
+"Отзывы покупателей — только по подтверждённым заказам":"Сатып алушы пікірлері — тек расталған тапсырыстар бойынша",
+"Реальных отзывов пока нет — вот примеры того, как это будет выглядеть (демо):":"Нақты пікірлер әлі жоқ — бұл қалай көрінетінінің мысалдары (демо):",
+"⭐ Оставить отзыв":"⭐ Пікір қалдыру","Комментарий":"Пікір","Что понравилось или нет?":"Не ұнады, не ұнамады?",
+"Отправить отзыв":"Пікірді жіберу","Напишите пару слов":"Бір-екі сөз жазыңыз","Отправляем…":"Жіберудеміз…",
+"Спасибо за отзыв! ⭐":"Пікіріңізге рахмет! ⭐",
+"Сначала напиши черновик — хотя бы пару слов":"Алдымен қара жоба жаз — кем дегенде бір-екі сөз",
+"Генерирую…":"Жасап жатырмын…",
+"Описание улучшено ИИ ✨":"Сипаттама ЖИ көмегімен жақсартылды ✨",
+"Описание собрано по шаблону (демо-режим без AI-ключа)":"Сипаттама үлгі бойынша құрастырылды (AI кілтісіз демо-режим)",
 };
 const KZ_RX=[
+[/^Отзыв о (.+)$/,"$1 туралы пікір"],
 [/Сегодня/g,"Бүгін"],
 [/(Есильский|Алматинский|Сарыарка) р-н/g,(m,d)=>(({"Есильский":"Есіл","Алматинский":"Алматы","Сарыарка":"Сарыарқа"})[d]+" ауданы")],
 [/^Боксы рядом( \(\d+\))?$/,"Жақын бокстар$1"],
@@ -834,11 +851,12 @@ function freshState(){
       return {id,partner_id:pid,category:cat,title,price,value_est:val,qty_total:qty,qty_left:qty,
         pickup_from:from.toISOString(),pickup_to:to.toISOString(),description:desc,
         created_at:new Date().toISOString(),status:"active"};}),
-    orders:[],seq:100};
+    orders:[],reviews:[],seq:100};
 }
 function saveState(s){localStorage.setItem(SKEY,JSON.stringify(s));}
 function loadState(){try{const s=JSON.parse(localStorage.getItem(SKEY));
   if(s&&s.boxes){ // если все окна выдачи истекли — обновить демо-данные
+    if(!s.reviews)s.reviews=[];               // миграция состояния без отзывов
     const anyLive=s.boxes.some(b=>Date.parse(b.pickup_to)>Date.now());
     if(anyLive)return s;
   }}catch(e){}
@@ -872,7 +890,37 @@ async function _demoGet(u){
   if(m=path.match(/^\/partners\/(.+)\/orders$/))return ST.orders.filter(o=>o.partner_id===m[1]).map(orderView);
   if(path==="/admin/stats")return statsCalc();
   if(path==="/admin/orders")return ST.orders.slice().reverse().map(orderView);
+  if(path==="/me/orders")return myDemoOrders();
+  if(path==="/me/recommendations")return demoRecommend();
+  if(m=path.match(/^\/partners\/(.+)\/reviews$/))
+    return (ST.reviews||[]).filter(r=>r.partner_id===m[1]&&r.status==="approved").slice().reverse();
   throw new Error("404 "+path);
+}
+/* демо-эквиваленты серверных /me/* — «мои» заказы = коды в этом браузере */
+function myDemoOrders(){return myCodes().map(c=>ST.orders.find(o=>o.code===c)).filter(Boolean).map(orderView);}
+function demoRecommend(limit=4){
+  const mine=myDemoOrders(), avail=ST.boxes.filter(b=>b.status==="active"&&b.qty_left>0).map(boxView);
+  if(!mine.length)return avail.slice().sort((a,b)=>Date.parse(a.pickup_to)-Date.parse(b.pickup_to)).slice(0,limit);
+  const catCnt={}, partnerCnt={};
+  mine.forEach(o=>{catCnt[o.category]=(catCnt[o.category]||0)+1; partnerCnt[o.partner_id]=(partnerCnt[o.partner_id]||0)+1;});
+  return avail.slice().sort((a,b)=>{
+    const sa=(catCnt[a.category]||0)*2+(partnerCnt[a.partner_id]||0)*3;
+    const sb=(catCnt[b.category]||0)*2+(partnerCnt[b.partner_id]||0)*3;
+    return sb-sa || Date.parse(a.pickup_to)-Date.parse(b.pickup_to);
+  }).slice(0,limit);
+}
+/* эвристическая модерация — JS-копия app/ai.py:heuristic_moderate (без AI-ключа в браузере) */
+function demoModerate(text){
+  const t=(text||"").trim();
+  if(t.length<3)return[false,"слишком короткий отзыв"];
+  const banned=["блять","сука","хуй","пизд","ебан","нахуй","долбоеб","мудак","fuck","shit","asshole","bitch"];
+  const low=t.toLowerCase();
+  if(banned.some(w=>low.includes(w)))return[false,"недопустимая лексика"];
+  if(/(https?:\/\/|www\.|t\.me\/|@\w{4,})/i.test(t))return[false,"похоже на спам-ссылку"];
+  const letters=(t.match(/[a-zа-яё]/gi)||[]).length, caps=(t.match(/[A-ZА-ЯЁ]/g)||[]).length;
+  if(letters>8&&caps/letters>0.7)return[false,"капслок"];
+  if(/(.)\1{6,}/.test(t))return[false,"спам-повтор символов"];
+  return[true,""];
 }
 async function _demoPost(u,body){ let m;
   if(u==="/orders"){const b=ST.boxes.find(x=>x.id===body.box_id);if(!b)throw new Error("Бокс не найден");
@@ -895,6 +943,24 @@ async function _demoPost(u,body){ let m;
   if(m=u.match(/^\/admin\/refund\/(.+)$/)){const o=ST.orders.find(x=>x.id===m[1]);
     if(!o||["issued","refunded","cancelled"].includes(o.status))return{refunded:false};
     o.status="refunded";const b=ST.boxes.find(x=>x.id===o.box_id);if(b)b.qty_left++;persist();return{refunded:true};}
+  if(u==="/ai/describe-box"){
+    if(!body.notes||!body.notes.trim())throw new Error("Опиши, что осталось — хотя бы пару слов");
+    const cat=CAT_RU[body.category]||body.category, notes=body.notes.trim().replace(/[.\s]+$/,"");
+    const low=cat.charAt(0).toLowerCase()+cat.slice(1);
+    return {description:`${low.charAt(0).toUpperCase()+low.slice(1)}: ${notes}. Свежее и вкусное — успей забрать сегодня по акции!`, ai:false};
+  }
+  if(m=u.match(/^\/partners\/(.+)\/reviews$/)){
+    const pid=m[1], order=ST.orders.find(x=>x.id===body.order_id);
+    if(!order||order.partner_id!==pid||!myCodes().includes(order.code))throw new Error("Заказ не найден или не принадлежит вам");
+    if(effStatus(order)!=="issued")throw new Error("Отзыв можно оставить только после получения заказа");
+    if((ST.reviews||[]).some(r=>r.order_id===order.id))throw new Error("Отзыв на этот заказ уже оставлен");
+    const [ok,reason]=demoModerate(body.text);
+    if(!ok)throw new Error("Отзыв не прошёл модерацию: "+reason);
+    const rv={id:"rv"+(ST.seq++),partner_id:pid,order_id:order.id,author_name:order.user_name||"Покупатель",
+      rating:body.rating,text:body.text.trim(),status:"approved",created_at:new Date().toISOString()};
+    ST.reviews=ST.reviews||[]; ST.reviews.push(rv); persist();
+    return rv;
+  }
   throw new Error("404 "+u);
 }
 /* Переключатель бэкенда: пусто → демо (данные в браузере); URL → реальный сервер */
@@ -1253,6 +1319,20 @@ async function loadStore(){
   renderBoxes();
   if(mapMode)renderMap();
   renderMyOrders();
+  renderRecommendations();
+}
+async function renderRecommendations(){
+  const wrap=$("#recoWrap");
+  // демо — работает и без токена (по кодам в браузере); реальный бэкенд требует вход
+  const demoMode=typeof API_BASE!=="undefined"&&API_BASE==="";
+  const a=account();
+  if(!demoMode&&!(a&&a.token)){wrap.classList.add("hidden");return;}
+  let recs=[];
+  try{recs=await get("/me/recommendations");}catch(e){wrap.classList.add("hidden");return;}
+  if(!recs.length){wrap.classList.add("hidden");return;}
+  $("#recoBoxes").innerHTML=recs.map(boxCard).join("");
+  document.querySelectorAll("#recoBoxes .boxc").forEach(el=>el.onclick=()=>openBox(el.dataset.id));
+  wrap.classList.remove("hidden");
 }
 function filtered(){
   let bs=ALL_BOXES.slice();
@@ -1291,7 +1371,7 @@ function boxCard(b){
         onclick="event.stopPropagation();toggleFav('${b.partner_id}')">♥</button></div>
     <div class="body">
       <div class="trow"><h3>${esc(b.title||b.partner_name)}</h3>
-        <button class="rt" data-rev="${esc(b.partner_name)}" onclick="event.stopPropagation();showReviews(this.dataset.rev)">⭐ ${b.rating}</button></div>
+        <button class="rt" data-pid="${b.partner_id}" data-name="${esc(b.partner_name)}" onclick="event.stopPropagation();showReviews(this.dataset.pid,this.dataset.name)">⭐ ${b.rating}</button></div>
       <div class="ven">${esc(b.partner_name)}</div>
       <div class="meta2">📍 ${esc(b.district)} · ⏱ ${win(b.pickup_from,b.pickup_to)}</div>
       <div class="price"><b>${money(b.price)}</b><s>${money(b.value_est)}</s></div>
@@ -1466,12 +1546,16 @@ window.bookVenueBox=(id,i)=>{
   </div>`);
 };
 /* отзывы (демо) */
-window.showReviews=name=>{
-  const rv=REVIEWS[name]||[["Гость","Пока нет отзывов — будь первым!",5]];
-  showModal(`<div class="mc">
-    <h3>${esc(name)}</h3>
-    <p style="font-size:.76rem;color:var(--txt2);margin:.15rem 0 .5rem">Отзывы покупателей (демо-данные)</p>
-    ${rv.map(([n,t,s])=>`<div class="rev"><b>${esc(n)}</b> <span class="st">${"★".repeat(s)}${"☆".repeat(5-s)}</span><br>${esc(t)}</div>`).join("")}
+window.showReviews=async(partnerId,name)=>{
+  showModal(`<div class="mc"><h3>${esc(name)}</h3><p style="font-size:.82rem;color:var(--txt2)">Загружаем отзывы…</p></div>`);
+  let real=[];
+  try{real=await get(`/partners/${partnerId}/reviews`);}catch(e){}
+  const body=real.length
+    ? `<p style="font-size:.76rem;color:var(--txt2);margin:.15rem 0 .5rem">Отзывы покупателей — только по подтверждённым заказам</p>
+       ${real.map(r=>`<div class="rev"><b>${esc(r.author_name)}</b> <span class="st">${"★".repeat(r.rating)}${"☆".repeat(5-r.rating)}</span><br>${esc(r.text)}</div>`).join("")}`
+    : `<p style="font-size:.76rem;color:var(--txt2);margin:.15rem 0 .5rem">Реальных отзывов пока нет — вот примеры того, как это будет выглядеть (демо):</p>
+       ${(REVIEWS[name]||[["Гость","Пока нет отзывов — будь первым!",5]]).map(([n,t,s])=>`<div class="rev"><b>${esc(n)}</b> <span class="st">${"★".repeat(s)}${"☆".repeat(5-s)}</span><br>${esc(t)}</div>`).join("")}`;
+  showModal(`<div class="mc"><h3>${esc(name)}</h3>${body}
     <button class="btn sec" onclick="closeModal()" style="margin-top:.9rem">Закрыть</button></div>`);
 };
 async function openBox(id){
@@ -1548,14 +1632,41 @@ async function renderMyOrders(){
   if(!orders.length){el.innerHTML="";return;}
   const done=orders.filter(o=>o.status==="issued");
   const eco=done.length?`<p style="margin:0 0 .6rem;font-size:.82rem;font-weight:700;color:var(--green)">🌱 Вы спасли ~${(done.length*ECO_KG).toFixed(1)} кг еды · ${(done.length*ECO_CO2).toFixed(1)} кг CO₂ · сэкономили ≈${money(Math.round(done.reduce((s,o)=>s+o.price,0)*1.5))}</p>`:"";
+  const reviewed=reviewedIds();
   el.innerHTML=`<div class="cardp"><h3>Мои заказы</h3>${eco}${orders.map(o=>`<div class="lrow">
     <div style="font-size:1.3rem">${o.emoji}</div>
     <div class="g"><b>${esc(o.code)}</b> · ${esc(o.partner_name)}
       <div style="font-size:.76rem;color:var(--txt2)">${win(o.pickup_from,o.pickup_to)} · ${money(o.price)}</div>
       ${(o.status==="paid"&&Date.now()>=Date.parse(o.pickup_from))?`<button class="linkbtn" onclick="userRefund('${o.id}')">Не выдали заказ? Вернуть деньги</button>`:""}
+      ${(o.status==="issued"&&!reviewed.includes(o.id))?`<button class="linkbtn" onclick="leaveReviewForm('${o.id}','${o.partner_id}',${esc(JSON.stringify(o.partner_name))})">⭐ Оставить отзыв</button>`:""}
       <button class="linkbtn" onclick="showCode('${esc(o.code)}')">Показать код и QR</button></div>
     <span class="tag t-${o.status}">${STATUS_RU[o.status]}</span></div>`).join("")}</div>`;
 }
+function reviewedIds(){try{return JSON.parse(localStorage.getItem("ym_reviewed")||"[]");}catch(e){return [];}}
+function markReviewed(id){const r=reviewedIds();if(!r.includes(id)){r.push(id);localStorage.setItem("ym_reviewed",JSON.stringify(r));}}
+window.leaveReviewForm=(orderId,partnerId,partnerName)=>{
+  showModal(`<div class="mc">
+    <h3>Отзыв о ${esc(partnerName)}</h3>
+    <label>Оценка <select id="rvStars"><option value="5">★★★★★ Отлично</option><option value="4">★★★★☆ Хорошо</option>
+      <option value="3">★★★☆☆ Нормально</option><option value="2">★★☆☆☆ Так себе</option><option value="1">★☆☆☆☆ Плохо</option></select></label>
+    <label>Комментарий <textarea id="rvText" rows="3" placeholder="Что понравилось или нет?"></textarea></label>
+    <span class="ferr" id="rv_err"></span>
+    <button class="btn" id="rvSend" style="margin-top:.6rem">Отправить отзыв</button>
+    <button class="btn sec" onclick="closeModal()" style="margin-top:.5rem">Отмена</button>
+  </div>`);
+  $("#rvSend").onclick=async()=>{
+    const text=$("#rvText").value.trim();
+    if(text.length<3){$("#rv_err").textContent="Напишите пару слов";return;}
+    const btn=$("#rvSend"); btn.disabled=true; btn.textContent="Отправляем…";
+    try{
+      await post(`/partners/${partnerId}/reviews`,{order_id:orderId,rating:+$("#rvStars").value,text});
+      markReviewed(orderId); closeModal(); toast("Спасибо за отзыв! ⭐"); renderMyOrders();
+    }catch(e){
+      if(/уже оставлен/i.test(e.message))markReviewed(orderId);
+      $("#rv_err").textContent=e.message; btn.disabled=false; btn.textContent="Отправить отзыв";
+    }
+  };
+};
 window.showCode=code=>{
   // QR рисуем на месте, если библиотека есть (Pages-версия); иначе — крупный код
   let qr="";
@@ -1624,6 +1735,17 @@ $("#boxForm").addEventListener("submit",async e=>{
   try{await post("/boxes",body);toast("Бокс опубликован ✓");e.target.reset();$("#bPrice").value=990;$("#bValue").value=2600;$("#bQty").value=5;$("#bHours").value=4;loadPartnerData();}
   catch(err){toast(err.message,true);}
 });
+$("#bAiBtn").onclick=async()=>{
+  const notes=$("#bDesc").value.trim();
+  if(notes.length<2){toast("Сначала напиши черновик — хотя бы пару слов",true);return;}
+  const btn=$("#bAiBtn"), old=btn.textContent; btn.disabled=true; btn.textContent="Генерирую…";
+  try{
+    const r=await post("/ai/describe-box",{category:$("#bCat").value,notes});
+    $("#bDesc").value=r.description;
+    toast(r.ai?"Описание улучшено ИИ ✨":"Описание собрано по шаблону (демо-режим без AI-ключа)");
+  }catch(e){toast(e.message,true);}
+  btn.disabled=false; btn.textContent=old;
+};
 $("#redeemCode").addEventListener("input",e=>{e.target.value=e.target.value.toUpperCase().replace(/[^A-Z0-9-]/g,"");});
 $("#redeemBtn").onclick=async()=>{
   const code=$("#redeemCode").value.trim();if(!code){toast("Введите код",true);return;}

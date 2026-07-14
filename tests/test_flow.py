@@ -98,3 +98,54 @@ def test_order_binds_user_and_user_orders(store):
     mine = store.user_orders("u42")
     assert len(mine) == 1 and mine[0].id == "o_u1"
     assert store.user_orders("nobody") == []
+
+
+# ---- отзывы (только по issued-заказу, одна ревью на заказ) ------------------ #
+def test_review_requires_no_prior_review(store):
+    box = _box(store)
+    order = store.create_order("o1", "YM-REV1", box, "Т", "+7700", user_id="u1")
+    store.redeem("YM-REV1")  # issued
+    assert store.has_review(order.id) is False
+    r = store.create_review("rv1", "p1", order.id, "u1", "Т", 5, "Отлично!", "approved")
+    assert r.rating == 5 and r.status == "approved"
+    assert store.has_review(order.id) is True
+
+
+def test_partner_reviews_only_approved(store):
+    box = _box(store, qty=2)
+    o1 = store.create_order("o1", "YM-A", box, "А", "+7700", user_id="u1")
+    store.redeem("YM-A")
+    store.create_review("rv1", "p1", o1.id, "u1", "А", 5, "Хорошо", "approved")
+    o2 = store.create_order("o2", "YM-B", box, "Б", "+7700", user_id="u2")
+    store.redeem("YM-B")
+    store.create_review("rv2", "p1", o2.id, "u2", "Б", 1, "Спам", "rejected", "спам")
+    visible = store.partner_reviews("p1")
+    assert len(visible) == 1 and visible[0].id == "rv1"
+
+
+# ---- рекомендации (без AI: частота категории/заведения) --------------------- #
+def test_recommend_boxes_no_history_returns_soonest(store):
+    _box(store, hours_ahead=1)
+    recs = store.recommend_boxes("nobody")
+    assert len(recs) == 1
+
+
+def test_recommend_boxes_prefers_ordered_category(tmp_path):
+    from app.models import BoxCreate, Partner
+    s = Store(path=tmp_path / "rec.db")
+    s.upsert_partner(Partner(id="p1", name="Кафе А", district="Центр", address="ул. 1"))
+    now = datetime.now(timezone.utc)
+
+    def mk(bid, cat, pid="p1"):
+        return s.create_box(bid, BoxCreate(
+            partner_id=pid, category=cat, title="x", price=900, value_est=2000, qty=3,
+            pickup_from=(now - timedelta(minutes=5)).isoformat(),
+            pickup_to=(now + timedelta(hours=3)).isoformat(),
+        ))
+
+    sweet = mk("b1", "sweet")
+    mk("b2", "snack")
+    order = s.create_order("o1", "YM-X", sweet, "Т", "+7700", user_id="u1")
+    s.redeem("YM-X")
+    recs = s.recommend_boxes("u1")
+    assert recs[0].category == "sweet"  # тот же вкус, что уже заказывал

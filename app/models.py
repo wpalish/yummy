@@ -132,3 +132,36 @@ class OrderResult(BaseModel):
 
 class RedeemInput(BaseModel):
     code: str
+
+
+# --------------------------------------------------------------------------- #
+#  Отзывы (только по завершённому заказу — «купил и ввёл код»)
+# --------------------------------------------------------------------------- #
+class ReviewCreate(BaseModel):
+    order_id: str
+    rating: int = Field(..., ge=1, le=5)
+    text: str = Field(..., min_length=3, max_length=500)
+
+
+class Review(BaseModel):
+    id: str
+    partner_id: str
+    order_id: str
+    author_name: str
+    rating: int
+    text: str
+    status: Literal["approved", "pending", "rejected"]
+    created_at: str
+
+
+# --------------------------------------------------------------------------- #
+#  AI-помощники
+# --------------------------------------------------------------------------- #
+class BoxDescribeInput(BaseModel):
+    category: BoxCategory = "sweet"
+    notes: str = Field(..., min_length=2, max_length=300)
+
+
+class BoxDescribeResult(BaseModel):
+    description: str
+    ai: bool                            # True — сгенерировано моделью, False — фолбэк-шаблон
