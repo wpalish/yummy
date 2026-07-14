@@ -13,7 +13,7 @@ from collections import deque
 from contextlib import asynccontextmanager
 from pathlib import Path
 
-from fastapi import Depends, FastAPI, HTTPException
+from fastapi import BackgroundTasks, Depends, FastAPI, HTTPException
 from fastapi import Request as HttpRequest
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, PlainTextResponse
@@ -21,6 +21,7 @@ from fastapi.staticfiles import StaticFiles
 
 from . import __version__
 from . import ai as ai_mod
+from . import notify as notify_mod
 from .accounts import (
     PublicUser,
     assert_prod_config,
@@ -296,11 +297,14 @@ def list_partners() -> list[Partner]:
 
 @app.post("/boxes", response_model=Box, status_code=201, tags=["Partner"],
           dependencies=[Depends(require_role("partner", "admin"))])
-def create_box(payload: BoxCreate) -> Box:
-    """Партнёр публикует бокс."""
+def create_box(payload: BoxCreate, bg: BackgroundTasks) -> Box:
+    """Партнёр публикует бокс. Подписчикам Telegram-бота уходит уведомление
+    в фоне (best-effort): без TELEGRAM_BOT_TOKEN рассылка тихо пропускается."""
     if payload.value_est < payload.price:
         raise HTTPException(400, "Ценность содержимого должна быть не ниже цены бокса")
-    return store.create_box(_new("b"), payload)
+    box = store.create_box(_new("b"), payload)
+    bg.add_task(notify_mod.broadcast_new_box, store, box)
+    return box
 
 
 @app.post("/ai/describe-box", response_model=BoxDescribeResult, tags=["Partner"],

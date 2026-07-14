@@ -628,7 +628,7 @@
           <h4>Контакты</h4>
           <div class="flinks">
             <a href="mailto:alisher.nursain@gmail.com">✉️ alisher.nursain@gmail.com</a>
-            <button onclick="toast('Telegram-поддержку запустим вместе с пилотом 💬')">💬 Telegram-поддержка</button>
+            <a href="https://t.me/yummy_astana_bot" target="_blank" rel="noopener">💬 Telegram-бот: новые боксы</a>
             <button onclick="toast('Instagram скоро запустим 📸')">📸 Instagram</button>
             <button onclick="toast('TikTok скоро запустим 🎬')">🎬 TikTok</button>
             <button id="installBtn" class="hidden">📲 Установить приложение</button>
@@ -729,7 +729,7 @@ const KZ={
 "Публичная оферта":"Жария оферта","Политика конфиденциальности":"Құпиялылық саясаты",
 "Стандарты пищевой безопасности":"Тағам қауіпсіздігі стандарттары","Договор с заведением":"Мекемемен келісім",
 "Необходимо согласие с офертой и обработкой данных":"Оферта мен деректерді өңдеуге келісім қажет",
-"💬 Telegram-поддержка":"💬 Telegram-қолдау","📲 Установить приложение":"📲 Қосымшаны орнату","Код на GitHub":"GitHub-тағы код",
+"💬 Telegram-бот: новые боксы":"💬 Telegram-бот: жаңа бокстар","🔔 Узнавать о новых боксах в Telegram":"🔔 Жаңа бокстар туралы Telegram-нан білу","📲 Установить приложение":"📲 Қосымшаны орнату","Код на GitHub":"GitHub-тағы код",
 "Доступ для персонала":"Қызметкерлерге арналған кіру","PIN-код":"PIN-код",
 "Данные (коды заказов, избранное, фильтры) хранятся только в вашем браузере — localStorage. Cookies не используем.":"Деректер (тапсырыс кодтары, таңдаулылар, сүзгілер) тек сіздің браузеріңізде сақталады — localStorage. Cookies қолданбаймыз.",
 "Понятно":"Түсінікті",
@@ -1468,6 +1468,7 @@ function successScreen(res){
     <p style="font-size:.84rem;color:var(--txt2);margin:.5rem 0">Покажите код или QR на кассе.<br>Забрать: <b style="color:var(--brown)">${win(o.pickup_from,o.pickup_to)}</b></p>
     <p style="font-size:.8rem;color:var(--green);font-weight:700;margin:.3rem 0 .6rem">🌱 Вы спасли ~${ECO_KG} кг еды и предотвратили ~${ECO_CO2} кг CO₂</p>
     <a class="btn sec" style="display:block;text-decoration:none;margin-bottom:.5rem" href="${gisUrl(o.partner_name,o.address)}" target="_blank" rel="noopener">🗺 Маршрут в 2ГИС</a>
+    <a class="btn sec" style="display:block;text-decoration:none;margin-bottom:.5rem" href="https://t.me/yummy_astana_bot" target="_blank" rel="noopener">🔔 Узнавать о новых боксах в Telegram</a>
     <button class="btn sec" onclick="closeModal()">Готово</button>
   </div>`);
 }

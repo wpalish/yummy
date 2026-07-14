@@ -1,0 +1,122 @@
+"""Telegram-уведомления о новых боксах (бот @yummy_astana_bot).
+
+Подписка: человек пишет боту /start — при следующей рассылке (или ручном
+`python -m app.notify`) getUpdates подберёт его chat_id в tg_subscribers.
+Вебхук не нужен: поллим getUpdates перед каждой рассылкой — на пилотном
+масштабе этого достаточно и работает даже с localhost (в отличие от вебхука,
+которому нужен публичный HTTPS-адрес).
+
+Без TELEGRAM_BOT_TOKEN модуль выключен: рассылка молча пропускается, бокс
+публикуется как обычно — фича деградирует, а не ломает основной флоу.
+"""
+from __future__ import annotations
+
+import logging
+import os
+from datetime import datetime
+from zoneinfo import ZoneInfo
+
+import httpx
+
+log = logging.getLogger("yummy.notify")
+
+_TIMEOUT = 5.0
+_TZ = ZoneInfo("Asia/Almaty")  # окна выдачи храним в UTC, людям пишем в местном
+
+
+def _token() -> str:
+    return os.getenv("TELEGRAM_BOT_TOKEN", "")
+
+
+def _public_url() -> str:
+    return os.getenv("YUMMY_PUBLIC_URL", "https://wpalish.github.io/yummy/").rstrip("/") + "/"
+
+
+def is_configured() -> bool:
+    return bool(_token())
+
+
+def _api(method: str, **params) -> dict | list:
+    r = httpx.post(f"https://api.telegram.org/bot{_token()}/{method}",
+                   json=params, timeout=_TIMEOUT)
+    data = r.json()
+    if not data.get("ok"):
+        raise RuntimeError(f"telegram {method}: {data.get('description', r.status_code)}")
+    return data["result"]
+
+
+def extract_subscribers(updates: list[dict]) -> list[tuple[int, str]]:
+    """Достать (chat_id, имя) из личных сообщений боту; группы/каналы игнорируем."""
+    out: list[tuple[int, str]] = []
+    for u in updates:
+        chat = (u.get("message") or {}).get("chat") or {}
+        if chat.get("type") == "private" and chat.get("id"):
+            name = (" ".join(filter(None, [chat.get("first_name"), chat.get("last_name")]))
+                    or chat.get("username") or "")
+            out.append((int(chat["id"]), name))
+    return out
+
+
+def pull_subscribers(store) -> int:
+    """Подобрать новых подписчиков из getUpdates. Возвращает число новых."""
+    if not is_configured():
+        return 0
+    offset = int(store.meta_get("tg_offset", "0"))
+    updates = _api("getUpdates", offset=offset + 1, timeout=0)
+    if not updates:
+        return 0
+    store.meta_set("tg_offset", str(max(u["update_id"] for u in updates)))
+    new = 0
+    for chat_id, name in extract_subscribers(updates):
+        if store.tg_add_subscriber(chat_id, name):
+            new += 1
+            try:
+                _api("sendMessage", chat_id=chat_id, text=(
+                    "Привет! 🥐 Ты подписан на боксы Yummy — напишу, как только "
+                    "кофейни выставят свежие вечерние боксы со скидкой."))
+            except Exception:  # приветствие не критично для подписки
+                log.warning("notify: welcome to %s failed", chat_id)
+    return new
+
+
+def _hhmm(iso: str) -> str:
+    return datetime.fromisoformat(iso).astimezone(_TZ).strftime("%H:%M")
+
+
+def box_message(box) -> str:
+    discount = round((1 - box.price / box.value_est) * 100) if box.value_est else 0
+    return (f"🥐 {box.partner_name}: новый бокс «{box.title}»\n"
+            f"{box.price} ₸ вместо {box.value_est} ₸ (−{discount}%) · осталось {box.qty_left}\n"
+            f"Забрать сегодня {_hhmm(box.pickup_from)}–{_hhmm(box.pickup_to)} · {box.address}\n"
+            f"{_public_url()}?box={box.id}")
+
+
+def broadcast_new_box(store, box) -> int:
+    """Разослать бокс подписчикам. Best-effort: сбои не роняют публикацию бокса."""
+    if not is_configured():
+        return 0
+    try:
+        pull_subscribers(store)
+    except Exception as e:
+        log.warning("notify: pull failed: %s", e)
+    sent = 0
+    for chat_id in store.tg_subscribers():
+        try:
+            _api("sendMessage", chat_id=chat_id, text=box_message(box))
+            sent += 1
+        except Exception as e:
+            msg = str(e).lower()
+            if "blocked" in msg or "chat not found" in msg or "deactivated" in msg:
+                store.tg_remove_subscriber(chat_id)  # заблокировал бота — не долбим
+            else:
+                log.warning("notify: send to %s failed: %s", chat_id, e)
+    log.info("notify: box %s → %d подписчикам", box.id, sent)
+    return sent
+
+
+if __name__ == "__main__":  # ручная синхронизация: python -m app.notify
+    from .db import Store
+
+    s = Store()
+    n = pull_subscribers(s)
+    print(f"новых подписчиков: {n}, всего: {len(s.tg_subscribers())}")

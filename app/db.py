@@ -69,6 +69,10 @@ class Store:
                     rating INTEGER, text TEXT,
                     status TEXT DEFAULT 'approved', reject_reason TEXT,
                     created_at TEXT);
+                CREATE TABLE IF NOT EXISTS tg_subscribers(
+                    chat_id INTEGER PRIMARY KEY, name TEXT, created_at TEXT);
+                CREATE TABLE IF NOT EXISTS meta(
+                    key TEXT PRIMARY KEY, value TEXT);
                 CREATE INDEX IF NOT EXISTS ix_boxes_partner  ON boxes(partner_id);
                 CREATE INDEX IF NOT EXISTS ix_boxes_status   ON boxes(status, qty_left);
                 CREATE INDEX IF NOT EXISTS ix_orders_partner ON orders(partner_id, created_at);
@@ -375,3 +379,34 @@ class Store:
             return (-s, b.pickup_to)  # выше очки — раньше; при равенстве — скорее закрывается
 
         return sorted(available, key=score)[:limit]
+
+    # ------------------------------------------------------------------ #
+    #  Telegram-подписчики и служебные метки (offset getUpdates)
+    # ------------------------------------------------------------------ #
+    def meta_get(self, key: str, default: str = "") -> str:
+        with self._lock, self._conn() as c:
+            r = c.execute("SELECT value FROM meta WHERE key=?", (key,)).fetchone()
+        return r["value"] if r else default
+
+    def meta_set(self, key: str, value: str) -> None:
+        with self._lock, self._conn() as c:
+            c.execute("""INSERT INTO meta(key,value) VALUES(?,?)
+                         ON CONFLICT(key) DO UPDATE SET value=excluded.value""",
+                      (key, value))
+
+    def tg_add_subscriber(self, chat_id: int, name: str = "") -> bool:
+        """True — подписчик новый, False — уже был."""
+        with self._lock, self._conn() as c:
+            cur = c.execute(
+                "INSERT OR IGNORE INTO tg_subscribers(chat_id,name,created_at) VALUES(?,?,?)",
+                (chat_id, name, _now_iso()))
+        return cur.rowcount == 1
+
+    def tg_remove_subscriber(self, chat_id: int) -> None:
+        with self._lock, self._conn() as c:
+            c.execute("DELETE FROM tg_subscribers WHERE chat_id=?", (chat_id,))
+
+    def tg_subscribers(self) -> list[int]:
+        with self._lock, self._conn() as c:
+            rows = c.execute("SELECT chat_id FROM tg_subscribers ORDER BY created_at").fetchall()
+        return [r["chat_id"] for r in rows]
