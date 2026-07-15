@@ -11,3 +11,4 @@ psycopg[binary]>=3.2,<4
 psycopg-pool>=3.2,<4
 SQLAlchemy>=2.0,<3
 alembic>=1.14,<2
+stripe>=12,<15

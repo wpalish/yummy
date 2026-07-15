@@ -8,7 +8,9 @@ from pydantic import BaseModel, Field, computed_field, model_validator
 
 # Категории боксов из ТЗ
 BoxCategory = Literal["sweet", "bakery", "mixed", "snack"]
-OrderStatus = Literal["paid", "issued", "expired", "refunded", "cancelled"]
+OrderStatus = Literal[
+    "payment_pending", "paid", "issued", "expired", "payment_failed", "refunded", "cancelled"
+]
 
 CATEGORY_RU = {
     "sweet": "Сладкий бокс",
@@ -216,6 +218,36 @@ class PublicOrder(BaseModel):
 class OrderResult(BaseModel):
     order: Order
     qr_svg: str                         # QR с кодом выдачи (SVG)
+
+
+class CheckoutSessionResult(BaseModel):
+    order_id: str
+    payment_id: str
+    checkout_url: str
+    reservation_expires_at: str
+
+
+class CheckoutStatus(BaseModel):
+    order_id: str
+    payment_status: Literal["pending", "paid", "failed", "expired", "refunded"]
+    order: PublicOrder | None = None
+    qr_svg: str | None = None
+
+
+class Payment(BaseModel):
+    id: str
+    order_id: str
+    user_id: str | None = None
+    provider: str
+    status: str
+    currency: str
+    amount_minor: int
+    checkout_session_id: str | None = None
+    payment_intent_id: str | None = None
+    idempotency_key: str
+    reservation_expires_at: str
+    created_at: str
+    updated_at: str
 
 
 class RedeemInput(BaseModel):

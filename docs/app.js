@@ -219,6 +219,7 @@ function statsCalc(){let gmv=0,issued=0,no_show=0,active=0,refunds=0;
   return {orders_total:total,issued,active,no_show,refunds,gmv,fill_rate:closed?Math.round(issued/closed*100):0};}
 async function _demoGet(u){
   const [path,q]=u.split("?"); const qs=new URLSearchParams(q||""); let m;
+  if(path==="/config")return {payment_mode:"demo",currency:"kzt"};
   if(path==="/districts")return [...new Set(PARTNERS.map(p=>p.district))].sort();
   if(path==="/boxes"){const d=qs.get("district");
     let bs=ST.boxes.filter(b=>b.status==="active"&&b.qty_left>0&&Date.parse(b.pickup_to)>Date.now()).map(boxView);
@@ -316,7 +317,8 @@ const API_BASE = "";
 const get=u=>_demoGet(u);
 const post=(u,b)=>_demoPost(u,b);
 const api=(m,u,b)=>m==="GET"?_demoGet(u):_demoPost(u,b);
-const STATUS_RU={paid:"оплачен",issued:"выдан",expired:"не забран",refunded:"возврат",cancelled:"отменён"};
+const STATUS_RU={payment_pending:"ожидает оплату",paid:"оплачен",issued:"выдан",expired:"не забран",payment_failed:"оплата не прошла",refunded:"возврат",cancelled:"отменён"};
+let APP_CONFIG={payment_mode:"demo",currency:"kzt"};
 /* Kaspi Pay deep-link: после регистрации мерчанта в Kaspi Pay вставь свой
    service_id — в модалке оплаты появится настоящая кнопка Kaspi. */
 const KASPI_SERVICE_ID="";
@@ -1023,9 +1025,13 @@ async function openBox(id){
     if(!name||phone.length<5){toast("Укажите имя и телефон",true);return;}
     $("#payBtn").disabled=true;$("#payBtn").textContent="Оплата…";
     try{
-      const res=await post("/orders",{box_id:b.id,user_name:name,user_phone:phone});
-      saveCode(res.order.code);
-      successScreen(res);
+      const orderPayload={box_id:b.id,user_name:name,user_phone:phone};
+      if(APP_CONFIG.payment_mode==="stripe"){
+        const checkout=await post("/checkout/sessions",orderPayload);
+        location.assign(checkout.checkout_url);return;
+      }
+      const res=await post("/orders",orderPayload);
+      saveCode(res.order.code);successScreen(res);
     }catch(e){toast(e.message,true);$("#payBtn").disabled=false;$("#payBtn").textContent="Оплатить "+money(b.price);}
   };
 }
@@ -1398,14 +1404,29 @@ async function restoreBrowserSession(){
     if(user.role==="partner"||user.role==="admin")sessionStorage.setItem("ym_staff","1");}
 }
 
+async function confirmStripePayment(sessionId){
+  showModal('<div class="mc"><h3>Проверяем оплату…</h3><p>Ожидаем подтверждённый Stripe webhook.</p></div>');
+  for(let attempt=0;attempt<12;attempt++){
+    try{const status=await get(`/checkout/sessions/${encodeURIComponent(sessionId)}`);
+      if(status.payment_status==="paid"&&status.order){saveCode(status.order.code);successScreen({order:status.order,qr_svg:status.qr_svg});return;}
+      if(["failed","expired"].includes(status.payment_status)){closeModal();toast("Оплата не завершена",true);return;}
+    }catch(e){}
+    await new Promise(resolve=>setTimeout(resolve,1500));
+  }
+  closeModal();toast("Платёж обрабатывается — проверьте заказы позже",true);
+}
+
 async function bootstrap(){
   await restoreBrowserSession();
+  try{APP_CONFIG=await get("/config");}catch(e){}
   renderAccount();window.__view="store";
   if(!account())switchView("landing");
   await loadStore();
   const qs=new URLSearchParams(location.search),verify=qs.get("verify"),reset=qs.get("reset");
   if(verify){try{await post("/auth/email/verify/confirm",{token:verify});toast("Email подтверждён ✓");const a=account();if(a){a.emailVerified=true;setAccount(a);}}catch(e){toast(e.message,true);}history.replaceState({},"",location.pathname);}
   if(reset){resetPasswordForm(reset);history.replaceState({},"",location.pathname);return;}
+  if(qs.get("payment")==="success"&&qs.get("session_id")){await confirmStripePayment(qs.get("session_id"));history.replaceState({},"",location.pathname);return;}
+  if(qs.get("payment")==="cancelled")toast("Оплата отменена — резерв освободится автоматически",true);
   const bid=qs.get("box");if(bid)openBox(bid);
   const nav=qs.get("nav");if(nav==="venues")switchView("venues");else if(nav==="orders")gotoOrders();
 }

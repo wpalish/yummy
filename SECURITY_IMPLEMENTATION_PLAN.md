@@ -139,7 +139,8 @@ sequenceDiagram
 | 4 | Cloudflare WAF/Turnstile/origin lock/rate rules | 2–4 | staged rules, false-positive report |
 | 5 | encrypted DB/backups, PITR, restore automation | 4–7 | documented restore drill meets RPO/RTO |
 | 6 | OTel metrics, log drain, SIEM detections and on-call | 4–7 | alerts tested by simulations |
-| 7 | Payment webhook signing/idempotency and refund workflow | 4–7 | replay/race/fraud tests pass |
+| 7 | Stripe Checkout reservation/webhook/idempotency/reconciliation | done | replay/amount/race/failure tests pass |
+| 7b | Stripe Connect/live refunds/reconciliation scheduler | 3–6 | live-account and payout evidence |
 | 8 | DAST, load test, ASVS evidence review, external pentest/remediation | 7–15 | signed report; no open critical/high |
 
 **Remaining to defensible real-money baseline:** roughly **17–38 person-days**, plus
@@ -167,7 +168,8 @@ gantt
     BFF cookies, CSRF and script CSP        :done, p5, 2026-07-14, 5d
     Trusted Types and strict style CSP      :p5b, after p2, 5d
     SIEM, metrics and incident alerts       :p6, after p3, 7d
-    Payment webhook security                :p7, after p1, 7d
+    Stripe Checkout webhook state machine  :done, p7, 2026-07-14, 6d
+    Stripe Connect live payout integration :p7b, after p1, 6d
     section Verification
     DAST and load tests                     :v1, after p5, 5d
     Independent ASVS L3 pentest             :crit, v2, after v1, 10d

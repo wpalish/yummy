@@ -49,8 +49,9 @@ def test_initial_migration_applies_to_fresh_sqlite(tmp_path):
         )}
         version = connection.execute("SELECT version_num FROM alembic_version").fetchone()[0]
     assert {"users", "partners", "boxes", "orders", "reviews", "refund_requests",
-            "refresh_tokens", "action_tokens", "mfa_recovery_codes"} <= tables
-    assert version == "20260714_0001"
+            "refresh_tokens", "action_tokens", "mfa_recovery_codes", "payments",
+            "stripe_events"} <= tables
+    assert version == "20260714_0002"
 
 
 def test_postgresql_offline_migration_compiles():
@@ -64,4 +65,6 @@ def test_postgresql_offline_migration_compiles():
     )
     assert "CREATE TABLE users" in result.stdout
     assert "CREATE TABLE refund_requests" in result.stdout
+    assert "CREATE TABLE payments" in result.stdout
+    assert "CREATE TABLE stripe_events" in result.stdout
     assert "CREATE UNIQUE INDEX ux_users_partner" in result.stdout

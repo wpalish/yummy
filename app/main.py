@@ -5,6 +5,7 @@
 """
 from __future__ import annotations
 
+import hashlib
 import hmac
 import logging
 import os
@@ -47,6 +48,8 @@ from .models import (
     BoxCreate,
     BoxDescribeInput,
     BoxDescribeResult,
+    CheckoutSessionResult,
+    CheckoutStatus,
     Order,
     OrderCreate,
     OrderResult,
@@ -60,6 +63,12 @@ from .models import (
     RefundRequestCreate,
     Review,
     ReviewCreate,
+)
+from .payments import (
+    PaymentUnavailable,
+    assert_payment_config,
+    gateway as payment_gateway,
+    payment_mode,
 )
 from .qr import qr_svg
 
@@ -198,6 +207,7 @@ def _assert_edge_config() -> None:
 async def lifespan(app: FastAPI):
     assert_prod_config()  # fail-fast: прод-режим не стартует с dev-секретом
     assert_email_config()
+    assert_payment_config(_PRODUCTION)
     _assert_database_config()
     _assert_edge_config()
     if store.count() == (0, 0, 0):
@@ -237,6 +247,8 @@ async def distributed_rate_guard(request: HttpRequest, call_next):
         bucket, limit, window = "orders", 20, 60
     elif path == "/redeem":
         bucket, limit, window = "redeem", 60, 60
+    elif path == "/webhooks/stripe":
+        bucket, limit, window = "stripe-webhook", 1000, 60
     else:
         bucket, limit, window = "general", 300, 60
     identity = request.client.host if request.client else "unknown"
@@ -475,6 +487,11 @@ def health() -> dict:
     return {"status": "ok", "partners": p, "boxes": b, "orders": o}
 
 
+@app.get("/config", include_in_schema=False)
+def public_config() -> dict:
+    return {"payment_mode": payment_mode(), "currency": os.getenv("STRIPE_CURRENCY", "kzt")}
+
+
 # --------------------------------------------------------------------------- #
 #  Магазин (покупатель)
 # --------------------------------------------------------------------------- #
@@ -524,6 +541,71 @@ def create_order(payload: OrderCreate, req: HttpRequest,
              order.id, order.partner_id, user.id if user else "guest",
              req.client.host if req.client else "?")
     return OrderResult(order=order, qr_svg=qr_svg(order.code))
+
+
+@app.post("/checkout/sessions", response_model=CheckoutSessionResult, status_code=201,
+          tags=["Payments"], dependencies=[Depends(rate_limit_orders)])
+def create_checkout_session(
+    payload: OrderCreate,
+    req: HttpRequest,
+    user: PublicUser | None = Depends(optional_user),
+) -> CheckoutSessionResult:
+    box = store.box(payload.box_id)
+    if not box or store.box_orderability(payload.box_id) != "available":
+        raise HTTPException(409, "Бокс недоступен")
+    payment_id, order_id = _new("pay", 12), _new("o")
+    reserved = store.create_checkout_reservation(
+        payment_id, order_id, _order_code(), box, payload.user_name.strip(),
+        payload.user_phone.strip(), user.id if user else None,
+        os.getenv("STRIPE_CURRENCY", "kzt").lower(),
+    )
+    if not reserved:
+        raise HTTPException(409, "Бокс только что закончился")
+    order, payment = reserved
+    try:
+        checkout = payment_gateway.create_checkout(
+            payment_id=payment.id, order_id=order.id,
+            title=box.title or box.partner_name, amount_minor=payment.amount_minor,
+            currency=payment.currency, idempotency_key=payment.idempotency_key,
+        )
+        if not store.attach_checkout_session(payment.id, checkout["id"]):
+            raise PaymentUnavailable("Не удалось привязать Checkout Session")
+    except PaymentUnavailable as exc:
+        store.fail_checkout_reservation(payment.id)
+        raise HTTPException(503, "Платёжный сервис временно недоступен") from exc
+    log.info("audit: checkout-created payment=%s order=%s actor=%s ip=%s",
+             payment.id, order.id, user.id if user else "guest",
+             req.client.host if req.client else "?")
+    return CheckoutSessionResult(
+        order_id=order.id, payment_id=payment.id, checkout_url=checkout["url"],
+        reservation_expires_at=payment.reservation_expires_at,
+    )
+
+
+@app.get("/checkout/sessions/{session_id}", response_model=CheckoutStatus, tags=["Payments"])
+def checkout_session_status(session_id: str) -> CheckoutStatus:
+    result = store.checkout_status(session_id)
+    if not result:
+        raise HTTPException(404, "Checkout Session не найдена")
+    payment, order = result
+    paid = payment.status == "paid" and order.status in {"paid", "issued"}
+    public = PublicOrder.from_order(order) if paid else None
+    return CheckoutStatus(
+        order_id=order.id, payment_status=payment.status,
+        order=public, qr_svg=qr_svg(order.code) if paid else None,
+    )
+
+
+@app.post("/webhooks/stripe", tags=["Payments"], include_in_schema=False)
+async def stripe_webhook(request: HttpRequest) -> dict:
+    payload = await request.body()
+    signature = request.headers.get("stripe-signature", "")
+    try:
+        event = payment_gateway.construct_event(payload, signature)
+    except PaymentUnavailable as exc:
+        raise HTTPException(400, "Invalid Stripe webhook") from exc
+    result = store.process_stripe_event(event, hashlib.sha256(payload).hexdigest())
+    return {"received": True, "result": result}
 
 
 @app.get("/me/orders", response_model=list[Order], tags=["Store"])

@@ -55,6 +55,7 @@ function statsCalc(){let gmv=0,issued=0,no_show=0,active=0,refunds=0;
   return {orders_total:total,issued,active,no_show,refunds,gmv,fill_rate:closed?Math.round(issued/closed*100):0};}
 async function _demoGet(u){
   const [path,q]=u.split("?"); const qs=new URLSearchParams(q||""); let m;
+  if(path==="/config")return {payment_mode:"demo",currency:"kzt"};
   if(path==="/districts")return [...new Set(PARTNERS.map(p=>p.district))].sort();
   if(path==="/boxes"){const d=qs.get("district");
     let bs=ST.boxes.filter(b=>b.status==="active"&&b.qty_left>0&&Date.parse(b.pickup_to)>Date.now()).map(boxView);

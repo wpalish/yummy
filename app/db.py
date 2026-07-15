@@ -14,7 +14,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from .database import Database
-from .models import Box, Order, Partner, RefundRequest, Review
+from .models import Box, Order, Partner, Payment, RefundRequest, Review
 
 _DB = Path(os.getenv("YUMMY_DB_PATH", str(Path(__file__).parent.parent / "spasibox.db")))
 
@@ -58,7 +58,8 @@ class Store:
                     partner_id TEXT REFERENCES partners(id),
                     category TEXT, price INTEGER, user_name TEXT, user_phone TEXT,
                     status TEXT, pickup_from TEXT, pickup_to TEXT, created_at TEXT,
-                    user_id TEXT);
+                    user_id TEXT, payment_status TEXT DEFAULT 'paid',
+                    reservation_expires_at TEXT);
                 CREATE TABLE IF NOT EXISTS reviews(
                     id TEXT PRIMARY KEY,
                     partner_id TEXT REFERENCES partners(id),
@@ -67,6 +68,15 @@ class Store:
                     rating INTEGER, text TEXT,
                     status TEXT DEFAULT 'approved', reject_reason TEXT,
                     created_at TEXT);
+                CREATE TABLE IF NOT EXISTS payments(
+                    id TEXT PRIMARY KEY, order_id TEXT UNIQUE REFERENCES orders(id),
+                    user_id TEXT, provider TEXT, status TEXT, currency TEXT,
+                    amount_minor INTEGER, checkout_session_id TEXT UNIQUE,
+                    payment_intent_id TEXT UNIQUE, idempotency_key TEXT UNIQUE,
+                    reservation_expires_at TEXT, created_at TEXT, updated_at TEXT);
+                CREATE TABLE IF NOT EXISTS stripe_events(
+                    event_id TEXT PRIMARY KEY, event_type TEXT, payload_hash TEXT,
+                    received_at TEXT, processed_at TEXT, status TEXT, error TEXT);
                 CREATE TABLE IF NOT EXISTS refund_requests(
                     id TEXT PRIMARY KEY,
                     order_id TEXT UNIQUE REFERENCES orders(id),
@@ -80,6 +90,8 @@ class Store:
                 CREATE INDEX IF NOT EXISTS ix_orders_user    ON orders(user_id, created_at);
                 CREATE INDEX IF NOT EXISTS ix_orders_status  ON orders(status);
                 CREATE INDEX IF NOT EXISTS ix_reviews_partner ON reviews(partner_id, status, created_at);
+                CREATE INDEX IF NOT EXISTS ix_payments_status ON payments(status, reservation_expires_at);
+                CREATE INDEX IF NOT EXISTS ix_payments_user ON payments(user_id, created_at);
                 CREATE INDEX IF NOT EXISTS ix_refunds_user ON refund_requests(user_id, created_at);
                 CREATE INDEX IF NOT EXISTS ix_refunds_status ON refund_requests(status, created_at);
                 """
@@ -88,6 +100,10 @@ class Store:
             cols = {r[1] for r in c.execute("PRAGMA table_info(orders)").fetchall()}
             if "user_id" not in cols:
                 c.execute("ALTER TABLE orders ADD COLUMN user_id TEXT")
+            if "payment_status" not in cols:
+                c.execute("ALTER TABLE orders ADD COLUMN payment_status TEXT DEFAULT 'paid'")
+            if "reservation_expires_at" not in cols:
+                c.execute("ALTER TABLE orders ADD COLUMN reservation_expires_at TEXT")
             partner_cols = {r[1] for r in c.execute("PRAGMA table_info(partners)").fetchall()}
             if "owner_user_id" not in partner_cols:
                 c.execute("ALTER TABLE partners ADD COLUMN owner_user_id TEXT")
@@ -190,6 +206,7 @@ class Store:
             return False
 
     def boxes_available(self, district: str | None = None) -> list[Box]:
+        self.expire_payment_reservations()
         with self._lock, self._conn() as c:
             rows = c.execute(
                 "SELECT * FROM boxes WHERE status='active' AND qty_left>0 "
@@ -270,6 +287,130 @@ class Store:
             )
             r = c.execute("SELECT * FROM orders WHERE id=?", (order_id,)).fetchone()
             return self._order_from_row(c, r)
+
+    def create_checkout_reservation(
+        self, payment_id: str, order_id: str, code: str, box: Box,
+        name: str, phone: str, user_id: str | None, currency: str,
+        ttl_seconds: int = 900,
+    ) -> tuple[Order, Payment] | None:
+        from datetime import timedelta
+        with self._lock, self._conn() as c:
+            row = c.execute("SELECT * FROM boxes WHERE id=?", (box.id,)).fetchone()
+            if (not row or row["status"] != "active" or row["qty_left"] <= 0
+                    or not self._pickup_is_open(row["pickup_to"])):
+                return None
+            actual = self._box_from_row(c, row)
+            if not self._take_one(c, actual.id):
+                return None
+            now = datetime.now(timezone.utc)
+            created = now.isoformat()
+            expires = (now + timedelta(seconds=ttl_seconds)).isoformat()
+            c.execute(
+                """INSERT INTO orders(id,code,box_id,partner_id,category,price,
+                       user_name,user_phone,status,pickup_from,pickup_to,created_at,user_id,
+                       payment_status,reservation_expires_at)
+                   VALUES(?,?,?,?,?,?,?,?,'payment_pending',?,?,?,?,'pending',?)""",
+                (order_id, code, actual.id, actual.partner_id, actual.category, actual.price,
+                 name, phone, actual.pickup_from, actual.pickup_to, created, user_id, expires),
+            )
+            idempotency_key = f"checkout:{payment_id}:1"
+            c.execute(
+                """INSERT INTO payments(id,order_id,user_id,provider,status,currency,
+                       amount_minor,idempotency_key,reservation_expires_at,created_at,updated_at)
+                   VALUES(?,?,?,'stripe','pending',?,?,?,?,?,?)""",
+                (payment_id, order_id, user_id, currency, actual.price * 100,
+                 idempotency_key, expires, created, created),
+            )
+            order_row = c.execute("SELECT * FROM orders WHERE id=?", (order_id,)).fetchone()
+            payment_row = c.execute("SELECT * FROM payments WHERE id=?", (payment_id,)).fetchone()
+            return self._order_from_row(c, order_row), Payment(**dict(payment_row))
+
+    def attach_checkout_session(self, payment_id: str, session_id: str) -> bool:
+        with self._lock, self._conn() as c:
+            updated = c.execute(
+                "UPDATE payments SET checkout_session_id=?,updated_at=? WHERE id=? AND status='pending'",
+                (session_id, _now_iso(), payment_id),
+            )
+            return updated.rowcount == 1
+
+    def fail_checkout_reservation(self, payment_id: str) -> bool:
+        with self._lock, self._conn() as c:
+            payment = c.execute("SELECT * FROM payments WHERE id=?", (payment_id,)).fetchone()
+            if not payment or payment["status"] != "pending":
+                return False
+            order = c.execute("SELECT * FROM orders WHERE id=?", (payment["order_id"],)).fetchone()
+            c.execute("UPDATE payments SET status='failed',updated_at=? WHERE id=?", (_now_iso(), payment_id))
+            c.execute("UPDATE orders SET status='payment_failed',payment_status='failed' WHERE id=?", (order["id"],))
+            self._return_one(c, order["box_id"])
+            return True
+
+    def expire_payment_reservations(self) -> int:
+        now = _now_iso()
+        expired = 0
+        with self._lock, self._conn() as c:
+            rows = c.execute(
+                "SELECT * FROM payments WHERE status='pending' AND reservation_expires_at<?",
+                (now,),
+            ).fetchall()
+            for payment in rows:
+                updated = c.execute(
+                    "UPDATE payments SET status='expired',updated_at=? WHERE id=? AND status='pending'",
+                    (now, payment["id"]),
+                )
+                if updated.rowcount != 1:
+                    continue
+                order = c.execute("SELECT * FROM orders WHERE id=?", (payment["order_id"],)).fetchone()
+                c.execute("UPDATE orders SET status='payment_failed',payment_status='expired' WHERE id=? AND status='payment_pending'", (order["id"],))
+                self._return_one(c, order["box_id"])
+                expired += 1
+        return expired
+
+    def checkout_status(self, session_id: str) -> tuple[Payment, Order] | None:
+        with self._lock, self._conn() as c:
+            payment = c.execute("SELECT * FROM payments WHERE checkout_session_id=?", (session_id,)).fetchone()
+            if not payment:
+                return None
+            order = c.execute("SELECT * FROM orders WHERE id=?", (payment["order_id"],)).fetchone()
+            return Payment(**dict(payment)), self._order_from_row(c, order)
+
+    def process_stripe_event(self, event: dict, payload_hash: str) -> str:
+        event_id, event_type = event.get("id", ""), event.get("type", "")
+        obj = event.get("data", {}).get("object", {})
+        with self._lock, self._conn() as c:
+            inserted = c.execute(
+                """INSERT INTO stripe_events(event_id,event_type,payload_hash,received_at,status)
+                   VALUES(?,?,?,?,'processing') ON CONFLICT(event_id) DO NOTHING""",
+                (event_id, event_type, payload_hash, _now_iso()),
+            )
+            if inserted.rowcount != 1:
+                return "duplicate"
+            payment_id = (obj.get("metadata") or {}).get("payment_id")
+            payment = c.execute("SELECT * FROM payments WHERE id=?", (payment_id,)).fetchone() if payment_id else None
+            if not payment:
+                c.execute("UPDATE stripe_events SET status='ignored',processed_at=? WHERE event_id=?", (_now_iso(), event_id))
+                return "ignored"
+            if event_type in {"checkout.session.completed", "checkout.session.async_payment_succeeded"}:
+                valid = (obj.get("payment_status") == "paid"
+                         and int(obj.get("amount_total") or -1) == payment["amount_minor"]
+                         and str(obj.get("currency") or "").lower() == payment["currency"]
+                         and obj.get("client_reference_id") == payment["order_id"])
+                if not valid:
+                    c.execute("UPDATE stripe_events SET status='rejected',error='reconciliation',processed_at=? WHERE event_id=?", (_now_iso(), event_id))
+                    return "rejected"
+                c.execute("UPDATE payments SET status='paid',payment_intent_id=?,updated_at=? WHERE id=? AND status='pending'", (obj.get("payment_intent"), _now_iso(), payment_id))
+                c.execute("UPDATE orders SET status='paid',payment_status='paid' WHERE id=? AND status='payment_pending'", (payment["order_id"],))
+                result = "paid"
+            elif event_type in {"checkout.session.expired", "checkout.session.async_payment_failed"}:
+                order = c.execute("SELECT * FROM orders WHERE id=?", (payment["order_id"],)).fetchone()
+                if payment["status"] == "pending":
+                    c.execute("UPDATE payments SET status='expired',updated_at=? WHERE id=?", (_now_iso(), payment_id))
+                    c.execute("UPDATE orders SET status='payment_failed',payment_status='expired' WHERE id=?", (order["id"],))
+                    self._return_one(c, order["box_id"])
+                result = "expired"
+            else:
+                result = "ignored"
+            c.execute("UPDATE stripe_events SET status=?,processed_at=? WHERE event_id=?", (result, _now_iso(), event_id))
+            return result
 
     def scrub_user(self, user_id: str) -> int:
         """Privacy: анонимизировать PII в заказах удалённого аккаунта
@@ -412,7 +553,8 @@ class Store:
             # Порядок учитывает foreign keys и позволяет безопасно reseed'ить
             # непустую базу в dev/test окружении.
             c.executescript(
-                "DELETE FROM reviews; DELETE FROM refund_requests; DELETE FROM orders; "
+                "DELETE FROM reviews; DELETE FROM refund_requests; DELETE FROM stripe_events; "
+                "DELETE FROM payments; DELETE FROM orders; "
                 "DELETE FROM boxes; DELETE FROM partners;"
             )
 

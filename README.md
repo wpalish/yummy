@@ -41,9 +41,11 @@ DATABASE_URL=postgresql://... alembic upgrade head
 
 ## Про оплату (важно)
 
-Оплата в MVP — **демо-заглушка**. В проде нужен **Kaspi Pay / Kaspi QR** — это
-основной платёжный рельс в Казахстане (люди не вводят карты). Интеграция Kaspi —
-отдельный и самый весомый технический пункт следующего этапа.
+Backend поддерживает два режима: `demo` и Stripe Checkout. Stripe flow резервирует
+inventory как `payment_pending`, создаёт idempotent Checkout Session и переводит
+заказ в `paid` только после подписанного/reconciled webhook. Для live запуска сначала
+проверь доступность Stripe merchant/Connect для юридической структуры в Казахстане;
+локальный Kaspi остаётся отдельным provider roadmap.
 
 ## Дорожная карта (после пилота)
 

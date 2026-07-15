@@ -47,6 +47,10 @@ services:
         value: yummy-astana.onrender.com
       - key: YUMMY_MAX_REQUEST_BYTES
         value: "65536"
+      - key: YUMMY_PAYMENT_MODE   # demo до выдачи Stripe live merchant credentials
+        value: demo
+      - key: STRIPE_CURRENCY
+        value: kzt
       - key: YUMMY_EMAIL_MODE     # disabled до подключения Resend; admin может verify вручную
         value: disabled
       - key: YUMMY_PUBLIC_URL
