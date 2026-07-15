@@ -1,6 +1,11 @@
 #!/usr/bin/env bash
-# PostToolUse-хук: после правки .py — проверить синтаксис, отформатировать если есть тулза.
-# Самоохранный: молчит, если ruff/black не установлены. py_compile есть всегда.
+# PostToolUse-хук: после правки .py — синтакс-барьер (py_compile).
+#
+# Авто-форматирование НАМЕРЕННО отключено: у проекта компактный stdlib-стиль
+# (плотные однострочники), а black переформатировал бы весь файл при правке
+# одной строки и разнёс бы этот стиль (23 файла / ~1441 строка). ruff/black
+# стоят в .venv для РУЧНОГО запуска и для skill /audit (`ruff check`), но не
+# навязываются на каждый Edit. См. решение в git-истории этого файла.
 set -euo pipefail
 
 FILE="$(python3 -c 'import json,sys; print((json.load(sys.stdin).get("tool_input") or {}).get("file_path",""))' 2>/dev/null || true)"
@@ -16,8 +21,4 @@ PY="${CLAUDE_PROJECT_DIR:-.}/.venv/bin/python"
 
 # синтаксис — быстрый барьер против битых правок
 "$PY" -m py_compile "$FILE" || { echo "[hook] SYNTAX ERROR: $FILE" >&2; exit 2; }
-
-# формат — только если тулза доступна (иначе тихо пропускаем)
-if command -v ruff >/dev/null 2>&1; then ruff format "$FILE" >/dev/null 2>&1 || true; fi
-if command -v black >/dev/null 2>&1; then black -q "$FILE" >/dev/null 2>&1 || true; fi
 exit 0

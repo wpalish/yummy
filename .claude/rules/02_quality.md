@@ -28,11 +28,13 @@
 - Ответы не содержат pw_hash/токенов.
 - Rate-limit на write-эндпоинтах и AI-эндпоинтах (отдельные лимитеры).
 
-## Линт/формат (опционально — не установлены в venv)
+## Линт/формат (ruff+black в .venv, запуск ВРУЧНУЮ)
 
-- Если появятся: `ruff check app tests tools` + `black app tests tools`.
-- Формат-хук в `.claude/settings.json` самоохранный: молчит, если ruff/black нет,
-  но всегда прогоняет `py_compile` (ловит синтаксис).
+- `.venv/bin/ruff check app tests tools` — линт.
+- `.venv/bin/black --diff app tests tools` — посмотреть форматирование (НЕ применять
+  массово: у проекта намеренный компактный stdlib-стиль, black разнёс бы 23 файла).
+- Авто-хук (`.claude/hooks/format-py.sh`) делает ТОЛЬКО `py_compile` (синтакс-барьер),
+  форматирование не навязывает — чтобы правка одной строки не переформатировала весь файл.
 
 ## Definition of Done
 

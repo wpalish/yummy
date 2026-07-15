@@ -1,0 +1,9 @@
+# Dev-инструменты (не нужны в проде). Установка в venv проекта:
+#   uv pip install --python .venv/bin/python -r requirements-dev.txt
+#
+# Формат/линт запускаются ВРУЧНУЮ (не в авто-хуке — см. .claude/hooks/format-py.sh):
+#   .venv/bin/ruff check app tests tools      # линт
+#   .venv/bin/black --diff app tests tools     # посмотреть, что бы изменилось
+# Проект намеренно на компактном stdlib-стиле; массовый reformat не делаем.
+ruff>=0.15
+black>=25.0
