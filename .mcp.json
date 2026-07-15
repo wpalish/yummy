@@ -1,0 +1,13 @@
+{
+  "//": "MCP-серверы проекта Yummy. Активируются при открытии проекта в Claude Code (первый запуск спросит подтверждение на каждый сервер). Postgres/Supabase не включены — стек на SQLite. Exa требует EXA_API_KEY. GitHub — через отдельный OAuth: claude mcp add --transport http github https://api.githubcopilot.com/mcp/",
+  "mcpServers": {
+    "context7": {
+      "command": "npx",
+      "args": ["-y", "@upstash/context7-mcp"]
+    },
+    "playwright": {
+      "command": "npx",
+      "args": ["@playwright/mcp@latest"]
+    }
+  }
+}
