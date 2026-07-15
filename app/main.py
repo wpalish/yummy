@@ -17,14 +17,16 @@ from pathlib import Path
 from fastapi import BackgroundTasks, Depends, FastAPI, HTTPException
 from fastapi import Request as HttpRequest
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse, PlainTextResponse
+from fastapi.responses import FileResponse, JSONResponse, PlainTextResponse
 from fastapi.staticfiles import StaticFiles
+from starlette.middleware.trustedhost import TrustedHostMiddleware
 
 from . import __version__
 from . import ai as ai_mod
 from . import notify as notify_mod
 from .accounts import (
     PublicUser,
+    _ENFORCE,
     assert_prod_config,
     current_user,
     optional_user,
@@ -86,7 +88,18 @@ _SEC_HEADERS = {
     # context group; ресурсы API читает только своя витрина (CORS уже правит)
     "Cross-Origin-Opener-Policy": "same-origin",
     "Cross-Origin-Resource-Policy": "cross-origin",
+    # запретить Adobe cross-domain policy (устаревший, но дешёвый вектор)
+    "X-Permitted-Cross-Domain-Policies": "none",
 }
+
+# Лимит тела запроса против DoS «большим body». API принимает крошечные JSON —
+# 64 KiB с огромным запасом. Настраивается YUMMY_MAX_BODY_BYTES (напр. для будущих
+# загрузок). Проверяем Content-Length рано, до чтения тела.
+_MAX_BODY = int(os.getenv("YUMMY_MAX_BODY_BYTES", str(64 * 1024)))
+
+# Host allowlist против Host Header Injection. Пусто → "*" (демо/локально не ломаем).
+# В проде задать YUMMY_ALLOWED_HOSTS=yummy-astana.onrender.com (через запятую).
+_ALLOWED_HOSTS = [h.strip() for h in os.getenv("YUMMY_ALLOWED_HOSTS", "").split(",") if h.strip()] or ["*"]
 
 
 @asynccontextmanager
@@ -98,20 +111,41 @@ async def lifespan(app: FastAPI):
     yield
 
 
-app = FastAPI(title="Yummy MVP", version=__version__, lifespan=lifespan)
+# Swagger/Redoc/OpenAPI выключаем в проде (YUMMY_ENFORCE_AUTH=1) — меньше surface
+# и не подсказываем структуру API. В демо/деве /docs остаётся для удобства.
+_DOCS = None if _ENFORCE else "/docs"
+app = FastAPI(
+    title="Yummy MVP", version=__version__, lifespan=lifespan,
+    docs_url=_DOCS, redoc_url=None,
+    openapi_url=None if _ENFORCE else "/openapi.json",
+)
+app.add_middleware(TrustedHostMiddleware, allowed_hosts=_ALLOWED_HOSTS)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=_CORS,
     allow_methods=["GET", "POST"],
     allow_headers=["Authorization", "Content-Type"],
+    expose_headers=["X-Request-Id"],
 )
 
 
 @app.middleware("http")
 async def security_headers(request: HttpRequest, call_next):
+    # correlation ID: сквозная трассировка запроса в логах/ответе (для инцидентов)
+    rid = uuid.uuid4().hex
+    request.state.request_id = rid
+
+    # лимит тела: отклоняем оверсайз до обработки
+    clen = request.headers.get("content-length")
+    if clen and clen.isdigit() and int(clen) > _MAX_BODY:
+        resp = JSONResponse({"detail": "Тело запроса слишком большое"}, status_code=413)
+        resp.headers["X-Request-Id"] = rid
+        return resp
+
     response = await call_next(request)
     for k, v in _SEC_HEADERS.items():
         response.headers.setdefault(k, v)
+    response.headers["X-Request-Id"] = rid
     # fingerprint-заголовок Server снимается флагом uvicorn --no-server-header
     # (см. Procfile/render.yaml/Dockerfile) — на уровне middleware его не убрать.
     return response
@@ -404,8 +438,9 @@ def admin_orders() -> list[Order]:
 def cancel_order(payload: RedeemInput, req: HttpRequest) -> dict:
     """Отменить бронь до начала окна выдачи — бокс возвращается в продажу."""
     ok, message = store.cancel_order(payload.code)
-    log.info("audit: cancel code=%s ok=%s ip=%s",
-             payload.code, ok, req.client.host if req.client else "?")
+    log.info("audit: cancel code=%s ok=%s ip=%s rid=%s",
+             payload.code, ok, req.client.host if req.client else "?",
+             getattr(req.state, "request_id", "-"))
     if not ok:
         raise HTTPException(409, message)
     return {"ok": True, "message": message}
@@ -416,8 +451,9 @@ def refund_order(payload: RedeemInput, req: HttpRequest) -> dict:
     """«Заказ не выдали» — самостоятельный возврат с начала окна выдачи.
     Раньше фронт звал /admin/refund: в проде это 401 для покупателя."""
     ok, message = store.refund_by_code(payload.code)
-    log.info("audit: user-refund code=%s ok=%s ip=%s",
-             payload.code, ok, req.client.host if req.client else "?")
+    log.info("audit: user-refund code=%s ok=%s ip=%s rid=%s",
+             payload.code, ok, req.client.host if req.client else "?",
+             getattr(req.state, "request_id", "-"))
     if not ok:
         raise HTTPException(409, message)
     return {"ok": True, "message": message}
@@ -428,9 +464,10 @@ def refund_order(payload: RedeemInput, req: HttpRequest) -> dict:
 def admin_refund(order_id: str, req: HttpRequest,
                  user: PublicUser | None = Depends(optional_user)) -> dict:
     ok = store.refund(order_id)
-    log.info("audit: refund order=%s ok=%s by=%s ip=%s",
+    log.info("audit: refund order=%s ok=%s by=%s ip=%s rid=%s",
              order_id, ok, user.id if user else "demo",
-             req.client.host if req.client else "?")
+             req.client.host if req.client else "?",
+             getattr(req.state, "request_id", "-"))
     return {"refunded": ok}
 
 

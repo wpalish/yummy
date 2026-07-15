@@ -36,6 +36,11 @@
 | `X-Content-Type-Options: nosniff` | ✅ middleware |
 | `X-Frame-Options: deny` | ✅ middleware (DENY) |
 | `Content-Security-Policy` | ✅ middleware |
+| COOP / CORP / cross-domain-policy | ✅ **добавлено** (из Arena-ревью): same-origin / cross-origin / none |
+| Correlation ID `X-Request-Id` | ✅ **добавлено:** уникальный на запрос, в ответе и аудит-логах (rid=) |
+| Лимит тела запроса (анти-DoS) | ✅ **добавлено:** 64 KiB (env `YUMMY_MAX_BODY_BYTES`), 413 на оверсайз |
+| Host allowlist (Host-Header-Injection) | ✅ **добавлено:** `YUMMY_ALLOWED_HOSTS` (пусто→* для демо) |
+| Swagger/OpenAPI выключены в проде | ✅ **добавлено:** авто при `YUMMY_ENFORCE_AUTH=1` |
 | **Убрать fingerprint `Server`** | ✅ **добавлено:** uvicorn `--no-server-header` |
 | Force content-type ответа | ✅ FastAPI JSON |
 | Не возвращать секреты | ✅ pw_hash никогда не в ответе |
