@@ -397,6 +397,32 @@ def admin_orders() -> list[Order]:
     return store.orders()
 
 
+# --------------------------------------------------------------------------- #
+#  Самообслуживание покупателя по коду заказа (владение = знание кода, как /redeem)
+# --------------------------------------------------------------------------- #
+@app.post("/orders/cancel", tags=["Store"], dependencies=[Depends(rate_limit_orders)])
+def cancel_order(payload: RedeemInput, req: HttpRequest) -> dict:
+    """Отменить бронь до начала окна выдачи — бокс возвращается в продажу."""
+    ok, message = store.cancel_order(payload.code)
+    log.info("audit: cancel code=%s ok=%s ip=%s",
+             payload.code, ok, req.client.host if req.client else "?")
+    if not ok:
+        raise HTTPException(409, message)
+    return {"ok": True, "message": message}
+
+
+@app.post("/orders/refund", tags=["Store"], dependencies=[Depends(rate_limit_orders)])
+def refund_order(payload: RedeemInput, req: HttpRequest) -> dict:
+    """«Заказ не выдали» — самостоятельный возврат с начала окна выдачи.
+    Раньше фронт звал /admin/refund: в проде это 401 для покупателя."""
+    ok, message = store.refund_by_code(payload.code)
+    log.info("audit: user-refund code=%s ok=%s ip=%s",
+             payload.code, ok, req.client.host if req.client else "?")
+    if not ok:
+        raise HTTPException(409, message)
+    return {"ok": True, "message": message}
+
+
 @app.post("/admin/refund/{order_id}", tags=["Admin"],
           dependencies=[Depends(require_role("admin"))])
 def admin_refund(order_id: str, req: HttpRequest,

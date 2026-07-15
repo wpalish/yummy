@@ -149,3 +149,66 @@ def test_recommend_boxes_prefers_ordered_category(tmp_path):
     s.redeem("YM-X")
     recs = s.recommend_boxes("u1")
     assert recs[0].category == "sweet"  # тот же вкус, что уже заказывал
+
+
+# --------------------------------------------------------------------------- #
+#  Отмена брони покупателем и возврат по коду (самообслуживание)
+# --------------------------------------------------------------------------- #
+def _future_box(store, bid="bf1", minutes_ahead=30):
+    now = datetime.now(timezone.utc)
+    return store.create_box(bid, BoxCreate(
+        partner_id="p1", category="sweet", title="Box", price=900, value_est=2500,
+        qty=3, pickup_from=(now + timedelta(minutes=minutes_ahead)).isoformat(),
+        pickup_to=(now + timedelta(hours=4)).isoformat(),
+    ))
+
+
+def test_cancel_before_window_returns_box(store):
+    box = _future_box(store)
+    store.create_order("o1", "YM-CNL1", box, "Т", "+7700")
+    assert store.box("bf1").qty_left == 2
+    ok, msg = store.cancel_order("ym-cnl1")  # регистр не важен
+    assert ok and "отменена" in msg
+    assert store.box("bf1").qty_left == 3          # бокс вернулся в продажу
+    assert store.order_by_code("YM-CNL1").status == "cancelled"
+    ok2, _ = store.cancel_order("YM-CNL1")         # повторная отмена блокируется
+    assert not ok2
+
+
+def test_cancel_after_window_start_blocked(store):
+    _box(store)  # окно началось 10 минут назад
+    store.create_order("o1", "YM-CNL2", store.box("b1"), "Т", "+7700")
+    ok, msg = store.cancel_order("YM-CNL2")
+    assert not ok and "уже началось" in msg
+
+
+def test_refund_by_code_after_window_start(store):
+    _box(store)
+    store.create_order("o1", "YM-RFD1", store.box("b1"), "Т", "+7700")
+    left_before = store.box("b1").qty_left
+    ok, msg = store.refund_by_code("YM-RFD1")
+    assert ok and "Возврат" in msg
+    assert store.order_by_code("YM-RFD1").status == "refunded"
+    assert store.box("b1").qty_left == left_before + 1
+
+
+def test_refund_by_code_before_window_blocked(store):
+    box = _future_box(store)
+    store.create_order("o1", "YM-RFD2", box, "Т", "+7700")
+    ok, msg = store.refund_by_code("YM-RFD2")
+    assert not ok and "ещё не началось" in msg
+
+
+def test_cancel_unknown_code(store):
+    ok, msg = store.cancel_order("YM-NOPE")
+    assert not ok and "не найден" in msg
+
+
+def test_cancel_issued_order_blocked(store):
+    _box(store)
+    store.create_order("o1", "YM-ISS1", store.box("b1"), "Т", "+7700")
+    store.redeem("YM-ISS1")
+    ok, _ = store.cancel_order("YM-ISS1")
+    assert not ok
+    ok2, _ = store.refund_by_code("YM-ISS1")
+    assert not ok2

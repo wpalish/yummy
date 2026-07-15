@@ -282,6 +282,46 @@ class Store:
             self._return_one(c, r["box_id"])
             return True
 
+    @staticmethod
+    def _window_started(pickup_from: str) -> bool:
+        try:
+            return datetime.now(timezone.utc) >= datetime.fromisoformat(pickup_from)
+        except ValueError:
+            return True  # битая дата — считаем окно начавшимся (запрет отмены безопаснее)
+
+    def cancel_order(self, code: str) -> tuple[bool, str]:
+        """Отмена брони покупателем ДО начала окна выдачи (идея из Devin PR #5).
+        Владение подтверждает код заказа — та же модель доверия, что у /redeem.
+        Бокс возвращается в продажу, статус cancelled."""
+        with self._lock, self._conn() as c:
+            r = c.execute("SELECT * FROM orders WHERE code=?", (code.strip().upper(),)).fetchone()
+            if not r:
+                return False, "Заказ с таким кодом не найден"
+            if r["status"] != "paid":
+                return False, "Этот заказ уже нельзя отменить"
+            if self._window_started(r["pickup_from"]):
+                return False, "Окно выдачи уже началось — отмена недоступна"
+            c.execute("UPDATE orders SET status='cancelled' WHERE id=?", (r["id"],))
+            self._return_one(c, r["box_id"])
+            return True, "Бронь отменена, бокс вернулся в продажу"
+
+    def refund_by_code(self, code: str) -> tuple[bool, str]:
+        """Самостоятельный возврат «заказ не выдали»: доступен с начала окна.
+        Раньше фронт звал /admin/refund — в проде с включённой авторизацией это
+        401 для обычного покупателя; код заказа как подтверждение владения
+        решает без админ-токена."""
+        with self._lock, self._conn() as c:
+            r = c.execute("SELECT * FROM orders WHERE code=?", (code.strip().upper(),)).fetchone()
+            if not r:
+                return False, "Заказ с таким кодом не найден"
+            if r["status"] != "paid":
+                return False, "Возврат по этому заказу недоступен"
+            if not self._window_started(r["pickup_from"]):
+                return False, "Окно выдачи ещё не началось — можно просто отменить бронь"
+            c.execute("UPDATE orders SET status='refunded' WHERE id=?", (r["id"],))
+            self._return_one(c, r["box_id"])
+            return True, "Возврат оформлен — деньги вернутся на карту"
+
     # ------------------------------------------------------------------ #
     #  Статистика и сервис
     # ------------------------------------------------------------------ #

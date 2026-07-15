@@ -693,6 +693,13 @@ const KZ={
 "Сегодня боксов нет":"Бүгін бокс жоқ","Доступно сегодня — можно забрать:":"Бүгін қолжетімді — алуға болады:",
 "Забрать":"Алу","Ничего не нашлось в этом фильтре.":"Бұл сүзгіде ештеңе табылмады.",
 "Есильский":"Есіл","Нура":"Нұра","Сарайшык":"Сарайшық","Байконур":"Байқоңыр","Сарыарка":"Сарыарқа","Алматинский":"Алматы",
+"Отменить бронь":"Броньды бас тарту","Бронь отменена, бокс вернулся в продажу":"Бронь бас тартылды, бокс сатылымға қайтты",
+"Возврат оформлен — деньги вернутся на карту":"Қайтарым рәсімделді — ақша картаға оралады",
+"Окно выдачи уже началось — отмена недоступна":"Беру уақыты басталып кетті — бас тарту мүмкін емес",
+"Окно выдачи ещё не началось — можно просто отменить бронь":"Беру уақыты әлі басталған жоқ — броньды жай ғана бас тартуға болады",
+"Этот заказ уже нельзя отменить":"Бұл тапсырысты енді бас тартуға болмайды",
+"Возврат по этому заказу недоступен":"Бұл тапсырыс бойынша қайтарым қолжетімсіз",
+"Заказ с таким кодом не найден":"Мұндай кодпен тапсырыс табылмады",
 "Добро пожаловать 👋":"Қош келдіңіз 👋",
 "Спасайте свежую еду из кофеен и пекарен Астаны со скидкой до 70%. Кто вы?":"Астана кофеханалары мен наубайханаларының жаңа тағамын 70%-ға дейін жеңілдікпен құтқарыңыз. Сіз кімсіз?",
 "Я покупатель":"Мен сатып алушымын","Бронировать и забирать сюрприз-боксы":"Сюрприз-бокстарды броньдап алып кету",
@@ -943,6 +950,16 @@ async function _demoPost(u,body){ let m;
   if(m=u.match(/^\/admin\/refund\/(.+)$/)){const o=ST.orders.find(x=>x.id===m[1]);
     if(!o||["issued","refunded","cancelled"].includes(o.status))return{refunded:false};
     o.status="refunded";const b=ST.boxes.find(x=>x.id===o.box_id);if(b)b.qty_left++;persist();return{refunded:true};}
+  if(u==="/orders/cancel"||u==="/orders/refund"){const isCancel=u.endsWith("cancel");
+    const o=ST.orders.find(x=>x.code===(body.code||"").trim().toUpperCase());
+    if(!o)throw new Error("Заказ с таким кодом не найден");
+    if(o.status!=="paid")throw new Error(isCancel?"Этот заказ уже нельзя отменить":"Возврат по этому заказу недоступен");
+    const started=Date.now()>=Date.parse(o.pickup_from);
+    if(isCancel&&started)throw new Error("Окно выдачи уже началось — отмена недоступна");
+    if(!isCancel&&!started)throw new Error("Окно выдачи ещё не началось — можно просто отменить бронь");
+    o.status=isCancel?"cancelled":"refunded";
+    const b=ST.boxes.find(x=>x.id===o.box_id);if(b)b.qty_left++;persist();
+    return {ok:true,message:isCancel?"Бронь отменена, бокс вернулся в продажу":"Возврат оформлен — деньги вернутся на карту"};}
   if(u==="/ai/describe-box"){
     if(!body.notes||!body.notes.trim())throw new Error("Опиши, что осталось — хотя бы пару слов");
     const cat=CAT_RU[body.category]||body.category, notes=body.notes.trim().replace(/[.\s]+$/,"");
@@ -1638,7 +1655,8 @@ async function renderMyOrders(){
     <div style="font-size:1.3rem">${o.emoji}</div>
     <div class="g"><b>${esc(o.code)}</b> · ${esc(o.partner_name)}
       <div style="font-size:.76rem;color:var(--txt2)">${win(o.pickup_from,o.pickup_to)} · ${money(o.price)}</div>
-      ${(o.status==="paid"&&Date.now()>=Date.parse(o.pickup_from))?`<button class="linkbtn" onclick="userRefund('${o.id}')">Не выдали заказ? Вернуть деньги</button>`:""}
+      ${(o.status==="paid"&&Date.now()<Date.parse(o.pickup_from))?`<button class="linkbtn" onclick="cancelOrder('${esc(o.code)}')">Отменить бронь</button>`:""}
+      ${(o.status==="paid"&&Date.now()>=Date.parse(o.pickup_from))?`<button class="linkbtn" onclick="userRefund('${esc(o.code)}')">Не выдали заказ? Вернуть деньги</button>`:""}
       ${(o.status==="issued"&&!reviewed.includes(o.id))?`<button class="linkbtn" onclick="leaveReviewForm('${o.id}','${o.partner_id}',${esc(JSON.stringify(o.partner_name))})">⭐ Оставить отзыв</button>`:""}
       <button class="linkbtn" onclick="showCode('${esc(o.code)}')">Показать код и QR</button></div>
     <span class="tag t-${o.status}">${STATUS_RU[o.status]}</span></div>`).join("")}</div>`;
@@ -1678,9 +1696,14 @@ window.showCode=code=>{
     <p style="font-size:.84rem;color:var(--txt2);margin:.5rem 0">Покажите ${qr?"QR или ":""}код на кассе заведения.</p>
     <button class="btn sec" onclick="closeModal()">Закрыть</button></div>`);
 };
-window.userRefund=async id=>{
+window.userRefund=async code=>{
   if(!confirm("Вернуть деньги? Используйте, только если заведение не выдало заказ."))return;
-  try{await post("/admin/refund/"+id);toast("Возврат оформлен — деньги вернутся на карту");renderMyOrders();}
+  try{const r=await post("/orders/refund",{code});toast(r.message||"Возврат оформлен — деньги вернутся на карту");renderMyOrders();loadStore();}
+  catch(e){toast(e.message,true);}
+};
+window.cancelOrder=async code=>{
+  if(!confirm("Отменить бронь? Бокс вернётся в продажу, деньги — на карту."))return;
+  try{const r=await post("/orders/cancel",{code});toast(r.message||"Бронь отменена");renderMyOrders();loadStore();}
   catch(e){toast(e.message,true);}
 };
 
