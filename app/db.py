@@ -78,6 +78,24 @@ class Store:
                     partner_id TEXT REFERENCES partners(id),
                     category TEXT, title TEXT, price INTEGER, value_est INTEGER,
                     qty INTEGER, hours INTEGER, description TEXT, created_at TEXT);
+                -- Платёжный мерчант-аккаунт партнёра (деньги идут напрямую ему,
+                -- Yummy денег не хранит). public_id — несекретный UUID для webhook-URL.
+                CREATE TABLE IF NOT EXISTS partner_payment_accounts(
+                    id TEXT PRIMARY KEY, partner_id TEXT UNIQUE REFERENCES partners(id),
+                    public_id TEXT UNIQUE, provider TEXT DEFAULT 'kaspi',
+                    merchant_reference TEXT, status TEXT DEFAULT 'pending',
+                    payments_enabled INTEGER DEFAULT 0, refunds_enabled INTEGER DEFAULT 0,
+                    created_at TEXT, verified_at TEXT);
+                -- Ставка комиссии в basis points (10% = 1000 bps), фиксируется в момент оплаты.
+                CREATE TABLE IF NOT EXISTS commission_rules(
+                    id TEXT PRIMARY KEY, partner_id TEXT REFERENCES partners(id),
+                    rate_bps INTEGER, valid_from TEXT, created_at TEXT);
+                -- Долг партнёра перед Yummy по каждому оплаченному заказу.
+                CREATE TABLE IF NOT EXISTS commission_ledger(
+                    id TEXT PRIMARY KEY, partner_id TEXT REFERENCES partners(id),
+                    order_id TEXT UNIQUE REFERENCES orders(id),
+                    gross_minor INTEGER, rate_bps INTEGER, commission_minor INTEGER,
+                    status TEXT DEFAULT 'accrued', created_at TEXT, reversed_at TEXT);
                 CREATE INDEX IF NOT EXISTS ix_boxes_partner  ON boxes(partner_id);
                 CREATE INDEX IF NOT EXISTS ix_boxes_status   ON boxes(status, qty_left);
                 CREATE INDEX IF NOT EXISTS ix_orders_partner ON orders(partner_id, created_at);
@@ -484,3 +502,97 @@ class Store:
             cur = c.execute("DELETE FROM box_templates WHERE id=? AND partner_id=?",
                             (tid, partner_id))
         return cur.rowcount == 1
+
+    # ------------------------------------------------------------------ #
+    #  Платежи: мерчант-аккаунты партнёров + движок комиссий
+    #  Деньги идут напрямую партнёру (его Kaspi), Yummy ведёт учёт долга.
+    # ------------------------------------------------------------------ #
+    _DEFAULT_RATE_BPS = 1000  # 10% по умолчанию
+
+    def upsert_payment_account(self, aid: str, partner_id: str, public_id: str,
+                               merchant_reference: str, provider: str = "kaspi") -> dict:
+        with self._lock, self._conn() as c:
+            c.execute("""INSERT INTO partner_payment_accounts(id,partner_id,public_id,
+                         provider,merchant_reference,status,created_at)
+                         VALUES(?,?,?,?,?,'pending',?)
+                         ON CONFLICT(partner_id) DO UPDATE SET
+                           merchant_reference=excluded.merchant_reference,
+                           provider=excluded.provider""",
+                      (aid, partner_id, public_id, provider, merchant_reference, _now_iso()))
+        return self.payment_account(partner_id)
+
+    def payment_account(self, partner_id: str) -> dict | None:
+        with self._lock, self._conn() as c:
+            r = c.execute("SELECT * FROM partner_payment_accounts WHERE partner_id=?",
+                          (partner_id,)).fetchone()
+        return dict(r) if r else None
+
+    def set_payment_account_status(self, partner_id: str, status: str,
+                                   payments_enabled: bool) -> dict | None:
+        with self._lock, self._conn() as c:
+            c.execute("""UPDATE partner_payment_accounts SET status=?, payments_enabled=?,
+                         verified_at=? WHERE partner_id=?""",
+                      (status, int(payments_enabled),
+                       _now_iso() if status == "active" else None, partner_id))
+        return self.payment_account(partner_id)
+
+    def can_sell_paid(self, partner_id: str) -> bool:
+        """Партнёр может продавать платные боксы только с активным аккаунтом."""
+        a = self.payment_account(partner_id)
+        return bool(a and a["status"] == "active" and a["payments_enabled"])
+
+    def set_commission_rate(self, rid: str, partner_id: str, rate_bps: int) -> int:
+        with self._lock, self._conn() as c:
+            c.execute("""INSERT INTO commission_rules(id,partner_id,rate_bps,valid_from,created_at)
+                         VALUES(?,?,?,?,?)""",
+                      (rid, partner_id, rate_bps, _now_iso(), _now_iso()))
+        return rate_bps
+
+    def active_commission_bps(self, partner_id: str) -> int:
+        with self._lock, self._conn() as c:
+            r = c.execute("""SELECT rate_bps FROM commission_rules WHERE partner_id=?
+                             ORDER BY valid_from DESC LIMIT 1""", (partner_id,)).fetchone()
+        return r["rate_bps"] if r else self._DEFAULT_RATE_BPS
+
+    @staticmethod
+    def commission_minor(gross_minor: int, rate_bps: int) -> int:
+        """Целочисленно, без float: округление вверх до тиына."""
+        return (gross_minor * rate_bps + 9_999) // 10_000
+
+    def accrue_commission(self, lid: str, order) -> dict | None:
+        """Начислить комиссию по оплаченному заказу. Только если у партнёра
+        активный платёжный аккаунт и ещё нет записи по этому заказу (одна на order)."""
+        if not self.can_sell_paid(order.partner_id):
+            return None
+        bps = self.active_commission_bps(order.partner_id)
+        gross = order.price * 100  # тг → тиын (минорные единицы)
+        comm = self.commission_minor(gross, bps)
+        with self._lock, self._conn() as c:
+            cur = c.execute("""INSERT OR IGNORE INTO commission_ledger(id,partner_id,order_id,
+                              gross_minor,rate_bps,commission_minor,status,created_at)
+                              VALUES(?,?,?,?,?,?,'accrued',?)""",
+                            (lid, order.partner_id, order.id, gross, bps, comm, _now_iso()))
+            if cur.rowcount == 0:
+                return None  # уже начислено
+        return self.commission_entry(order.id)
+
+    def reverse_commission(self, order_id: str) -> bool:
+        with self._lock, self._conn() as c:
+            cur = c.execute("""UPDATE commission_ledger SET status='reversed', reversed_at=?
+                             WHERE order_id=? AND status='accrued'""", (_now_iso(), order_id))
+        return cur.rowcount == 1
+
+    def commission_entry(self, order_id: str) -> dict | None:
+        with self._lock, self._conn() as c:
+            r = c.execute("SELECT * FROM commission_ledger WHERE order_id=?", (order_id,)).fetchone()
+        return dict(r) if r else None
+
+    def commission_summary(self, partner_id: str) -> dict:
+        """Сколько партнёр должен Yummy: начислено минус сторнировано."""
+        with self._lock, self._conn() as c:
+            rows = c.execute("""SELECT status, COUNT(*) n, COALESCE(SUM(commission_minor),0) s
+                              FROM commission_ledger WHERE partner_id=? GROUP BY status""",
+                             (partner_id,)).fetchall()
+        by = {r["status"]: {"count": r["n"], "minor": r["s"]} for r in rows}
+        owed = by.get("accrued", {}).get("minor", 0)
+        return {"owed_minor": owed, "owed_tenge": owed // 100, "by_status": by}

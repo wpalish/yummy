@@ -53,6 +53,17 @@ class BoxCreate(BaseModel):
     description: str = ""
 
 
+class PaymentAccountInput(BaseModel):
+    """Админ подключает мерчант-аккаунт партнёра (деньги идут напрямую ему)."""
+
+    provider: str = "kaspi"
+    merchant_reference: str = Field(..., min_length=2, max_length=120)
+
+
+class CommissionRuleInput(BaseModel):
+    rate_bps: int = Field(..., ge=0, le=5000, description="Комиссия в basis points (1000=10%)")
+
+
 class BoxTemplateCreate(BaseModel):
     """Шаблон бокса: партнёр сохраняет и публикует одной кнопкой каждый вечер."""
 

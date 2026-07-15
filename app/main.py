@@ -42,6 +42,8 @@ from .models import (
     Box,
     BoxCreate,
     BoxTemplateCreate,
+    CommissionRuleInput,
+    PaymentAccountInput,
     BoxDescribeInput,
     BoxDescribeResult,
     Order,
@@ -285,6 +287,9 @@ def create_order(payload: OrderCreate,
     )
     if order is None:
         raise HTTPException(409, "Боксы только что закончились")
+    # Начисляем комиссию в ledger, если у партнёра активный платёжный аккаунт
+    # (деньги ушли напрямую ему; Yummy фиксирует долг по комиссии).
+    store.accrue_commission(_new("cl"), order)
     return OrderResult(order=order, qr_svg=qr_svg(order.code))
 
 
@@ -374,6 +379,59 @@ async def describe_box(payload: BoxDescribeInput) -> BoxDescribeResult:
 @app.get("/partners/{partner_id}/boxes", response_model=list[Box], tags=["Partner"])
 def partner_boxes(partner_id: str) -> list[Box]:
     return store.partner_boxes(partner_id)
+
+
+# --------------------------------------------------------------------------- #
+#  Платежи и комиссия: деньги идут напрямую партнёру (его Kaspi), Yummy ведёт
+#  учёт долга по комиссии. РЕАЛЬНЫЙ Kaspi API (подпись/QR/webhook) требует
+#  официальных доков Kaspi + мерчант-аккаунта — это отдельный внешний слой.
+# --------------------------------------------------------------------------- #
+@app.get("/partners/{partner_id}/payment-account", tags=["Partner"])
+def get_payment_account(partner_id: str) -> dict:
+    a = store.payment_account(partner_id)
+    if not a:
+        return {"status": "none", "can_sell_paid": False}
+    # merchant_reference наружу маскируем (последние 4 символа)
+    ref = a.get("merchant_reference") or ""
+    return {"status": a["status"], "provider": a["provider"],
+            "payments_enabled": bool(a["payments_enabled"]),
+            "merchant_masked": ("…" + ref[-4:]) if ref else "",
+            "can_sell_paid": store.can_sell_paid(partner_id)}
+
+
+@app.post("/partners/{partner_id}/payment-account", status_code=201, tags=["Admin"],
+          dependencies=[Depends(require_role("admin"))])
+def connect_payment_account(partner_id: str, payload: PaymentAccountInput) -> dict:
+    store.upsert_payment_account(
+        _new("pa"), partner_id, uuid.uuid4().hex, payload.merchant_reference, payload.provider)
+    return get_payment_account(partner_id)
+
+
+@app.post("/partners/{partner_id}/payment-account/activate", tags=["Admin"],
+          dependencies=[Depends(require_role("admin"))])
+def activate_payment_account(partner_id: str, req: HttpRequest) -> dict:
+    """Активировать приём платежей (после проверки мерчанта и тест-платежа).
+    До этого партнёр не может публиковать платные боксы."""
+    if not store.payment_account(partner_id):
+        raise HTTPException(404, "Сначала подключите мерчант-аккаунт")
+    store.set_payment_account_status(partner_id, "active", payments_enabled=True)
+    log.info("audit: payment-account active partner=%s rid=%s",
+             partner_id, getattr(req.state, "request_id", "-"))
+    return get_payment_account(partner_id)
+
+
+@app.post("/partners/{partner_id}/commission-rule", status_code=201, tags=["Admin"],
+          dependencies=[Depends(require_role("admin"))])
+def set_commission_rule(partner_id: str, payload: CommissionRuleInput) -> dict:
+    store.set_commission_rate(_new("cr"), partner_id, payload.rate_bps)
+    return {"partner_id": partner_id, "rate_bps": payload.rate_bps,
+            "rate_percent": payload.rate_bps / 100}
+
+
+@app.get("/partners/{partner_id}/commission", tags=["Partner"])
+def partner_commission(partner_id: str) -> dict:
+    return {"rate_bps": store.active_commission_bps(partner_id),
+            **store.commission_summary(partner_id)}
 
 
 # --------------------------------------------------------------------------- #
@@ -485,6 +543,10 @@ def admin_orders() -> list[Order]:
 def cancel_order(payload: RedeemInput, req: HttpRequest) -> dict:
     """Отменить бронь до начала окна выдачи — бокс возвращается в продажу."""
     ok, message = store.cancel_order(payload.code)
+    if ok:
+        o = store.order_by_code(payload.code)
+        if o:
+            store.reverse_commission(o.id)  # заказ отменён — комиссия сторнируется
     log.info("audit: cancel code=%s ok=%s ip=%s rid=%s",
              payload.code, ok, req.client.host if req.client else "?",
              getattr(req.state, "request_id", "-"))
@@ -498,6 +560,10 @@ def refund_order(payload: RedeemInput, req: HttpRequest) -> dict:
     """«Заказ не выдали» — самостоятельный возврат с начала окна выдачи.
     Раньше фронт звал /admin/refund: в проде это 401 для покупателя."""
     ok, message = store.refund_by_code(payload.code)
+    if ok:
+        o = store.order_by_code(payload.code)
+        if o:
+            store.reverse_commission(o.id)
     log.info("audit: user-refund code=%s ok=%s ip=%s rid=%s",
              payload.code, ok, req.client.host if req.client else "?",
              getattr(req.state, "request_id", "-"))
@@ -511,6 +577,8 @@ def refund_order(payload: RedeemInput, req: HttpRequest) -> dict:
 def admin_refund(order_id: str, req: HttpRequest,
                  user: PublicUser | None = Depends(optional_user)) -> dict:
     ok = store.refund(order_id)
+    if ok:
+        store.reverse_commission(order_id)
     log.info("audit: refund order=%s ok=%s by=%s ip=%s rid=%s",
              order_id, ok, user.id if user else "demo",
              req.client.host if req.client else "?",
