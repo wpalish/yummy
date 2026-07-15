@@ -95,8 +95,17 @@ def test_command_with_botname_suffix(st, sent):
     assert sent and "боксов" in sent[-1][1]["text"].lower()
 
 
-def test_webhook_enabled_requires_secret(st, monkeypatch):
-    monkeypatch.delenv("TELEGRAM_WEBHOOK_SECRET", raising=False)
+def test_webhook_enabled_needs_token(monkeypatch):
+    monkeypatch.setenv("TELEGRAM_BOT_TOKEN", "")
     assert telegram_bot.webhook_enabled() is False
-    monkeypatch.setenv("TELEGRAM_WEBHOOK_SECRET", "s3cr3t")
-    assert telegram_bot.webhook_enabled() is True
+    monkeypatch.setenv("TELEGRAM_BOT_TOKEN", "123:TEST")
+    assert telegram_bot.webhook_enabled() is True  # секрет выводится из токена
+
+
+def test_secret_derived_from_token_deterministic(monkeypatch):
+    monkeypatch.delenv("TELEGRAM_WEBHOOK_SECRET", raising=False)
+    monkeypatch.setenv("TELEGRAM_BOT_TOKEN", "123:TEST")
+    s1 = telegram_bot._secret()
+    assert len(s1) == 32 and s1 == telegram_bot._secret()  # стабилен
+    monkeypatch.setenv("TELEGRAM_WEBHOOK_SECRET", "explicit-wins")
+    assert telegram_bot._secret() == "explicit-wins"  # явный имеет приоритет

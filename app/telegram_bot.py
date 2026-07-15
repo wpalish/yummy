@@ -53,11 +53,21 @@ _HELP = (
 
 
 def _secret() -> str:
-    return os.getenv("TELEGRAM_WEBHOOK_SECRET", "")
+    """Секрет webhook. Явный TELEGRAM_WEBHOOK_SECRET, иначе детерминированно
+    выводим из bot-токена (он уже есть на бэкенде) — не нужен отдельный env,
+    а секрет всё равно неугадываем без токена. Обе стороны (setWebhook и проверка
+    заголовка) считают одинаково."""
+    import hashlib
+    explicit = os.getenv("TELEGRAM_WEBHOOK_SECRET", "")
+    if explicit:
+        return explicit
+    tok = notify._token()
+    return hashlib.sha256(f"yummy-wh:{tok}".encode()).hexdigest()[:32] if tok else ""
 
 
 def webhook_enabled() -> bool:
-    return bool(notify.is_configured() and _secret())
+    # Достаточно токена: секрет выводится из него, отдельный env не обязателен.
+    return notify.is_configured()
 
 
 def _send(chat_id: int, text: str) -> None:
