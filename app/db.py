@@ -73,6 +73,11 @@ class Store:
                     chat_id INTEGER PRIMARY KEY, name TEXT, created_at TEXT);
                 CREATE TABLE IF NOT EXISTS meta(
                     key TEXT PRIMARY KEY, value TEXT);
+                CREATE TABLE IF NOT EXISTS box_templates(
+                    id TEXT PRIMARY KEY,
+                    partner_id TEXT REFERENCES partners(id),
+                    category TEXT, title TEXT, price INTEGER, value_est INTEGER,
+                    qty INTEGER, hours INTEGER, description TEXT, created_at TEXT);
                 CREATE INDEX IF NOT EXISTS ix_boxes_partner  ON boxes(partner_id);
                 CREATE INDEX IF NOT EXISTS ix_boxes_status   ON boxes(status, qty_left);
                 CREATE INDEX IF NOT EXISTS ix_orders_partner ON orders(partner_id, created_at);
@@ -450,3 +455,32 @@ class Store:
         with self._lock, self._conn() as c:
             rows = c.execute("SELECT chat_id FROM tg_subscribers ORDER BY created_at").fetchall()
         return [r["chat_id"] for r in rows]
+
+    # ------------------------------------------------------------------ #
+    #  Шаблоны боксов: партнёр сохраняет и публикует одной кнопкой
+    # ------------------------------------------------------------------ #
+    def create_template(self, tid: str, data) -> dict:
+        with self._lock, self._conn() as c:
+            c.execute("""INSERT INTO box_templates(id,partner_id,category,title,price,
+                         value_est,qty,hours,description,created_at)
+                         VALUES(?,?,?,?,?,?,?,?,?,?)""",
+                      (tid, data.partner_id, data.category, data.title, data.price,
+                       data.value_est, data.qty, data.hours, data.description, _now_iso()))
+        return self.template(tid)
+
+    def template(self, tid: str) -> dict | None:
+        with self._lock, self._conn() as c:
+            r = c.execute("SELECT * FROM box_templates WHERE id=?", (tid,)).fetchone()
+        return dict(r) if r else None
+
+    def partner_templates(self, partner_id: str) -> list[dict]:
+        with self._lock, self._conn() as c:
+            rows = c.execute("SELECT * FROM box_templates WHERE partner_id=? ORDER BY created_at DESC",
+                             (partner_id,)).fetchall()
+        return [dict(r) for r in rows]
+
+    def delete_template(self, tid: str, partner_id: str) -> bool:
+        with self._lock, self._conn() as c:
+            cur = c.execute("DELETE FROM box_templates WHERE id=? AND partner_id=?",
+                            (tid, partner_id))
+        return cur.rowcount == 1

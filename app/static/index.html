@@ -571,6 +571,7 @@
             <label>Что обычно внутри <textarea id="bDesc" rows="2" placeholder="Например: 2 круассана, маффин, печенье"></textarea></label>
             <button type="button" class="linkbtn" id="bAiBtn" style="margin:.3rem 0 0">✨ Улучшить описание с ИИ</button>
             <button class="btn" type="submit" style="margin-top:.7rem">Опубликовать бокс</button>
+            <button type="button" class="linkbtn" id="bSaveTpl" style="margin:.4rem 0 0">💾 Сохранить как шаблон</button>
           </form>
         </div>
         <div>
@@ -584,6 +585,7 @@
             <div id="scanBox" class="hidden" style="margin-top:.6rem;border-radius:12px;overflow:hidden"></div>
             <div id="redeemRes" style="margin-top:.6rem;font-size:.84rem"></div>
           </div>
+          <div class="cardp"><h3>Мои шаблоны</h3><div id="pTemplates" style="font-size:.84rem"></div></div>
           <div class="cardp"><h3>Мои боксы</h3><div id="pBoxes"></div></div>
         </div>
       </div>
@@ -721,6 +723,9 @@ const KZ={
 "Заведение":"Мекеме","Создать бокс":"Бокс құру","Категория":"Санат","Название":"Атауы",
 "Опубликовать бокс":"Боксты жариялау","Выдать заказ по коду":"Тапсырысты код бойынша беру","Выдать":"Беру",
 "📷 Сканировать QR камерой":"📷 QR-ды камерамен сканерлеу","Мои боксы":"Менің бокстарым","Брони и выдачи":"Броньдар мен берулер",
+"💾 Сохранить как шаблон":"💾 Үлгі ретінде сақтау","Мои шаблоны":"Менің үлгілерім","Шаблон сохранён 💾":"Үлгі сақталды 💾",
+"Опубликовать":"Жариялау","Бокс опубликован из шаблона ✓":"Бокс үлгіден жарияланды ✓","Шаблон удалён":"Үлгі жойылды","Удалить шаблон?":"Үлгіні жою керек пе?",
+"Пока нет. Заполни форму и нажми «Сохранить как шаблон» — потом публикуй одной кнопкой.":"Әзірге жоқ. Форманы толтырып «Үлгі ретінде сақтау» бас — кейін бір батырмамен жарияла.",
 "Боксов пока нет.":"Әзірге бокс жоқ.","Броней пока нет.":"Әзірге бронь жоқ.",
 "выручка с боксов":"бокстардан түскен табыс","выкуп (забрали)":"алып кетті","в продаже":"сатылымда",
 "Админ-панель":"Әкімші панелі","Контроль заказов, возвраты, ключевые метрики пилота.":"Тапсырыстарды бақылау, қайтарымдар, пилоттың негізгі метрикалары.",
@@ -836,7 +841,7 @@ async function api(m,u,b,_retry){const h=b?{"Content-Type":"application/json"}:{
       if(rr.ok){const j=await rr.json();a.token=j.access_token;a.refresh=j.refresh_token;setAccount(a);return api(m,u,b,true);}}catch(e){}
   }
   if(!r.ok){let d;try{d=await r.json();}catch(e){} throw new Error((d&&d.detail)||("Ошибка "+r.status));} return r.status===204?null:r.json();}
-const get=u=>api("GET",u), post=(u,b)=>api("POST",u,b);
+const get=u=>api("GET",u), post=(u,b)=>api("POST",u,b), del=u=>api("DELETE",u);
 const STATUS_RU={paid:"оплачен",issued:"выдан",expired:"не забран",refunded:"возврат",cancelled:"отменён"};
 /* Kaspi Pay deep-link: после регистрации мерчанта в Kaspi Pay вставь свой
    service_id — в модалке оплаты появится настоящая кнопка Kaspi. */
@@ -1568,6 +1573,7 @@ async function loadPartnerData(){
   let boxes=[],orders=[];
   try{boxes=await get(`/partners/${pid}/boxes`);}catch(e){}
   try{orders=await get(`/partners/${pid}/orders`);}catch(e){}
+  renderTemplates();
   // мини-аналитика точки (семя CRM-тарифа): выручка, продажи, выкуп, остаток
   const done=orders.filter(o=>o.status==="issued"), act=orders.filter(o=>o.status==="paid");
   const noshow=orders.filter(o=>o.status==="expired").length;
@@ -1604,6 +1610,33 @@ $("#boxForm").addEventListener("submit",async e=>{
   try{await post("/boxes",body);toast("Бокс опубликован ✓");e.target.reset();$("#bPrice").value=990;$("#bValue").value=2600;$("#bQty").value=5;$("#bHours").value=4;loadPartnerData();}
   catch(err){toast(err.message,true);}
 });
+function tplBody(){return {partner_id:curPartner(),category:$("#bCat").value,title:$("#bTitle").value.trim()||"Вечерний бокс",
+  price:+$("#bPrice").value,value_est:+$("#bValue").value,qty:+$("#bQty").value,
+  hours:Math.max(1,Math.min(12,+$("#bHours").value||4)),description:$("#bDesc").value.trim()};}
+$("#bSaveTpl").onclick=async()=>{
+  const b=tplBody();
+  if(b.value_est<b.price){toast("Ценность внутри должна быть не ниже цены",true);return;}
+  try{await post(`/partners/${curPartner()}/templates`,b);toast("Шаблон сохранён 💾");renderTemplates();}
+  catch(e){toast(e.message,true);}
+};
+window.publishTpl=async id=>{
+  try{await post(`/partners/${curPartner()}/templates/${id}/publish`);toast("Бокс опубликован из шаблона ✓");loadPartnerData();}
+  catch(e){toast(e.message,true);}
+};
+window.delTpl=async id=>{
+  if(!confirm("Удалить шаблон?"))return;
+  try{await del(`/partners/${curPartner()}/templates/${id}`);toast("Шаблон удалён");renderTemplates();}
+  catch(e){toast(e.message,true);}
+};
+async function renderTemplates(){
+  const el=$("#pTemplates");if(!el)return;
+  let t=[];try{t=await get(`/partners/${curPartner()}/templates`);}catch(e){}
+  if(!t.length){el.innerHTML='<span style="color:var(--txt2)">Пока нет. Заполни форму и нажми «Сохранить как шаблон» — потом публикуй одной кнопкой.</span>';return;}
+  el.innerHTML=t.map(x=>`<div style="display:flex;align-items:center;gap:.5rem;padding:.4rem 0;border-bottom:1px solid var(--line)">
+    <div style="flex:1"><b>${esc(x.title)}</b> · ${money(x.price)} <span style="color:var(--txt2)">(${x.qty} шт, до +${x.hours}ч)</span></div>
+    <button class="btn" style="width:auto;padding:.3rem .7rem;font-size:.78rem" onclick="publishTpl('${x.id}')">Опубликовать</button>
+    <button class="linkbtn" onclick="delTpl('${x.id}')">✕</button></div>`).join("");
+}
 $("#bAiBtn").onclick=async()=>{
   const notes=$("#bDesc").value.trim();
   if(notes.length<2){toast("Сначала напиши черновик — хотя бы пару слов",true);return;}

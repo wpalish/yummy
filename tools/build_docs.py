@@ -29,7 +29,7 @@ API_BLOCK = '''async function api(m,u,b,_retry){const h=b?{"Content-Type":"appli
       if(rr.ok){const j=await rr.json();a.token=j.access_token;a.refresh=j.refresh_token;setAccount(a);return api(m,u,b,true);}}catch(e){}
   }
   if(!r.ok){let d;try{d=await r.json();}catch(e){} throw new Error((d&&d.detail)||("Ошибка "+r.status));} return r.status===204?null:r.json();}
-const get=u=>api("GET",u), post=(u,b)=>api("POST",u,b);'''
+const get=u=>api("GET",u), post=(u,b)=>api("POST",u,b), del=u=>api("DELETE",u);'''
 
 LEAFLET_TAG = '<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>'
 QR_TAG = LEAFLET_TAG + '\n<script src="https://cdn.jsdelivr.net/npm/qrcode-generator@1.4.4/qrcode.js"></script>'
@@ -72,7 +72,8 @@ async function api(m,u,b,_retry){{const h=b?{{"Content-Type":"application/json"}
   }}
   if(!r.ok){{let d;try{{d=await r.json();}}catch(e){{}} throw new Error((d&&d.detail)||("Ошибка "+r.status));}} return r.status===204?null:r.json();}}
 const get=(u)=>API_BASE?api("GET",u):_demoGet(u);
-const post=(u,b)=>API_BASE?api("POST",u,b):_demoPost(u,b);'''
+const post=(u,b)=>API_BASE?api("POST",u,b):_demoPost(u,b);
+const del=(u)=>API_BASE?api("DELETE",u):_demoDelete(u);'''
     html = html.replace(API_BLOCK, client + dispatcher)
     html = html.replace(LEAFLET_TAG, QR_TAG)
     (DOCS / "index.html").write_text(html, encoding="utf-8")

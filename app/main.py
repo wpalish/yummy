@@ -35,10 +35,13 @@ from .accounts import (
 from .accounts import router as accounts_router
 from .auth_telegram import router as telegram_router
 from .db import Store
+from datetime import datetime, timedelta, timezone
+
 from .models import (
     CATEGORY_RU,
     Box,
     BoxCreate,
+    BoxTemplateCreate,
     BoxDescribeInput,
     BoxDescribeResult,
     Order,
@@ -371,6 +374,48 @@ async def describe_box(payload: BoxDescribeInput) -> BoxDescribeResult:
 @app.get("/partners/{partner_id}/boxes", response_model=list[Box], tags=["Partner"])
 def partner_boxes(partner_id: str) -> list[Box]:
     return store.partner_boxes(partner_id)
+
+
+# --------------------------------------------------------------------------- #
+#  Шаблоны боксов — сохранил один раз, публикуешь одной кнопкой каждый вечер
+# --------------------------------------------------------------------------- #
+@app.get("/partners/{partner_id}/templates", tags=["Partner"])
+def list_templates(partner_id: str) -> list[dict]:
+    return store.partner_templates(partner_id)
+
+
+@app.post("/partners/{partner_id}/templates", status_code=201, tags=["Partner"],
+          dependencies=[Depends(require_role("partner", "admin"))])
+def create_template(partner_id: str, payload: BoxTemplateCreate) -> dict:
+    if payload.value_est < payload.price:
+        raise HTTPException(400, "Ценность содержимого должна быть не ниже цены бокса")
+    return store.create_template(_new("t"), payload)
+
+
+@app.delete("/partners/{partner_id}/templates/{tid}", tags=["Partner"],
+            dependencies=[Depends(require_role("partner", "admin"))])
+def delete_template(partner_id: str, tid: str) -> dict:
+    return {"deleted": store.delete_template(tid, partner_id)}
+
+
+@app.post("/partners/{partner_id}/templates/{tid}/publish", response_model=Box,
+          status_code=201, tags=["Partner"],
+          dependencies=[Depends(require_role("partner", "admin"))])
+def publish_template(partner_id: str, tid: str, bg: BackgroundTasks) -> Box:
+    """Опубликовать бокс из шаблона: окно выдачи считается от «сейчас»."""
+    t = store.template(tid)
+    if not t or t["partner_id"] != partner_id:
+        raise HTTPException(404, "Шаблон не найден")
+    now = datetime.now(timezone.utc)
+    box = store.create_box(_new("b"), BoxCreate(
+        partner_id=partner_id, category=t["category"], title=t["title"],
+        price=t["price"], value_est=t["value_est"], qty=t["qty"],
+        pickup_from=now.isoformat(),
+        pickup_to=(now + timedelta(hours=t["hours"])).isoformat(),
+        description=t["description"] or "",
+    ))
+    bg.add_task(notify_mod.broadcast_new_box, store, box)
+    return box
 
 
 @app.get("/partners/{partner_id}/orders", response_model=list[Order], tags=["Partner"])

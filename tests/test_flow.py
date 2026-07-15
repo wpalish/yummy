@@ -212,3 +212,28 @@ def test_cancel_issued_order_blocked(store):
     assert not ok
     ok2, _ = store.refund_by_code("YM-ISS1")
     assert not ok2
+
+
+# --------------------------------------------------------------------------- #
+#  Шаблоны боксов
+# --------------------------------------------------------------------------- #
+def test_template_crud_and_publish(store):
+    from app.models import BoxTemplateCreate
+    t = store.create_template("t1", BoxTemplateCreate(
+        partner_id="p1", category="sweet", title="Сладкий микс",
+        price=490, value_est=1500, qty=5, hours=3, description="круассаны"))
+    assert t["title"] == "Сладкий микс" and t["hours"] == 3
+    assert [x["id"] for x in store.partner_templates("p1")] == ["t1"]
+    # публикация из шаблона → бокс с окном от сейчас
+    from datetime import datetime, timezone, timedelta
+    now = datetime.now(timezone.utc)
+    box = store.create_box("b9", BoxCreate(
+        partner_id="p1", category=t["category"], title=t["title"], price=t["price"],
+        value_est=t["value_est"], qty=t["qty"],
+        pickup_from=now.isoformat(), pickup_to=(now + timedelta(hours=t["hours"])).isoformat(),
+        description=t["description"]))
+    assert box.title == "Сладкий микс" and box.price == 490
+    # удаление только своим партнёром
+    assert store.delete_template("t1", "p2") is False
+    assert store.delete_template("t1", "p1") is True
+    assert store.partner_templates("p1") == []

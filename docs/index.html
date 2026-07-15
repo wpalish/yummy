@@ -571,6 +571,7 @@
             <label>Что обычно внутри <textarea id="bDesc" rows="2" placeholder="Например: 2 круассана, маффин, печенье"></textarea></label>
             <button type="button" class="linkbtn" id="bAiBtn" style="margin:.3rem 0 0">✨ Улучшить описание с ИИ</button>
             <button class="btn" type="submit" style="margin-top:.7rem">Опубликовать бокс</button>
+            <button type="button" class="linkbtn" id="bSaveTpl" style="margin:.4rem 0 0">💾 Сохранить как шаблон</button>
           </form>
         </div>
         <div>
@@ -584,6 +585,7 @@
             <div id="scanBox" class="hidden" style="margin-top:.6rem;border-radius:12px;overflow:hidden"></div>
             <div id="redeemRes" style="margin-top:.6rem;font-size:.84rem"></div>
           </div>
+          <div class="cardp"><h3>Мои шаблоны</h3><div id="pTemplates" style="font-size:.84rem"></div></div>
           <div class="cardp"><h3>Мои боксы</h3><div id="pBoxes"></div></div>
         </div>
       </div>
@@ -722,6 +724,9 @@ const KZ={
 "Заведение":"Мекеме","Создать бокс":"Бокс құру","Категория":"Санат","Название":"Атауы",
 "Опубликовать бокс":"Боксты жариялау","Выдать заказ по коду":"Тапсырысты код бойынша беру","Выдать":"Беру",
 "📷 Сканировать QR камерой":"📷 QR-ды камерамен сканерлеу","Мои боксы":"Менің бокстарым","Брони и выдачи":"Броньдар мен берулер",
+"💾 Сохранить как шаблон":"💾 Үлгі ретінде сақтау","Мои шаблоны":"Менің үлгілерім","Шаблон сохранён 💾":"Үлгі сақталды 💾",
+"Опубликовать":"Жариялау","Бокс опубликован из шаблона ✓":"Бокс үлгіден жарияланды ✓","Шаблон удалён":"Үлгі жойылды","Удалить шаблон?":"Үлгіні жою керек пе?",
+"Пока нет. Заполни форму и нажми «Сохранить как шаблон» — потом публикуй одной кнопкой.":"Әзірге жоқ. Форманы толтырып «Үлгі ретінде сақтау» бас — кейін бір батырмамен жарияла.",
 "Боксов пока нет.":"Әзірге бокс жоқ.","Броней пока нет.":"Әзірге бронь жоқ.",
 "выручка с боксов":"бокстардан түскен табыс","выкуп (забрали)":"алып кетті","в продаже":"сатылымда",
 "Админ-панель":"Әкімші панелі","Контроль заказов, возвраты, ключевые метрики пилота.":"Тапсырыстарды бақылау, қайтарымдар, пилоттың негізгі метрикалары.",
@@ -858,7 +863,7 @@ function freshState(){
       return {id,partner_id:pid,category:cat,title,price,value_est:val,qty_total:qty,qty_left:qty,
         pickup_from:from.toISOString(),pickup_to:to.toISOString(),description:desc,
         created_at:new Date().toISOString(),status:"active"};}),
-    orders:[],reviews:[],seq:100};
+    orders:[],reviews:[],templates:[],seq:100};
 }
 function saveState(s){localStorage.setItem(SKEY,JSON.stringify(s));}
 function loadState(){try{const s=JSON.parse(localStorage.getItem(SKEY));
@@ -901,6 +906,8 @@ async function _demoGet(u){
   if(path==="/me/recommendations")return demoRecommend();
   if(m=path.match(/^\/partners\/(.+)\/reviews$/))
     return (ST.reviews||[]).filter(r=>r.partner_id===m[1]&&r.status==="approved").slice().reverse();
+  if(m=path.match(/^\/partners\/(.+)\/templates$/))
+    return (ST.templates||[]).filter(t=>t.partner_id===m[1]).slice().reverse();
   throw new Error("404 "+path);
 }
 /* демо-эквиваленты серверных /me/* — «мои» заказы = коды в этом браузере */
@@ -978,6 +985,26 @@ async function _demoPost(u,body){ let m;
     ST.reviews=ST.reviews||[]; ST.reviews.push(rv); persist();
     return rv;
   }
+  if(m=u.match(/^\/partners\/(.+)\/templates\/(.+)\/publish$/)){
+    const t=(ST.templates||[]).find(x=>x.id===m[2]&&x.partner_id===m[1]);
+    if(!t)throw new Error("Шаблон не найден");
+    const now=new Date(),to=new Date(now.getTime()+t.hours*3600*1000);
+    const b={id:"b"+(ST.seq++),partner_id:t.partner_id,category:t.category,title:t.title,price:t.price,
+      value_est:t.value_est,qty_total:t.qty,qty_left:t.qty,pickup_from:now.toISOString(),
+      pickup_to:to.toISOString(),description:t.description,created_at:now.toISOString(),status:"active"};
+    ST.boxes.push(b);persist();return boxView(b);}
+  if(m=u.match(/^\/partners\/(.+)\/templates$/)){
+    if(body.value_est<body.price)throw new Error("Ценность должна быть не ниже цены");
+    const t={id:"t"+(ST.seq++),partner_id:m[1],category:body.category,title:body.title,price:body.price,
+      value_est:body.value_est,qty:body.qty,hours:body.hours,description:body.description,created_at:new Date().toISOString()};
+    ST.templates=ST.templates||[]; ST.templates.push(t); persist(); return t;}
+  throw new Error("404 "+u);
+}
+async function _demoDelete(u){let m;
+  if(m=u.match(/^\/partners\/(.+)\/templates\/(.+)$/)){
+    const before=(ST.templates||[]).length;
+    ST.templates=(ST.templates||[]).filter(t=>!(t.id===m[2]&&t.partner_id===m[1]));persist();
+    return {deleted:before!==ST.templates.length};}
   throw new Error("404 "+u);
 }
 /* Переключатель бэкенда: пусто → демо (данные в браузере); URL → реальный сервер */
@@ -992,6 +1019,7 @@ async function api(m,u,b,_retry){const h=b?{"Content-Type":"application/json"}:{
   if(!r.ok){let d;try{d=await r.json();}catch(e){} throw new Error((d&&d.detail)||("Ошибка "+r.status));} return r.status===204?null:r.json();}
 const get=(u)=>API_BASE?api("GET",u):_demoGet(u);
 const post=(u,b)=>API_BASE?api("POST",u,b):_demoPost(u,b);
+const del=(u)=>API_BASE?api("DELETE",u):_demoDelete(u);
 const STATUS_RU={paid:"оплачен",issued:"выдан",expired:"не забран",refunded:"возврат",cancelled:"отменён"};
 /* Kaspi Pay deep-link: после регистрации мерчанта в Kaspi Pay вставь свой
    service_id — в модалке оплаты появится настоящая кнопка Kaspi. */
@@ -1723,6 +1751,7 @@ async function loadPartnerData(){
   let boxes=[],orders=[];
   try{boxes=await get(`/partners/${pid}/boxes`);}catch(e){}
   try{orders=await get(`/partners/${pid}/orders`);}catch(e){}
+  renderTemplates();
   // мини-аналитика точки (семя CRM-тарифа): выручка, продажи, выкуп, остаток
   const done=orders.filter(o=>o.status==="issued"), act=orders.filter(o=>o.status==="paid");
   const noshow=orders.filter(o=>o.status==="expired").length;
@@ -1759,6 +1788,33 @@ $("#boxForm").addEventListener("submit",async e=>{
   try{await post("/boxes",body);toast("Бокс опубликован ✓");e.target.reset();$("#bPrice").value=990;$("#bValue").value=2600;$("#bQty").value=5;$("#bHours").value=4;loadPartnerData();}
   catch(err){toast(err.message,true);}
 });
+function tplBody(){return {partner_id:curPartner(),category:$("#bCat").value,title:$("#bTitle").value.trim()||"Вечерний бокс",
+  price:+$("#bPrice").value,value_est:+$("#bValue").value,qty:+$("#bQty").value,
+  hours:Math.max(1,Math.min(12,+$("#bHours").value||4)),description:$("#bDesc").value.trim()};}
+$("#bSaveTpl").onclick=async()=>{
+  const b=tplBody();
+  if(b.value_est<b.price){toast("Ценность внутри должна быть не ниже цены",true);return;}
+  try{await post(`/partners/${curPartner()}/templates`,b);toast("Шаблон сохранён 💾");renderTemplates();}
+  catch(e){toast(e.message,true);}
+};
+window.publishTpl=async id=>{
+  try{await post(`/partners/${curPartner()}/templates/${id}/publish`);toast("Бокс опубликован из шаблона ✓");loadPartnerData();}
+  catch(e){toast(e.message,true);}
+};
+window.delTpl=async id=>{
+  if(!confirm("Удалить шаблон?"))return;
+  try{await del(`/partners/${curPartner()}/templates/${id}`);toast("Шаблон удалён");renderTemplates();}
+  catch(e){toast(e.message,true);}
+};
+async function renderTemplates(){
+  const el=$("#pTemplates");if(!el)return;
+  let t=[];try{t=await get(`/partners/${curPartner()}/templates`);}catch(e){}
+  if(!t.length){el.innerHTML='<span style="color:var(--txt2)">Пока нет. Заполни форму и нажми «Сохранить как шаблон» — потом публикуй одной кнопкой.</span>';return;}
+  el.innerHTML=t.map(x=>`<div style="display:flex;align-items:center;gap:.5rem;padding:.4rem 0;border-bottom:1px solid var(--line)">
+    <div style="flex:1"><b>${esc(x.title)}</b> · ${money(x.price)} <span style="color:var(--txt2)">(${x.qty} шт, до +${x.hours}ч)</span></div>
+    <button class="btn" style="width:auto;padding:.3rem .7rem;font-size:.78rem" onclick="publishTpl('${x.id}')">Опубликовать</button>
+    <button class="linkbtn" onclick="delTpl('${x.id}')">✕</button></div>`).join("");
+}
 $("#bAiBtn").onclick=async()=>{
   const notes=$("#bDesc").value.trim();
   if(notes.length<2){toast("Сначала напиши черновик — хотя бы пару слов",true);return;}

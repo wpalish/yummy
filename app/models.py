@@ -53,6 +53,19 @@ class BoxCreate(BaseModel):
     description: str = ""
 
 
+class BoxTemplateCreate(BaseModel):
+    """Шаблон бокса: партнёр сохраняет и публикует одной кнопкой каждый вечер."""
+
+    partner_id: str
+    category: BoxCategory = "sweet"
+    title: str = ""
+    price: int = Field(..., ge=100)
+    value_est: int = Field(..., ge=100)
+    qty: int = Field(..., ge=1, le=50)
+    hours: int = Field(4, ge=1, le=12, description="Забрать до N часов от публикации")
+    description: str = ""
+
+
 class Box(BaseModel):
     id: str
     partner_id: str
