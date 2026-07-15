@@ -162,6 +162,8 @@ def security_txt() -> PlainTextResponse:
 
 app.mount("/static", StaticFiles(directory=str(_STATIC)), name="static")
 app.include_router(telegram_router)
+from .telegram_bot import router as tgbot_router  # noqa: E402 (после app)
+app.include_router(tgbot_router)
 app.include_router(accounts_router)
 
 _LOCAL = {"127.0.0.1", "::1", "testclient", "localhost"}

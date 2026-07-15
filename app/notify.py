@@ -95,10 +95,14 @@ def broadcast_new_box(store, box) -> int:
     """Разослать бокс подписчикам. Best-effort: сбои не роняют публикацию бокса."""
     if not is_configured():
         return 0
-    try:
-        pull_subscribers(store)
-    except Exception as e:
-        log.warning("notify: pull failed: %s", e)
+    # В webhook-режиме подписчики ловятся эндпоинтом /telegram/webhook, а
+    # getUpdates при активном webhook возвращает 409 — поэтому pull только
+    # в polling-режиме (нет TELEGRAM_WEBHOOK_SECRET).
+    if not os.getenv("TELEGRAM_WEBHOOK_SECRET"):
+        try:
+            pull_subscribers(store)
+        except Exception as e:
+            log.warning("notify: pull failed: %s", e)
     sent = 0
     for chat_id in store.tg_subscribers():
         try:
