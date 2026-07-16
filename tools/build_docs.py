@@ -86,6 +86,14 @@ const del=(u)=>API_BASE?api("DELETE",u):_demoDelete(u);'''
         if src.exists():
             shutil.copy(src, DOCS / name)
 
+    # синхронизируем картинки (лого/favicon/боксы) — иначе docs/img/ дрейфует
+    img_src = STATIC / "img"
+    if img_src.is_dir():
+        (DOCS / "img").mkdir(exist_ok=True)
+        for f in img_src.iterdir():
+            if f.is_file():
+                shutil.copy(f, DOCS / "img" / f.name)
+
     ok = "_demoGet" in html and "const API_BASE" in html
     mode = f"бэкенд {PAGES_API_BASE}" if PAGES_API_BASE else "демо (данные в браузере)"
     print(f"docs/index.html: {len(html)} байт | режим: {mode} | сборка ок: {ok}")
