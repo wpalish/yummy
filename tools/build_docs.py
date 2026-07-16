@@ -52,7 +52,10 @@ def main() -> int:
     html = (html.replace("/static/img/", "img/")
                 .replace("/static/manifest.json", "manifest.json")
                 .replace("/static/sw.js", "sw.js")
-                .replace("/static/venues.json", "venues.json"))
+                .replace("/static/venues.json", "venues.json")
+                # GitHub Pages не инжектит nonce и не шлёт CSP-заголовок — плейсхолдер
+                # убираем, чтобы inline <script> остался валидным (без мёртвого nonce).
+                .replace(' nonce="__CSP_NONCE__"', ""))
     if API_BLOCK not in html:
         print("ОШИБКА: api-блок не найден в app/static/index.html", file=sys.stderr)
         return 1

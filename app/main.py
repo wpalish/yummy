@@ -17,7 +17,7 @@ from pathlib import Path
 from fastapi import BackgroundTasks, Depends, FastAPI, HTTPException
 from fastapi import Request as HttpRequest
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse, JSONResponse, PlainTextResponse
+from fastapi.responses import HTMLResponse, JSONResponse, PlainTextResponse
 from fastapi.staticfiles import StaticFiles
 from starlette.middleware.trustedhost import TrustedHostMiddleware
 
@@ -72,18 +72,25 @@ _CORS = [o.strip() for o in os.getenv(
     "http://localhost:8021,http://127.0.0.1:8021,https://wpalish.github.io",
 ).split(",") if o.strip()]
 
-# CSP допускает inline (в приложении много inline-обработчиков) и CDN, с которых
-# грузятся Leaflet/qrcode/html5-qrcode и Swagger UI. Строже сделать нельзя без
-# перевода фронта на nonce — это отдельная большая работа.
-_CSP = (
-    "default-src 'self'; "
-    "script-src 'self' 'unsafe-inline' https://unpkg.com https://cdn.jsdelivr.net; "
-    "style-src 'self' 'unsafe-inline' https://unpkg.com https://cdn.jsdelivr.net https://fonts.googleapis.com; "
-    "img-src 'self' data: https:; font-src 'self' data: https://fonts.gstatic.com; "
-    "connect-src 'self'; frame-ancestors 'none'; object-src 'none'; base-uri 'self'"
-)
+# CSP без 'unsafe-inline' в script-src: фронт переведён на делегирование событий
+# (data-act вместо inline onclick), единственный inline <script> подписан per-request
+# nonce (см. index()). style-src оставляет 'unsafe-inline' — инлайн-стили безопаснее
+# скриптов, а вынос всех style-атрибутов — отдельная работа. CDN для Leaflet.
+def _csp(nonce: str | None = None) -> str:
+    script_src = "'self' https://unpkg.com https://cdn.jsdelivr.net"
+    if nonce:
+        script_src += f" 'nonce-{nonce}'"
+    return (
+        "default-src 'self'; "
+        f"script-src {script_src}; "
+        "style-src 'self' 'unsafe-inline' https://unpkg.com https://cdn.jsdelivr.net https://fonts.googleapis.com; "
+        "img-src 'self' data: https:; font-src 'self' data: https://fonts.gstatic.com; "
+        "connect-src 'self'; frame-ancestors 'none'; object-src 'none'; base-uri 'self'"
+    )
+
+
 _SEC_HEADERS = {
-    "Content-Security-Policy": _CSP,
+    "Content-Security-Policy": _csp(),
     "X-Frame-Options": "DENY",
     "X-Content-Type-Options": "nosniff",
     "Referrer-Policy": "strict-origin-when-cross-origin",
@@ -235,8 +242,13 @@ def _order_code() -> str:
 #  Страница / служебное
 # --------------------------------------------------------------------------- #
 @app.get("/", include_in_schema=False)
-def index() -> FileResponse:
-    return FileResponse(_STATIC / "index.html")
+def index() -> HTMLResponse:
+    # per-request nonce для единственного inline <script>: позволяет держать CSP
+    # без 'unsafe-inline'. Плейсхолдер __CSP_NONCE__ в index.html меняем на живой
+    # nonce и дублируем его в заголовок CSP этого ответа (middleware не перезапишет).
+    nonce = secrets.token_urlsafe(16)
+    html = (_STATIC / "index.html").read_text(encoding="utf-8").replace("__CSP_NONCE__", nonce)
+    return HTMLResponse(html, headers={"Content-Security-Policy": _csp(nonce)})
 
 
 @app.get("/health", tags=["Dev"])

@@ -418,7 +418,7 @@
           <button data-role="partner">Партнёр</button>
           <button data-role="admin">Админ</button>
         </div>
-        <button class="hbtn" title="Мои заказы" aria-label="Мои заказы" onclick="gotoOrders()">🛒<span class="cnt hidden" id="cartCnt"></span></button>
+        <button class="hbtn" title="Мои заказы" aria-label="Мои заказы" data-act="gotoOrders">🛒<span class="cnt hidden" id="cartCnt"></span></button>
         <button class="acct" id="acctBtn" aria-label="Профиль"></button>
       </div>
       <div class="msearch search"><input id="qm" placeholder="Поиск боксов и заведений" aria-label="Поиск боксов и заведений" /></div>
@@ -434,8 +434,8 @@
           <h1>Спасай свежую еду из любимых кофеен</h1>
           <p>К вечеру в кофейнях остаётся свежая выпечка. Раньше она отправлялась в мусор — теперь в сюрприз-боксы со скидкой до 70%.</p>
           <div class="cta-row">
-            <button class="cta" onclick="onbGuest();switchView('store')">Смотреть боксы</button>
-            <button class="cta sec2" onclick="document.querySelector('#l-how').scrollIntoView({behavior:'smooth'})">Как это работает ↓</button>
+            <button class="cta" data-act="guestStore">Смотреть боксы</button>
+            <button class="cta sec2" data-act="scrollTo" data-a1="#l-how">Как это работает ↓</button>
           </div>
         </div>
         <div class="lh-img reveal"><img src="/static/img/hero.jpg" alt="Сюрприз-бокс Yummy" loading="eager" fetchpriority="high" /></div>
@@ -461,12 +461,12 @@
         <span class="caption">Покрытие</span>
         <h2>137 заведений на карте Астаны</h2>
         <p class="l-sub">Zebra Coffee, Espresso Day и другие — фильтруй по районам, выбирай ближайшую точку.</p>
-        <button class="cta" onclick="onbGuest();switchView('venues')">☕ Открыть карту</button>
+        <button class="cta" data-act="guestVenues">☕ Открыть карту</button>
       </div>
 
       <div class="l-band reveal">
         <div><h2>Вы — кофейня или пекарня?</h2><p>Превращайте вечерние списания в выручку. Подключение бесплатно.</p></div>
-        <button class="cta light" onclick="landRole('partner');document.querySelector('#l-reg').scrollIntoView({behavior:'smooth'})">Стать партнёром</button>
+        <button class="cta light" data-act="landRoleScroll" data-a1="partner" data-a2="#l-reg">Стать партнёром</button>
       </div>
 
       <div id="l-reg" class="l-sec reveal">
@@ -474,19 +474,19 @@
         <h2>Создай аккаунт за 20 секунд</h2>
         <div class="l-regcard">
           <div class="roles2">
-            <button id="lr-buyer" class="on" onclick="landRole('buyer')">🛍️ Я покупатель</button>
-            <button id="lr-partner" onclick="landRole('partner')">☕ Я заведение</button>
+            <button id="lr-buyer" class="on" data-act="landRole" data-a1="buyer">🛍️ Я покупатель</button>
+            <button id="lr-partner" data-act="landRole" data-a1="partner">☕ Я заведение</button>
           </div>
           <label><span id="lrNameL">Имя</span> <input id="lrName" placeholder="Как к вам обращаться" autocomplete="name" /><span class="ferr" id="lr_name"></span></label>
           <label>Email <input id="lrEmail" type="email" placeholder="you@email.com" autocomplete="email" /><span class="ferr" id="lr_email"></span></label>
           <label>Пароль <span class="pw"><input id="lrPass" type="password" placeholder="Минимум 8 символов, буквы и цифры" autocomplete="new-password" />
             <button type="button" class="pw-t" id="lrT" aria-label="Показать пароль">👁</button></span><span class="ferr" id="lr_pass"></span></label>
           <label class="consent"><input type="checkbox" id="lrConsent" />
-            <span>Принимаю <a onclick="showLegal('offer')">оферту</a> и согласие на обработку персональных данных согласно <a onclick="showLegal('privacy')">политике</a>.</span></label>
+            <span>Принимаю <a data-act="showLegal" data-a1="offer">оферту</a> и согласие на обработку персональных данных согласно <a data-act="showLegal" data-a1="privacy">политике</a>.</span></label>
           <span class="ferr" id="lr_consent"></span>
           <button class="btn" id="lrBtn" style="margin-top:.4rem">Зарегистрироваться</button>
-          <button class="guest" onclick="openLogin()">Уже есть аккаунт? Войти</button>
-          <button class="guest" onclick="onbGuest();switchView('store')">Пропустить, просто осмотреться →</button>
+          <button class="guest" data-act="openLogin">Уже есть аккаунт? Войти</button>
+          <button class="guest" data-act="guestStore">Пропустить, просто осмотреться →</button>
         </div>
       </div>
     </section>
@@ -499,8 +499,8 @@
         <h1>Боксы в Астане</h1>
         <p class="sub" id="heroSub">Свежее, дешевле и без списаний.</p>
         <div class="cta-row">
-          <button class="cta" onclick="scrollToBoxes()">Смотреть боксы</button>
-          <button class="cta sec2" onclick="switchView('venues')">☕ Заведения на карте</button>
+          <button class="cta" data-act="scrollToBoxes">Смотреть боксы</button>
+          <button class="cta sec2" data-act="viewVenues">☕ Заведения на карте</button>
           <span class="cta-note hidden" id="heroCnt"></span>
         </div>
       </div>
@@ -626,10 +626,10 @@
         <div>
           <h4>Документы</h4>
           <div class="flinks">
-            <button onclick="showLegal('offer')">Публичная оферта</button>
-            <button onclick="showLegal('privacy')">Политика конфиденциальности</button>
-            <button onclick="showLegal('quality')">Стандарты пищевой безопасности</button>
-            <button onclick="showLegal('agreement')">Договор с заведением</button>
+            <button data-act="showLegal" data-a1="offer">Публичная оферта</button>
+            <button data-act="showLegal" data-a1="privacy">Политика конфиденциальности</button>
+            <button data-act="showLegal" data-a1="quality">Стандарты пищевой безопасности</button>
+            <button data-act="showLegal" data-a1="agreement">Договор с заведением</button>
           </div>
         </div>
         <div>
@@ -637,8 +637,8 @@
           <div class="flinks">
             <a href="mailto:alisher.nursain@gmail.com">✉️ alisher.nursain@gmail.com</a>
             <a href="https://t.me/yummy_astana_bot" target="_blank" rel="noopener">💬 Telegram-бот: новые боксы</a>
-            <button onclick="toast('Instagram скоро запустим 📸')">📸 Instagram</button>
-            <button onclick="toast('TikTok скоро запустим 🎬')">🎬 TikTok</button>
+            <button data-act="soon" data-a1="Instagram скоро запустим 📸">📸 Instagram</button>
+            <button data-act="soon" data-a1="TikTok скоро запустим 🎬">🎬 TikTok</button>
             <button id="installBtn" class="hidden">📲 Установить приложение</button>
           </div>
         </div>
@@ -664,8 +664,64 @@
   <div id="toast"></div>
 
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-<script>
+<script nonce="__CSP_NONCE__">
 const $=s=>document.querySelector(s);
+
+/* ===== Делегирование кликов вместо inline onclick (CSP: без unsafe-inline) =====
+   Каждый интерактивный элемент несёт data-act + при нужде data-a1..a3.
+   Аргументы читаются как строки из dataset — это XSS-безопасно (в отличие от
+   подстановки в JS-строку внутри onclick). Обработчики резолвятся по клику,
+   поэтому порядок объявления функций ниже не важен. */
+const ACT = {
+  closeModal:      () => closeModal(),
+  gotoOrders:      () => gotoOrders(),
+  openLogin:       () => openLogin(),
+  scrollToBoxes:   () => scrollToBoxes(),
+  changePwForm:    () => changePwForm(),
+  logoutAll:       () => logoutAll(),
+  exportMe:        () => exportMe(),
+  deleteMeConfirm: () => deleteMeConfirm(),
+  logout:          () => logout(),
+  onbBuyer:        () => onbBuyer(),
+  onbPartner:      () => onbPartner(),
+  onbGuest:        () => onbGuest(),
+  loginForm:       () => loginForm(),
+  showOnboarding:  () => showOnboarding(),
+  viewVenues:      () => switchView("venues"),
+  guestStore:      () => { onbGuest(); switchView("store"); },
+  guestVenues:     () => { onbGuest(); switchView("venues"); },
+  closeGotoOrders: () => { closeModal(); gotoOrders(); },
+  closeShowOnb:    () => { closeModal(); showOnboarding(); },
+  closeLoadVenues: () => { closeModal(); loadVenues(); },
+  showLegal:       el => showLegal(el.dataset.a1),
+  landRole:        el => landRole(el.dataset.a1),
+  landRoleScroll:  el => { landRole(el.dataset.a1); document.querySelector(el.dataset.a2).scrollIntoView({behavior:"smooth"}); },
+  scrollTo:        el => document.querySelector(el.dataset.a1).scrollIntoView({behavior:"smooth"}),
+  soon:            el => toast(el.dataset.a1),
+  toggleFav:       el => toggleFav(el.dataset.a1),
+  showReviews:     el => showReviews(el.dataset.pid, el.dataset.name),
+  openVenue:       el => openVenue(el.dataset.a1),
+  bookVenueBox:    el => bookVenueBox(el.dataset.a1, +el.dataset.a2),
+  mapShop:         el => shopFromMap(el.dataset.name),
+  cancelOrder:     el => cancelOrder(el.dataset.a1),
+  userRefund:      el => userRefund(el.dataset.a1),
+  showCode:        el => showCode(el.dataset.a1),
+  leaveReviewForm: el => leaveReviewForm(el.dataset.a1, el.dataset.a2, el.dataset.a3),
+  refund:          el => refund(el.dataset.a1),
+  publishTpl:      el => publishTpl(el.dataset.a1),
+  delTpl:          el => delTpl(el.dataset.a1),
+  connectPay:      el => connectPay(el.dataset.a1),
+  activatePay:     el => activatePay(el.dataset.a1),
+  setRate:         el => setRate(el.dataset.a1),
+};
+document.addEventListener("click", ev => {
+  const el = ev.target.closest("[data-act]");
+  if (!el) return;
+  const fn = ACT[el.dataset.act];
+  if (!fn) return;
+  if (el.dataset.stop) ev.stopPropagation();
+  fn(el, ev);
+});
 
 /* ================= i18n: ҚАЗАҚША / РУССКИЙ =================
    Словарь RU→KZ + MutationObserver: переводит и статичный HTML, и всё,
@@ -888,7 +944,7 @@ function requireStaff(cb){
     <p style="font-size:.85rem;color:var(--txt2);margin:.3rem 0 .2rem">Раздел доступен сотрудникам заведений и администраторам. <br><b style="color:var(--brown)">Демо-PIN: 1234</b></p>
     <label>PIN-код <input id="pinInp" type="password" inputmode="numeric" maxlength="4" placeholder="••••" /></label>
     <button class="btn" id="pinBtn" style="margin-top:.8rem">Войти</button>
-    <button class="btn sec" onclick="closeModal()" style="margin-top:.5rem">Отмена</button>
+    <button class="btn sec" data-act="closeModal" style="margin-top:.5rem">Отмена</button>
   </div>`);
   $("#pinInp").focus();
   $("#pinBtn").onclick=()=>{
@@ -935,13 +991,13 @@ function acctMenu(){
   showModal(`<div class="mc">
     <h3>${esc(a.name||"Профиль")}</h3>
     <p style="color:var(--txt2);font-size:.85rem;margin:.1rem 0 .9rem">Вы вошли как <b style="color:var(--brown)">${ROLE_RU[a.role]||"гость"}</b>${a.phone?" · "+esc(a.phone):""}</p>
-    <button class="btn" onclick="closeModal();gotoOrders()">🛒 Мои заказы</button>
-    ${a.token?`<button class="btn sec" style="margin-top:.5rem" onclick="changePwForm()">🔑 Сменить пароль</button>
-    <button class="btn sec" style="margin-top:.5rem" onclick="logoutAll()">🚪 Выйти со всех устройств</button>
-    <button class="btn sec" style="margin-top:.5rem" onclick="exportMe()">⬇ Скачать мои данные</button>
-    <button class="btn sec" style="margin-top:.5rem;color:var(--red)" onclick="deleteMeConfirm()">🗑 Удалить аккаунт</button>`:""}
-    <button class="btn sec" style="margin-top:.5rem" onclick="closeModal();showOnboarding()">Сменить роль</button>
-    <button class="btn sec" style="margin-top:.5rem" onclick="logout()">Выйти</button>
+    <button class="btn" data-act="closeGotoOrders">🛒 Мои заказы</button>
+    ${a.token?`<button class="btn sec" style="margin-top:.5rem" data-act="changePwForm">🔑 Сменить пароль</button>
+    <button class="btn sec" style="margin-top:.5rem" data-act="logoutAll">🚪 Выйти со всех устройств</button>
+    <button class="btn sec" style="margin-top:.5rem" data-act="exportMe">⬇ Скачать мои данные</button>
+    <button class="btn sec" style="margin-top:.5rem;color:var(--red)" data-act="deleteMeConfirm">🗑 Удалить аккаунт</button>`:""}
+    <button class="btn sec" style="margin-top:.5rem" data-act="closeShowOnb">Сменить роль</button>
+    <button class="btn sec" style="margin-top:.5rem" data-act="logout">Выйти</button>
   </div>`);
 }
 /* Privacy + сессии (Sentinel-паттерны, реализованные честно) */
@@ -963,7 +1019,7 @@ window.deleteMeConfirm=()=>{
     <h3>Удалить аккаунт?</h3>
     <p style="font-size:.86rem;color:var(--txt2);margin:.3rem 0 .9rem">Данные заказов обезличатся, вход станет невозможен. Действие необратимо.</p>
     <button class="btn" style="background:var(--red);color:#fff" id="delBtn">Да, удалить</button>
-    <button class="btn sec" onclick="closeModal()" style="margin-top:.5rem">Отмена</button>
+    <button class="btn sec" data-act="closeModal" style="margin-top:.5rem">Отмена</button>
   </div>`);
   $("#delBtn").onclick=async()=>{
     try{await api("DELETE","/me"); toast("Аккаунт удалён"); logout();}
@@ -976,7 +1032,7 @@ window.changePwForm=()=>{
     <label>Текущий пароль <input id="pwOld" type="password" autocomplete="current-password" /></label>
     <label>Новый пароль <input id="pwNew" type="password" placeholder="Мин. 8 символов, буквы и цифры" autocomplete="new-password" /><span class="ferr" id="pw_err"></span></label>
     <button class="btn" id="pwBtn" style="margin-top:.7rem">Сохранить</button>
-    <button class="btn sec" onclick="closeModal()" style="margin-top:.5rem">Отмена</button>
+    <button class="btn sec" data-act="closeModal" style="margin-top:.5rem">Отмена</button>
   </div>`);
   $("#pwBtn").onclick=async()=>{
     const old=$("#pwOld").value, nw=$("#pwNew").value;
@@ -995,17 +1051,17 @@ function showOnboarding(){
     <div class="onb-logo"><img src="/static/img/logo.svg" alt=""><b>Yummy</b></div>
     <h2>Добро пожаловать 👋</h2>
     <p class="lead">Спасайте свежую еду из кофеен и пекарен Астаны со скидкой до 70%. Кто вы?</p>
-    <button class="role-card" onclick="onbBuyer()"><span class="ic">🛍️</span><div><div class="t">Я покупатель</div><div class="d">Бронировать и забирать сюрприз-боксы</div></div></button>
-    <button class="role-card" onclick="onbPartner()"><span class="ic">☕</span><div><div class="t">Я заведение</div><div class="d">Кофейня/пекарня — продавать вечерние излишки</div></div></button>
-    <button class="guest" onclick="loginForm()">Уже есть аккаунт? Войти</button>
-    <button class="guest" onclick="onbGuest()">Пропустить, просто осмотреться →</button>
+    <button class="role-card" data-act="onbBuyer"><span class="ic">🛍️</span><div><div class="t">Я покупатель</div><div class="d">Бронировать и забирать сюрприз-боксы</div></div></button>
+    <button class="role-card" data-act="onbPartner"><span class="ic">☕</span><div><div class="t">Я заведение</div><div class="d">Кофейня/пекарня — продавать вечерние излишки</div></div></button>
+    <button class="guest" data-act="loginForm">Уже есть аккаунт? Войти</button>
+    <button class="guest" data-act="onbGuest">Пропустить, просто осмотреться →</button>
   </div>`;
 }
 /* Вход по email+паролю → POST /auth/login (роль приходит с сервера) */
 function loginForm(){
   const o=$("#onboard");
   o.innerHTML=`<div class="onb-card">
-    <button class="onb-back" onclick="showOnboarding()">← Назад</button>
+    <button class="onb-back" data-act="showOnboarding">← Назад</button>
     <h2>Вход</h2>
     <p class="lead">Войдите в аккаунт покупателя или заведения.</p>
     <label>Email <input id="lgEmail" type="email" placeholder="you@email.com" autocomplete="email" /><span class="ferr" id="le_email"></span></label>
@@ -1060,7 +1116,7 @@ function onbPartner(){ regForm("partner"); }
 function regForm(role){
   const partner=role==="partner", o=$("#onboard");
   o.innerHTML=`<div class="onb-card">
-    <button class="onb-back" onclick="showOnboarding()">← Назад к выбору роли</button>
+    <button class="onb-back" data-act="showOnboarding">← Назад к выбору роли</button>
     <h2>${partner?"Регистрация заведения":"Создать аккаунт"}</h2>
     <p class="lead">${partner?"Кабинет владельца кофейни или пекарни.":"Личный кабинет покупателя."}</p>
     ${partner
@@ -1070,7 +1126,7 @@ function regForm(role){
     <label>Пароль <span class="pw"><input id="rgPass" type="password" placeholder="Минимум 8 символов, буквы и цифры" autocomplete="new-password" />
       <button type="button" class="pw-t" id="pwToggle" aria-label="Показать пароль">👁</button></span><span class="ferr" id="e_pass"></span></label>
     <label class="consent"><input type="checkbox" id="rgConsent" />
-      <span>Принимаю <a onclick="showLegal('offer')">оферту</a> и даю согласие на обработку персональных данных согласно <a onclick="showLegal('privacy')">политике</a>.${partner?` Принимаю <a onclick="showLegal('agreement')">договор</a> и <a onclick="showLegal('quality')">стандарты пищевой безопасности</a>.`:""}</span></label>
+      <span>Принимаю <a data-act="showLegal" data-a1="offer">оферту</a> и даю согласие на обработку персональных данных согласно <a data-act="showLegal" data-a1="privacy">политике</a>.${partner?` Принимаю <a data-act="showLegal" data-a1="agreement">договор</a> и <a data-act="showLegal" data-a1="quality">стандарты пищевой безопасности</a>.`:""}</span></label>
     <span class="ferr" id="e_consent"></span>
     <button class="btn" id="rgBtn" style="margin-top:.4rem">Зарегистрироваться</button>
   </div>`;
@@ -1246,10 +1302,10 @@ function boxCard(b){
       <span class="bdg b-disc">${b.emoji} −${b.discount}%</span>
       <span class="bdg b-left${fomo?" fomo":""}">${fomo?"🔥 ":""}осталось ${b.qty_left}</span>
       <button class="b-fav${favs().includes(b.partner_id)?" on":""}" title="Любимая кофейня"
-        onclick="event.stopPropagation();toggleFav('${b.partner_id}')">♥</button></div>
+        data-act="toggleFav" data-a1="${b.partner_id}" data-stop="1">♥</button></div>
     <div class="body">
       <div class="trow"><h3>${esc(b.title||b.partner_name)}</h3>
-        <button class="rt" data-pid="${b.partner_id}" data-name="${esc(b.partner_name)}" onclick="event.stopPropagation();showReviews(this.dataset.pid,this.dataset.name)">⭐ ${b.rating}</button></div>
+        <button class="rt" data-pid="${b.partner_id}" data-name="${esc(b.partner_name)}" data-act="showReviews" data-stop="1">⭐ ${b.rating}</button></div>
       <div class="ven">${esc(b.partner_name)}</div>
       <div class="meta2">📍 ${esc(b.district)} · ⏱ ${win(b.pickup_from,b.pickup_to)}</div>
       <div class="price"><b>${money(b.price)}</b><s>${money(b.value_est)}</s></div>
@@ -1279,19 +1335,12 @@ async function renderMap(){
         <span style="background:#FFF5D6;color:#7E5233;padding:2px 8px;border-radius:7px;font-size:.72rem;font-weight:700">${n} ${plural(n,["бокс","бокса","боксов"])}</span>
         ${minP?`<b style="color:var(--brown)">от ${money(minP)}</b>`:""}
       </div>
-      ${n?`<button class="map-shop" data-name="${esc(p.name)}" style="width:100%;background:oklch(22% .03 45);border:0;padding:8px;border-radius:999px;font-weight:700;color:oklch(97% .018 82);cursor:pointer;font-family:inherit">Смотреть боксы</button>`:'<span style="font-size:.74rem;color:#7E6A5A">Сегодня боксов нет</span>'}
+      ${n?`<button class="map-shop" data-act="mapShop" data-name="${esc(p.name)}" style="width:100%;background:oklch(22% .03 45);border:0;padding:8px;border-radius:999px;font-weight:700;color:oklch(97% .018 82);cursor:pointer;font-family:inherit">Смотреть боксы</button>`:'<span style="font-size:.74rem;color:#7E6A5A">Сегодня боксов нет</span>'}
       <a href="https://2gis.kz/astana/directions/points/%7C${p.lng}%2C${p.lat}" target="_blank" rel="noopener"
         style="display:block;text-align:center;margin-top:6px;font-size:.76rem;font-weight:700;color:#653624">🗺 Маршрут в 2ГИС</a>
     </div>`;
     return L.marker([p.lat,p.lng],{icon:mapObj._icon,title:p.name}).addTo(mapObj).bindPopup(html);
   });
-  if(!mapObj._shopWired){                                   // делегат: без inline-onclick (XSS-safe)
-    mapObj.on("popupopen",e=>{
-      const btn=e.popup.getElement().querySelector(".map-shop");
-      if(btn)btn.addEventListener("click",()=>shopFromMap(btn.dataset.name));
-    });
-    mapObj._shopWired=true;
-  }
 }
 function shopFromMap(name){
   curQuery=name.toLowerCase();
@@ -1379,7 +1428,7 @@ function renderVMap(){
   vmapObj._mk=vs.map(v=>{
     const color=v.chain==="Zebra Coffee"?"#2b2b2b":"#6F4E37";
     const mk=L.circleMarker([v.lat,v.lon],{radius:6,fillColor:color,color:"#fff",weight:1.5,fillOpacity:.9}).addTo(vmapObj);
-    mk.bindPopup(`<b>${esc(v.chain)}</b><br>${esc(v.addr)}<br>${esc(v.district)} · ${v.rating?"⭐ "+v.rating+" · ":""}${vBoxCount(v)} ${plural(vBoxCount(v),["бокс","бокса","боксов"])}<br><button onclick="openVenue('${v.id}')" style="margin-top:6px;width:100%;background:oklch(22% .03 45);border:0;padding:7px;border-radius:999px;font-weight:700;color:oklch(97% .018 82);cursor:pointer">Смотреть боксы</button>`);
+    mk.bindPopup(`<b>${esc(v.chain)}</b><br>${esc(v.addr)}<br>${esc(v.district)} · ${v.rating?"⭐ "+v.rating+" · ":""}${vBoxCount(v)} ${plural(vBoxCount(v),["бокс","бокса","боксов"])}<br><button data-act="openVenue" data-a1="${v.id}" style="margin-top:6px;width:100%;background:oklch(22% .03 45);border:0;padding:7px;border-radius:999px;font-weight:700;color:oklch(97% .018 82);cursor:pointer">Смотреть боксы</button>`);
     return mk;
   });
   if(vs.length){const g=L.featureGroup(vmapObj._mk); try{vmapObj.fitBounds(g.getBounds().pad(0.1));}catch(e){}}
@@ -1407,9 +1456,9 @@ window.openVenue=id=>{
           <div style="font-size:.76rem;color:var(--txt2)">⏱ ${venueWin(b.from,b.dur)} · осталось ${b.qty}</div>
           <div style="font-size:.8rem;margin-top:.1rem"><b style="color:var(--brown)">${money(b.price)}</b> <s style="color:#A08D7D">${money(b.value)}</s> <span style="color:var(--green);font-weight:800">−${Math.round((1-b.price/b.value)*100)}%</span></div>
         </div>
-        <button class="btn" style="width:auto;padding:.5rem .8rem;font-size:.82rem" onclick="bookVenueBox('${v.id}',${i})">Забрать</button>
+        <button class="btn" style="width:auto;padding:.5rem .8rem;font-size:.82rem" data-act="bookVenueBox" data-a1="${v.id}" data-a2="${i}">Забрать</button>
       </div>`).join("")}</div>
-    <button class="btn sec" onclick="closeModal()" style="margin-top:.8rem">Закрыть</button>
+    <button class="btn sec" data-act="closeModal" style="margin-top:.8rem">Закрыть</button>
   </div>`);
 };
 window.bookVenueBox=(id,i)=>{
@@ -1427,7 +1476,7 @@ window.bookVenueBox=(id,i)=>{
     <p style="font-size:.84rem;color:var(--txt2);margin:.5rem 0">Покажите код на кассе.<br>Забрать: <b style="color:var(--brown)">${venueWin(b.from,b.dur)}</b></p>
     <p style="font-size:.8rem;color:var(--green);font-weight:700">🌱 Вы спасли ~0.5 кг еды и ~1.3 кг CO₂</p>
     <a class="btn sec" style="display:block;text-decoration:none;margin:.3rem 0 .5rem" href="https://2gis.kz/astana/firm/${v.id}" target="_blank" rel="noopener">🗺 Маршрут в 2ГИС</a>
-    <button class="btn" onclick="closeModal();loadVenues()">Готово</button>
+    <button class="btn" data-act="closeLoadVenues">Готово</button>
   </div>`);
 };
 /* отзывы (демо) */
@@ -1441,11 +1490,11 @@ window.showReviews=async(partnerId,name)=>{
     : `<p style="font-size:.76rem;color:var(--txt2);margin:.15rem 0 .5rem">Реальных отзывов пока нет — вот примеры того, как это будет выглядеть (демо):</p>
        ${(REVIEWS[name]||[["Гость","Пока нет отзывов — будь первым!",5]]).map(([n,t,s])=>`<div class="rev"><b>${esc(n)}</b> <span class="st">${"★".repeat(s)}${"☆".repeat(5-s)}</span><br>${esc(t)}</div>`).join("")}`;
   showModal(`<div class="mc"><h3>${esc(name)}</h3>${body}
-    <button class="btn sec" onclick="closeModal()" style="margin-top:.9rem">Закрыть</button></div>`);
+    <button class="btn sec" data-act="closeModal" style="margin-top:.9rem">Закрыть</button></div>`);
 };
 async function openBox(id){
   let b;try{b=await get("/boxes/"+id);}catch(e){toast(e.message,true);return;}
-  showModal(`<div class="mh" style="background-image:url(/static/img/${imgFor(b)})"><button class="x" onclick="closeModal()">✕</button></div>
+  showModal(`<div class="mh" style="background-image:url(/static/img/${imgFor(b)})"><button class="x" data-act="closeModal">✕</button></div>
     <div class="mc">
       <div style="color:var(--txt2);font-size:.72rem;font-weight:800;text-transform:uppercase;letter-spacing:.04em">${esc(b.category_ru)}</div>
       <h3>${esc(b.title||b.partner_name)}</h3>
@@ -1498,7 +1547,7 @@ function successScreen(res){
       <p style="font-size:.84rem;color:var(--txt2);margin:.5rem 0">Оплата зачисляется напрямую заведению. QR откроется после оплаты.</p>
       <button class="btn" id="confirmPayBtn" style="margin-bottom:.5rem">Оплатить ${money(o.price)}</button>
       <div class="demo-pay">В продакшене — Kaspi Pay мерчанта заведения. Кнопка выше подтверждает оплату (пока нет Kaspi-интеграции).</div>
-      <button class="btn sec" onclick="closeModal()" style="margin-top:.5rem">Позже</button>
+      <button class="btn sec" data-act="closeModal" style="margin-top:.5rem">Позже</button>
     </div>`);
     $("#confirmPayBtn").onclick=async()=>{
       const btn=$("#confirmPayBtn");btn.disabled=true;btn.textContent="Проверяем оплату…";
@@ -1517,7 +1566,7 @@ function successScreen(res){
     <p style="font-size:.8rem;color:var(--green);font-weight:700;margin:.3rem 0 .6rem">🌱 Вы спасли ~${ECO_KG} кг еды и предотвратили ~${ECO_CO2} кг CO₂</p>
     <a class="btn sec" style="display:block;text-decoration:none;margin-bottom:.5rem" href="${gisUrl(o.partner_name,o.address)}" target="_blank" rel="noopener">🗺 Маршрут в 2ГИС</a>
     <a class="btn sec" style="display:block;text-decoration:none;margin-bottom:.5rem" href="https://t.me/yummy_astana_bot" target="_blank" rel="noopener">🔔 Узнавать о новых боксах в Telegram</a>
-    <button class="btn sec" onclick="closeModal()">Готово</button>
+    <button class="btn sec" data-act="closeModal">Готово</button>
   </div>`);
 }
 function myCodes(){try{return JSON.parse(localStorage.getItem("ym_codes")||"[]");}catch(e){return [];}}
@@ -1541,10 +1590,10 @@ async function renderMyOrders(){
     <div style="font-size:1.3rem">${o.emoji}</div>
     <div class="g"><b>${esc(o.code)}</b> · ${esc(o.partner_name)}
       <div style="font-size:.76rem;color:var(--txt2)">${win(o.pickup_from,o.pickup_to)} · ${money(o.price)}</div>
-      ${(o.status==="paid"&&Date.now()<Date.parse(o.pickup_from))?`<button class="linkbtn" onclick="cancelOrder('${esc(o.code)}')">Отменить бронь</button>`:""}
-      ${(o.status==="paid"&&Date.now()>=Date.parse(o.pickup_from))?`<button class="linkbtn" onclick="userRefund('${esc(o.code)}')">Не выдали заказ? Вернуть деньги</button>`:""}
-      ${(o.status==="issued"&&!reviewed.includes(o.id))?`<button class="linkbtn" onclick="leaveReviewForm('${o.id}','${o.partner_id}',${esc(JSON.stringify(o.partner_name))})">⭐ Оставить отзыв</button>`:""}
-      <button class="linkbtn" onclick="showCode('${esc(o.code)}')">Показать код и QR</button></div>
+      ${(o.status==="paid"&&Date.now()<Date.parse(o.pickup_from))?`<button class="linkbtn" data-act="cancelOrder" data-a1="${esc(o.code)}">Отменить бронь</button>`:""}
+      ${(o.status==="paid"&&Date.now()>=Date.parse(o.pickup_from))?`<button class="linkbtn" data-act="userRefund" data-a1="${esc(o.code)}">Не выдали заказ? Вернуть деньги</button>`:""}
+      ${(o.status==="issued"&&!reviewed.includes(o.id))?`<button class="linkbtn" data-act="leaveReviewForm" data-a1="${o.id}" data-a2="${o.partner_id}" data-a3="${esc(o.partner_name)}">⭐ Оставить отзыв</button>`:""}
+      <button class="linkbtn" data-act="showCode" data-a1="${esc(o.code)}">Показать код и QR</button></div>
     <span class="tag t-${o.status}">${STATUS_RU[o.status]}</span></div>`).join("")}</div>`;
 }
 function reviewedIds(){try{return JSON.parse(localStorage.getItem("ym_reviewed")||"[]");}catch(e){return [];}}
@@ -1557,7 +1606,7 @@ window.leaveReviewForm=(orderId,partnerId,partnerName)=>{
     <label>Комментарий <textarea id="rvText" rows="3" placeholder="Что понравилось или нет?"></textarea></label>
     <span class="ferr" id="rv_err"></span>
     <button class="btn" id="rvSend" style="margin-top:.6rem">Отправить отзыв</button>
-    <button class="btn sec" onclick="closeModal()" style="margin-top:.5rem">Отмена</button>
+    <button class="btn sec" data-act="closeModal" style="margin-top:.5rem">Отмена</button>
   </div>`);
   $("#rvSend").onclick=async()=>{
     const text=$("#rvText").value.trim();
@@ -1580,7 +1629,7 @@ window.showCode=code=>{
     <h3>Код выдачи</h3>${qr}
     <div class="code">${esc(code)}</div>
     <p style="font-size:.84rem;color:var(--txt2);margin:.5rem 0">Покажите ${qr?"QR или ":""}код на кассе заведения.</p>
-    <button class="btn sec" onclick="closeModal()">Закрыть</button></div>`);
+    <button class="btn sec" data-act="closeModal">Закрыть</button></div>`);
 };
 window.userRefund=async code=>{
   if(!confirm("Вернуть деньги? Используйте, только если заведение не выдало заказ."))return;
@@ -1631,7 +1680,7 @@ function orderRow(o,admin=false){
     <div class="g"><b>${esc(o.code)}</b> · ${esc(o.user_name)} <span style="color:var(--txt2)">${esc(o.user_phone)}</span>
       <div style="font-size:.76rem;color:var(--txt2)">${admin?esc(o.partner_name)+" · ":""}${money(o.price)} · ${win(o.pickup_from,o.pickup_to)}</div></div>
     <span class="tag t-${o.status}">${STATUS_RU[o.status]}</span>
-    ${admin&&(o.status==="paid")?`<button class="btn sec" style="width:auto;padding:.3rem .6rem;font-size:.74rem" onclick="refund('${o.id}')">Возврат</button>`:""}</div>`;
+    ${admin&&(o.status==="paid")?`<button class="btn sec" style="width:auto;padding:.3rem .6rem;font-size:.74rem" data-act="refund" data-a1="${o.id}">Возврат</button>`:""}</div>`;
 }
 $("#boxForm").addEventListener("submit",async e=>{
   e.preventDefault();
@@ -1670,8 +1719,8 @@ async function renderTemplates(){
   if(!t.length){el.innerHTML='<span style="color:var(--txt2)">Пока нет. Заполни форму и нажми «Сохранить как шаблон» — потом публикуй одной кнопкой.</span>';return;}
   el.innerHTML=t.map(x=>`<div style="display:flex;align-items:center;gap:.5rem;padding:.4rem 0;border-bottom:1px solid var(--line)">
     <div style="flex:1"><b>${esc(x.title)}</b> · ${money(x.price)} <span style="color:var(--txt2)">(${x.qty} шт, до +${x.hours}ч)</span></div>
-    <button class="btn" style="width:auto;padding:.3rem .7rem;font-size:.78rem" onclick="publishTpl('${x.id}')">Опубликовать</button>
-    <button class="linkbtn" onclick="delTpl('${x.id}')">✕</button></div>`).join("");
+    <button class="btn" style="width:auto;padding:.3rem .7rem;font-size:.78rem" data-act="publishTpl" data-a1="${x.id}">Опубликовать</button>
+    <button class="linkbtn" data-act="delTpl" data-a1="${x.id}">✕</button></div>`).join("");
 }
 $("#bAiBtn").onclick=async()=>{
   const notes=$("#bDesc").value.trim();
@@ -1783,9 +1832,9 @@ async function renderPayments(){
         <b style="flex:1;min-width:120px">${esc(p.name)}</b> ${badge}
         <span style="color:var(--txt2)">комиссия ${rate} · долг ${owed}</span></div>
       <div style="display:flex;gap:.4rem;flex-wrap:wrap;margin-top:.35rem">
-        ${st==="none"?`<button class="linkbtn" onclick="connectPay('${p.id}')">Подключить Kaspi-мерчант</button>`:""}
-        ${st==="pending"?`<button class="linkbtn" onclick="activatePay('${p.id}')">Активировать приём</button>`:""}
-        <button class="linkbtn" onclick="setRate('${p.id}')">Ставка комиссии</button>
+        ${st==="none"?`<button class="linkbtn" data-act="connectPay" data-a1="${p.id}">Подключить Kaspi-мерчант</button>`:""}
+        ${st==="pending"?`<button class="linkbtn" data-act="activatePay" data-a1="${p.id}">Активировать приём</button>`:""}
+        <button class="linkbtn" data-act="setRate" data-a1="${p.id}">Ставка комиссии</button>
       </div></div>`;
   }).join("");
 }
@@ -1826,7 +1875,7 @@ const LEGAL={
 };
 window.showLegal=k=>{const [t,body]=LEGAL[k];
   showModal(`<div class="mc"><h3>${t}</h3><div class="legal-txt">${body}</div>
-  <button class="btn sec" onclick="closeModal()" style="margin-top:.9rem">Закрыть</button></div>`);};
+  <button class="btn sec" data-act="closeModal" style="margin-top:.9rem">Закрыть</button></div>`);};
 
 /* ---- модалка ---- */
 function showModal(html){const m=$("#modal");m.className="modal-bg";
