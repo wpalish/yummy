@@ -20,11 +20,14 @@ import sqlite3
 import threading
 import time
 import uuid
+from contextlib import contextmanager
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Literal
 
 from collections import deque
+
+from . import database
 
 from fastapi import APIRouter, Depends, Header, HTTPException
 from fastapi import Request as HttpRequest
@@ -173,10 +176,11 @@ class Accounts:
                     brand_name TEXT, address TEXT, is_active INTEGER DEFAULT 1,
                     created_at TEXT, token_ver INTEGER DEFAULT 0)"""
             )
-            # миграция: token_ver для отзыва сессий при смене пароля
-            cols = {r[1] for r in c.execute("PRAGMA table_info(users)").fetchall()}
-            if "token_ver" not in cols:
-                c.execute("ALTER TABLE users ADD COLUMN token_ver INTEGER DEFAULT 0")
+            # миграция token_ver — только SQLite (на PG колонка сразу в CREATE)
+            if not database.POSTGRES:
+                cols = {r[1] for r in c.execute("PRAGMA table_info(users)").fetchall()}
+                if "token_ver" not in cols:
+                    c.execute("ALTER TABLE users ADD COLUMN token_ver INTEGER DEFAULT 0")
             c.execute(
                 """CREATE TABLE IF NOT EXISTS refresh_tokens(
                     token_hash TEXT PRIMARY KEY, user_id TEXT,
@@ -184,12 +188,21 @@ class Accounts:
             )
             c.execute("CREATE INDEX IF NOT EXISTS ix_refresh_user ON refresh_tokens(user_id)")
 
-    def _conn(self) -> sqlite3.Connection:
+    @contextmanager
+    def _conn(self):
+        if database.POSTGRES:
+            with database.connection() as c:
+                yield c
+            return
         c = sqlite3.connect(self._path, timeout=5.0)
         c.row_factory = sqlite3.Row
         c.execute("PRAGMA journal_mode=WAL")
         c.execute("PRAGMA busy_timeout=5000")
-        return c
+        try:
+            with c:
+                yield c
+        finally:
+            c.close()
 
     def by_email(self, email: str) -> sqlite3.Row | None:
         with self._lock, self._conn() as c:

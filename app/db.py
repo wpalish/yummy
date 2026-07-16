@@ -10,9 +10,11 @@ from __future__ import annotations
 import os
 import sqlite3
 import threading
+from contextlib import contextmanager
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
+from . import database
 from .models import Box, Order, Partner, Review
 
 _DB = Path(os.getenv("YUMMY_DB_PATH", str(Path(__file__).parent.parent / "spasibox.db")))
@@ -31,14 +33,25 @@ class Store:
         self._lock = threading.RLock()
         self._init()
 
-    def _conn(self) -> sqlite3.Connection:
+    @contextmanager
+    def _conn(self):
+        # Postgres (Supabase) при DATABASE_URL — общий пул; иначе SQLite по пути
+        # инстанса (тесты изолированы своим tmp-файлом).
+        if database.POSTGRES:
+            with database.connection() as c:
+                yield c
+            return
         c = sqlite3.connect(self._path, timeout=5.0)
         c.row_factory = sqlite3.Row
         c.execute("PRAGMA journal_mode=WAL")
         c.execute("PRAGMA busy_timeout=5000")
         c.execute("PRAGMA foreign_keys=ON")
         c.execute("PRAGMA synchronous=NORMAL")  # безопасно с WAL, заметно быстрее FULL
-        return c
+        try:
+            with c:
+                yield c
+        finally:
+            c.close()
 
     def _init(self) -> None:
         with self._lock, self._conn() as c:
@@ -105,12 +118,14 @@ class Store:
                 CREATE INDEX IF NOT EXISTS ix_reviews_partner ON reviews(partner_id, status, created_at);
                 """
             )
-            # миграция существующих БД: добиваем user_id, если колонки ещё нет
-            cols = {r[1] for r in c.execute("PRAGMA table_info(orders)").fetchall()}
-            if "payment_status" not in cols:
-                c.execute("ALTER TABLE orders ADD COLUMN payment_status TEXT DEFAULT 'not_required'")
-            if "user_id" not in cols:
-                c.execute("ALTER TABLE orders ADD COLUMN user_id TEXT")
+            # миграция существующих SQLite-БД (на PG схема создаётся сразу полной,
+            # PRAGMA там нет — пропускаем).
+            if not database.POSTGRES:
+                cols = {r[1] for r in c.execute("PRAGMA table_info(orders)").fetchall()}
+                if "payment_status" not in cols:
+                    c.execute("ALTER TABLE orders ADD COLUMN payment_status TEXT DEFAULT 'not_required'")
+                if "user_id" not in cols:
+                    c.execute("ALTER TABLE orders ADD COLUMN user_id TEXT")
 
     # ------------------------------------------------------------------ #
     #  Партнёры
