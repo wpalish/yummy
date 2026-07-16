@@ -1279,20 +1279,27 @@ async function renderMap(){
         <span style="background:#FFF5D6;color:#7E5233;padding:2px 8px;border-radius:7px;font-size:.72rem;font-weight:700">${n} ${plural(n,["бокс","бокса","боксов"])}</span>
         ${minP?`<b style="color:var(--brown)">от ${money(minP)}</b>`:""}
       </div>
-      ${n?`<button onclick="shopFromMap('${esc(p.name)}')" style="width:100%;background:oklch(22% .03 45);border:0;padding:8px;border-radius:999px;font-weight:700;color:oklch(97% .018 82);cursor:pointer;font-family:inherit">Смотреть боксы</button>`:'<span style="font-size:.74rem;color:#7E6A5A">Сегодня боксов нет</span>'}
+      ${n?`<button class="map-shop" data-name="${esc(p.name)}" style="width:100%;background:oklch(22% .03 45);border:0;padding:8px;border-radius:999px;font-weight:700;color:oklch(97% .018 82);cursor:pointer;font-family:inherit">Смотреть боксы</button>`:'<span style="font-size:.74rem;color:#7E6A5A">Сегодня боксов нет</span>'}
       <a href="https://2gis.kz/astana/directions/points/%7C${p.lng}%2C${p.lat}" target="_blank" rel="noopener"
         style="display:block;text-align:center;margin-top:6px;font-size:.76rem;font-weight:700;color:#653624">🗺 Маршрут в 2ГИС</a>
     </div>`;
     return L.marker([p.lat,p.lng],{icon:mapObj._icon,title:p.name}).addTo(mapObj).bindPopup(html);
   });
+  if(!mapObj._shopWired){                                   // делегат: без inline-onclick (XSS-safe)
+    mapObj.on("popupopen",e=>{
+      const btn=e.popup.getElement().querySelector(".map-shop");
+      if(btn)btn.addEventListener("click",()=>shopFromMap(btn.dataset.name));
+    });
+    mapObj._shopWired=true;
+  }
 }
-window.shopFromMap=name=>{
+function shopFromMap(name){
   curQuery=name.toLowerCase();
   ["q","qm"].forEach(id=>{const e=$("#"+id);if(e)e.value=name;});
   $("#vList").click();                                     // назад в список
   renderBoxes();
   setTimeout(()=>$("#boxes").scrollIntoView({behavior:"smooth"}),150);
-};
+}
 
 /* ============ ЗАВЕДЕНИЯ (137 точек Zebra/Espresso Day из 2GIS) ============ */
 let ALL_VENUES=null, curChain="all", curVDist="all", vmapObj=null, vmapMode=false;
