@@ -10,7 +10,7 @@ from __future__ import annotations
 import os
 import sqlite3
 import threading
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 from .models import Box, Order, Partner, Review
@@ -60,7 +60,8 @@ class Store:
                     partner_id TEXT REFERENCES partners(id),
                     category TEXT, price INTEGER, user_name TEXT, user_phone TEXT,
                     status TEXT, pickup_from TEXT, pickup_to TEXT, created_at TEXT,
-                    user_id TEXT);
+                    user_id TEXT,
+                    payment_status TEXT DEFAULT 'not_required');
                 CREATE TABLE IF NOT EXISTS reviews(
                     id TEXT PRIMARY KEY,
                     partner_id TEXT REFERENCES partners(id),
@@ -106,6 +107,8 @@ class Store:
             )
             # миграция существующих БД: добиваем user_id, если колонки ещё нет
             cols = {r[1] for r in c.execute("PRAGMA table_info(orders)").fetchall()}
+            if "payment_status" not in cols:
+                c.execute("ALTER TABLE orders ADD COLUMN payment_status TEXT DEFAULT 'not_required'")
             if "user_id" not in cols:
                 c.execute("ALTER TABLE orders ADD COLUMN user_id TEXT")
 
@@ -206,6 +209,7 @@ class Store:
             partner_name=p["name"] if p else "—", address=p["address"] if p else "",
             category=r["category"], price=r["price"], user_name=r["user_name"],
             user_phone=r["user_phone"], status=status,
+            payment_status=(r["payment_status"] if "payment_status" in r.keys() else "not_required"),
             pickup_from=r["pickup_from"], pickup_to=r["pickup_to"],
             created_at=r["created_at"],
         )
@@ -222,19 +226,49 @@ class Store:
         return stored
 
     def create_order(self, order_id: str, code: str, box: Box, name: str, phone: str,
-                     user_id: str | None = None) -> Order | None:
+                     user_id: str | None = None, require_payment: bool = False) -> Order | None:
+        """require_payment=True (партнёр с активным мерчант-аккаунтом): заказ
+        создаётся payment_status='pending', QR/выдача — только после оплаты.
+        Иначе (пилот без мерчанта) — 'not_required', как раньше."""
+        pay = "pending" if require_payment else "not_required"
         with self._lock, self._conn() as c:
             if not self._take_one(c, box.id):
                 return None                 # боксы закончились
             c.execute(
                 """INSERT INTO orders(id,code,box_id,partner_id,category,price,
-                       user_name,user_phone,status,pickup_from,pickup_to,created_at,user_id)
-                   VALUES(?,?,?,?,?,?,?,?, 'paid', ?,?,?,?)""",
+                       user_name,user_phone,status,pickup_from,pickup_to,created_at,user_id,payment_status)
+                   VALUES(?,?,?,?,?,?,?,?, 'paid', ?,?,?,?,?)""",
                 (order_id, code, box.id, box.partner_id, box.category, box.price,
-                 name, phone, box.pickup_from, box.pickup_to, _now_iso(), user_id),
+                 name, phone, box.pickup_from, box.pickup_to, _now_iso(), user_id, pay),
             )
             r = c.execute("SELECT * FROM orders WHERE id=?", (order_id,)).fetchone()
             return self._order_from_row(c, r)
+
+    def confirm_payment(self, code: str) -> Order | None:
+        """Подтвердить оплату (в проде — из подписанного Kaspi-webhook).
+        pending → paid. Идемпотентно: повторное подтверждение не дублирует."""
+        with self._lock, self._conn() as c:
+            r = c.execute("SELECT * FROM orders WHERE code=?", (code.strip().upper(),)).fetchone()
+            if not r or r["payment_status"] != "pending":
+                return None
+            c.execute("UPDATE orders SET payment_status='paid' WHERE id=?", (r["id"],))
+            r2 = c.execute("SELECT * FROM orders WHERE id=?", (r["id"],)).fetchone()
+            return self._order_from_row(c, r2)
+
+    def release_expired_pending(self, ttl_min: int = 15) -> int:
+        """Резерв под неоплаченный заказ живёт ttl_min минут. Просрочен →
+        бокс возвращается в продажу, заказ отменяется. Возвращает число снятых."""
+        cutoff = (datetime.now(timezone.utc) - timedelta(minutes=ttl_min)).isoformat()
+        released = 0
+        with self._lock, self._conn() as c:
+            rows = c.execute("""SELECT id, box_id FROM orders
+                              WHERE payment_status='pending' AND status='paid'
+                              AND created_at < ?""", (cutoff,)).fetchall()
+            for row in rows:
+                c.execute("UPDATE orders SET status='cancelled' WHERE id=?", (row["id"],))
+                self._return_one(c, row["box_id"])
+                released += 1
+        return released
 
     def scrub_user(self, user_id: str) -> int:
         """Privacy: анонимизировать PII в заказах удалённого аккаунта
@@ -284,6 +318,8 @@ class Store:
             r = c.execute("SELECT * FROM orders WHERE code=?", (code.strip().upper(),)).fetchone()
             if not r:
                 return False, "Заказ с таким кодом не найден", None
+            if r["payment_status"] == "pending":
+                return False, "Заказ ещё не оплачен", self._order_from_row(c, r)
             eff = self._effective_status(r["status"], r["pickup_to"])
             if eff == "issued":
                 return False, "Этот заказ уже выдан", self._order_from_row(c, r)

@@ -598,6 +598,9 @@
       <p class="sub">Контроль заказов, возвраты, ключевые метрики пилота.</p>
       <div class="stats" id="aStats"></div>
       <div class="charts" id="aCharts"></div>
+      <div class="cardp"><h3>Платежи и комиссия партнёров</h3>
+        <p class="sub" style="margin:.2rem 0 .6rem">Деньги идут напрямую заведению (его Kaspi). Yummy ведёт учёт комиссии. Реальный Kaspi-приём подключится с мерчант-аккаунтом.</p>
+        <div id="aPayments" style="font-size:.84rem"></div></div>
       <div class="cardp"><h3>Все заказы</h3><div id="aOrders"></div></div>
     </section>
   </main>
@@ -730,6 +733,11 @@ const KZ={
 "Боксов пока нет.":"Әзірге бокс жоқ.","Броней пока нет.":"Әзірге бронь жоқ.",
 "выручка с боксов":"бокстардан түскен табыс","выкуп (забрали)":"алып кетті","в продаже":"сатылымда",
 "Админ-панель":"Әкімші панелі","Контроль заказов, возвраты, ключевые метрики пилота.":"Тапсырыстарды бақылау, қайтарымдар, пилоттың негізгі метрикалары.",
+"Платежи и комиссия партнёров":"Серіктестердің төлемдері мен комиссиясы","Подключить Kaspi-мерчант":"Kaspi-мерчантты қосу",
+"Активировать приём":"Қабылдауды белсендіру","Ставка комиссии":"Комиссия мөлшерлемесі","Мерчант подключён":"Мерчант қосылды",
+"Приём платежей активен ✓":"Төлем қабылдау белсенді ✓","Ставка обновлена":"Мөлшерлеме жаңартылды",
+"Бокс зарезервирован на 15 минут":"Бокс 15 минутқа резервте","Оплата зачисляется напрямую заведению. QR откроется после оплаты.":"Төлем тікелей мекемеге түседі. QR төлемнен кейін ашылады.",
+"Позже":"Кейінірек","Проверяем оплату…":"Төлемді тексерудеміз…",
 "Все заказы":"Барлық тапсырыстар","Заказов нет.":"Тапсырыс жоқ.","Возврат":"Қайтару",
 "Заказы по статусу":"Тапсырыстар мәртебе бойынша","Выкуп боксов":"Бокстарды алып кету","Выручка по заведениям · топ-5":"Мекемелер бойынша табыс · топ-5",
 "GMV (оборот)":"GMV (айналым)","заказов":"тапсырыс","выкуплено (fill rate)":"алынды (fill rate)","не забрали (no-show)":"алынбады (no-show)",
@@ -1649,6 +1657,24 @@ async function openBox(id){
 }
 function successScreen(res){
   const o=res.order;
+  if(o.payment_status==="pending"){ // бокс зарезервирован, ждём оплату (мерчант партнёра)
+    showModal(`<div class="mc ok-wrap" style="padding-top:1.4rem">
+      <div class="ok-ic">⏳</div>
+      <h3>Бокс зарезервирован на 15 минут</h3>
+      <p style="color:var(--txt2);font-size:.86rem;margin:.2rem 0 0">${esc(o.partner_name)} · ${esc(o.address)}</p>
+      <div class="code">${esc(o.code)}</div>
+      <p style="font-size:.84rem;color:var(--txt2);margin:.5rem 0">Оплата зачисляется напрямую заведению. QR откроется после оплаты.</p>
+      <button class="btn" id="confirmPayBtn" style="margin-bottom:.5rem">Оплатить ${money(o.price)}</button>
+      <div class="demo-pay">В продакшене — Kaspi Pay мерчанта заведения. Кнопка выше подтверждает оплату (пока нет Kaspi-интеграции).</div>
+      <button class="btn sec" onclick="closeModal()" style="margin-top:.5rem">Позже</button>
+    </div>`);
+    $("#confirmPayBtn").onclick=async()=>{
+      const btn=$("#confirmPayBtn");btn.disabled=true;btn.textContent="Проверяем оплату…";
+      try{const r=await post("/orders/confirm-payment",{code:o.code});successScreen(r);}
+      catch(e){toast(e.message,true);btn.disabled=false;btn.textContent="Оплатить "+money(o.price);}
+    };
+    return;
+  }
   showModal(`<div class="mc ok-wrap" style="padding-top:1.4rem">
     <div class="ok-ic">✅</div>
     <h3>Бокс забронирован!</h3>
@@ -1903,7 +1929,41 @@ async function loadAdmin(){
       <div class="leg" style="justify-content:center">${s.issued||0} выдано · ${s.no_show||0} не забрали</div></div>
     <div class="chart"><h4>Выручка по заведениям · топ-5</h4>${barChart(topPartners)}</div>`;
   $("#aOrders").innerHTML=orders.length?orders.map(o=>orderRow(o,true)).join(""):'<p class="empty">Заказов нет.</p>';
+  renderPayments();
 }
+async function renderPayments(){
+  const el=$("#aPayments");if(!el)return;
+  let ps=[];try{ps=await get("/partners");}catch(e){}
+  const rows=await Promise.all(ps.map(async p=>{
+    let acc={},com={};
+    try{acc=await get(`/partners/${p.id}/payment-account`);}catch(e){}
+    try{com=await get(`/partners/${p.id}/commission`);}catch(e){}
+    return {p,acc,com};
+  }));
+  el.innerHTML=rows.map(({p,acc,com})=>{
+    const st=acc.status||"none";
+    const badge={active:'<span class="tag t-issued">активен</span>',pending:'<span class="tag t-paid">подключён</span>',
+      suspended:'<span class="tag t-expired">приостановлен</span>',none:'<span class="tag t-expired">нет</span>'}[st]||st;
+    const rate=com.rate_bps!=null?(com.rate_bps/100)+"%":"—";
+    const owed=com.owed_tenge!=null?money(com.owed_tenge):"—";
+    return `<div style="padding:.5rem 0;border-bottom:1px solid var(--line)">
+      <div style="display:flex;align-items:center;gap:.5rem;flex-wrap:wrap">
+        <b style="flex:1;min-width:120px">${esc(p.name)}</b> ${badge}
+        <span style="color:var(--txt2)">комиссия ${rate} · долг ${owed}</span></div>
+      <div style="display:flex;gap:.4rem;flex-wrap:wrap;margin-top:.35rem">
+        ${st==="none"?`<button class="linkbtn" onclick="connectPay('${p.id}')">Подключить Kaspi-мерчант</button>`:""}
+        ${st==="pending"?`<button class="linkbtn" onclick="activatePay('${p.id}')">Активировать приём</button>`:""}
+        <button class="linkbtn" onclick="setRate('${p.id}')">Ставка комиссии</button>
+      </div></div>`;
+  }).join("");
+}
+window.connectPay=async id=>{const ref=prompt("Kaspi merchant reference (или ИИН/точка):");if(!ref)return;
+  try{await post(`/partners/${id}/payment-account`,{provider:"kaspi",merchant_reference:ref});toast("Мерчант подключён");renderPayments();}catch(e){toast(e.message,true);}};
+window.activatePay=async id=>{if(!confirm("Активировать приём платежей? Партнёр сможет продавать платные боксы."))return;
+  try{await post(`/partners/${id}/payment-account/activate`,{});toast("Приём платежей активен ✓");renderPayments();}catch(e){toast(e.message,true);}};
+window.setRate=async id=>{const pct=prompt("Комиссия, % (напр. 10):","10");if(pct===null)return;
+  const bps=Math.round(parseFloat(pct)*100);if(!(bps>=0&&bps<=5000)){toast("0–50%",true);return;}
+  try{await post(`/partners/${id}/commission-rule`,{rate_bps:bps});toast("Ставка обновлена");renderPayments();}catch(e){toast(e.message,true);}};
 window.refund=async id=>{try{await post("/admin/refund/"+id);toast("Возврат оформлен");loadAdmin();}catch(e){toast(e.message,true);}};
 
 /* ---- документы (демо-версии) ---- */

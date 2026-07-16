@@ -281,15 +281,30 @@ def create_order(payload: OrderCreate,
     if box.qty_left <= 0:
         raise HTTPException(409, "Боксы закончились")
 
+    store.release_expired_pending()          # снять протухшие резервы под оплату
+    require_payment = store.can_sell_paid(box.partner_id)
     order = store.create_order(
         _new("o"), _order_code(), box, payload.user_name.strip(), payload.user_phone.strip(),
-        user_id=user.id if user else None,
+        user_id=user.id if user else None, require_payment=require_payment,
     )
     if order is None:
         raise HTTPException(409, "Боксы только что закончились")
-    # Начисляем комиссию в ledger, если у партнёра активный платёжный аккаунт
-    # (деньги ушли напрямую ему; Yummy фиксирует долг по комиссии).
-    store.accrue_commission(_new("cl"), order)
+    if order.payment_status == "pending":
+        # QR не отдаём до оплаты; в проде здесь ссылка на Kaspi мерчанта партнёра
+        return OrderResult(order=order, qr_svg="")
+    return OrderResult(order=order, qr_svg=qr_svg(order.code))
+
+
+@app.post("/orders/confirm-payment", response_model=OrderResult, tags=["Store"],
+          dependencies=[Depends(rate_limit_orders)])
+def confirm_payment(payload: RedeemInput) -> dict:
+    """Подтвердить оплату заказа (pending → paid), выдать QR, начислить комиссию.
+    В ПРОДЕ этот переход делает ТОЛЬКО подписанный Kaspi-webhook — сейчас сам
+    эндпоинт открыт как заглушка для теста, пока нет мерчант-интеграции Kaspi."""
+    order = store.confirm_payment(payload.code)
+    if not order:
+        raise HTTPException(409, "Заказ не найден или уже оплачен")
+    store.accrue_commission(_new("cl"), order)   # долг партнёра фиксируется при оплате
     return OrderResult(order=order, qr_svg=qr_svg(order.code))
 
 

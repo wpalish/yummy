@@ -134,6 +134,7 @@ class Order(BaseModel):
     user_name: str
     user_phone: str
     status: OrderStatus
+    payment_status: str = "not_required"   # not_required | pending | paid
     pickup_from: str
     pickup_to: str
     created_at: datetime = Field(default_factory=_utcnow)
