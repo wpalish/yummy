@@ -32,6 +32,11 @@ def _public_url() -> str:
     return os.getenv("YUMMY_PUBLIC_URL", "https://wpalish.github.io/yummy/").rstrip("/") + "/"
 
 
+def _channel() -> str:
+    """Публичный канал-витрина: @username или числовой -100… id. Пусто → выкл."""
+    return os.getenv("YUMMY_TG_CHANNEL", "").strip()
+
+
 def is_configured() -> bool:
     return bool(_token())
 
@@ -91,10 +96,32 @@ def box_message(box) -> str:
             f"{_public_url()}?box={box.id}")
 
 
+def _box_button(box) -> dict:
+    """Inline-кнопка «Забрать бокс» → карточка на сайте."""
+    return {"inline_keyboard": [[{"text": "🥐 Забрать бокс", "url": f"{_public_url()}?box={box.id}"}]]}
+
+
+def post_to_channel(box) -> bool:
+    """Опубликовать бокс в канал-витрину. Best-effort: сбой не роняет публикацию.
+    Бот должен быть админом канала с правом постинга. Пусто/сбой → False."""
+    ch = _channel()
+    if not is_configured() or not ch:
+        return False
+    try:
+        _api("sendMessage", chat_id=ch, text=box_message(box),
+             reply_markup=_box_button(box), disable_web_page_preview=False)
+        return True
+    except Exception as e:
+        log.warning("notify: channel post failed: %s", e)
+        return False
+
+
 def broadcast_new_box(store, box) -> int:
-    """Разослать бокс подписчикам. Best-effort: сбои не роняют публикацию бокса."""
+    """Разослать бокс: в канал-витрину (если задан) + личным подписчикам.
+    Best-effort: сбои не роняют публикацию бокса."""
     if not is_configured():
         return 0
+    post_to_channel(box)  # публичная витрина — двигатель охвата
     # В webhook-режиме подписчики ловятся эндпоинтом /telegram/webhook, а
     # getUpdates при активном webhook возвращает 409 — поэтому pull только
     # в polling-режиме (нет TELEGRAM_WEBHOOK_SECRET).
@@ -106,7 +133,8 @@ def broadcast_new_box(store, box) -> int:
     sent = 0
     for chat_id in store.tg_subscribers():
         try:
-            _api("sendMessage", chat_id=chat_id, text=box_message(box))
+            _api("sendMessage", chat_id=chat_id, text=box_message(box),
+                 reply_markup=_box_button(box))
             sent += 1
         except Exception as e:
             msg = str(e).lower()
@@ -118,9 +146,24 @@ def broadcast_new_box(store, box) -> int:
     return sent
 
 
-if __name__ == "__main__":  # ручная синхронизация: python -m app.notify
+if __name__ == "__main__":  # утилиты: python -m app.notify [channel-test]
+    import sys
+
     from .db import Store
 
     s = Store()
+    if len(sys.argv) > 1 and sys.argv[1] == "channel-test":
+        # проверка связи с каналом: постим первый доступный бокс (или заглушку)
+        if not _channel():
+            print("YUMMY_TG_CHANNEL не задан — канал выключен")
+            raise SystemExit(1)
+        boxes = s.boxes_available()
+        box = boxes[0] if boxes else None
+        if not box:
+            print("нет боксов для теста — создайте бокс и повторите")
+            raise SystemExit(1)
+        ok = post_to_channel(box)
+        print(f"пост в канал {_channel()}: {'ok' if ok else 'НЕ УДАЛОСЬ (бот админ канала?)'}")
+        raise SystemExit(0 if ok else 1)
     n = pull_subscribers(s)
     print(f"новых подписчиков: {n}, всего: {len(s.tg_subscribers())}")

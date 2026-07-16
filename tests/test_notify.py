@@ -139,3 +139,36 @@ def test_box_message_content(store):
     assert "990 ₸" in text and "−62%" in text
     assert "11:00–13:00" in text  # UTC переведён в Asia/Almaty
     assert "?box=b1" in text
+
+
+# --------------------------------------------------------------------------- #
+#  Канал-витрина
+# --------------------------------------------------------------------------- #
+def test_channel_off_without_handle(store, monkeypatch):
+    monkeypatch.setenv("TELEGRAM_BOT_TOKEN", "123:TEST")
+    monkeypatch.delenv("YUMMY_TG_CHANNEL", raising=False)
+    monkeypatch.setattr(notify, "_api", lambda *a, **k: (_ for _ in ()).throw(AssertionError("не должно вызываться")))
+    assert notify.post_to_channel(_box(store)) is False
+
+
+def test_channel_posts_with_button(store, monkeypatch):
+    monkeypatch.setenv("TELEGRAM_BOT_TOKEN", "123:TEST")
+    monkeypatch.setenv("YUMMY_TG_CHANNEL", "@yummy_astana")
+    calls = []
+    monkeypatch.setattr(notify, "_api", lambda method, **p: calls.append((method, p)) or {})
+    assert notify.post_to_channel(_box(store)) is True
+    assert len(calls) == 1
+    method, p = calls[0]
+    assert method == "sendMessage" and p["chat_id"] == "@yummy_astana"
+    assert p["reply_markup"]["inline_keyboard"][0][0]["url"].endswith("?box=b1")
+
+
+def test_broadcast_also_posts_to_channel(store, monkeypatch):
+    monkeypatch.setenv("TELEGRAM_BOT_TOKEN", "123:TEST")
+    monkeypatch.setenv("YUMMY_TG_CHANNEL", "@yummy_astana")
+    store.tg_add_subscriber(42, "живой")
+    chats = []
+    monkeypatch.setattr(notify, "_api",
+                        lambda method, **p: (chats.append(p.get("chat_id")) if method == "sendMessage" else None) or ([] if method == "getUpdates" else {}))
+    notify.broadcast_new_box(store, _box(store))
+    assert "@yummy_astana" in chats and 42 in chats  # и канал, и подписчик

@@ -247,7 +247,9 @@ def index() -> HTMLResponse:
     # без 'unsafe-inline'. Плейсхолдер __CSP_NONCE__ в index.html меняем на живой
     # nonce и дублируем его в заголовок CSP этого ответа (middleware не перезапишет).
     nonce = secrets.token_urlsafe(16)
-    html = (_STATIC / "index.html").read_text(encoding="utf-8").replace("__CSP_NONCE__", nonce)
+    html = ((_STATIC / "index.html").read_text(encoding="utf-8")
+            .replace("__CSP_NONCE__", nonce)
+            .replace("__TG_CHANNEL__", os.getenv("YUMMY_TG_CHANNEL", "")))
     return HTMLResponse(html, headers={"Content-Security-Policy": _csp(nonce)})
 
 

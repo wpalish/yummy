@@ -636,6 +636,7 @@
           <div class="flinks">
             <a href="mailto:alisher.nursain@gmail.com">✉️ alisher.nursain@gmail.com</a>
             <a href="https://t.me/yummy_astana_bot" target="_blank" rel="noopener">💬 Telegram-бот: новые боксы</a>
+            <a id="tgChanLink" class="hidden" target="_blank" rel="noopener">📣 Telegram-канал: витрина боксов</a>
             <button data-act="soon" data-a1="Instagram скоро запустим 📸">📸 Instagram</button>
             <button data-act="soon" data-a1="TikTok скоро запустим 🎬">🎬 TikTok</button>
             <button id="installBtn" class="hidden">📲 Установить приложение</button>
@@ -808,7 +809,7 @@ const KZ={
 "Публичная оферта":"Жария оферта","Политика конфиденциальности":"Құпиялылық саясаты",
 "Стандарты пищевой безопасности":"Тағам қауіпсіздігі стандарттары","Договор с заведением":"Мекемемен келісім",
 "Необходимо согласие с офертой и обработкой данных":"Оферта мен деректерді өңдеуге келісім қажет",
-"💬 Telegram-бот: новые боксы":"💬 Telegram-бот: жаңа бокстар","🔔 Узнавать о новых боксах в Telegram":"🔔 Жаңа бокстар туралы Telegram-нан білу","📲 Установить приложение":"📲 Қосымшаны орнату","Код на GitHub":"GitHub-тағы код",
+"💬 Telegram-бот: новые боксы":"💬 Telegram-бот: жаңа бокстар","📣 Telegram-канал: витрина боксов":"📣 Telegram-арна: бокстар витринасы","🔔 Узнавать о новых боксах в Telegram":"🔔 Жаңа бокстар туралы Telegram-нан білу","📲 Установить приложение":"📲 Қосымшаны орнату","Код на GitHub":"GitHub-тағы код",
 "Доступ для персонала":"Қызметкерлерге арналған кіру","PIN-код":"PIN-код",
 "Данные (коды заказов, избранное, фильтры) хранятся только в вашем браузере — localStorage. Cookies не используем.":"Деректер (тапсырыс кодтары, таңдаулылар, сүзгілер) тек сіздің браузеріңізде сақталады — localStorage. Cookies қолданбаймыз.",
 "Понятно":"Түсінікті",
@@ -1094,6 +1095,10 @@ const KASPI_SERVICE_ID="";
 const gisUrl=(name,addr)=>"https://2gis.kz/astana/search/"+encodeURIComponent(name+" "+addr);
 /* эко-вклад: ~0.5 кг еды и ~1.3 кг CO₂ на бокс (усреднённая оценка food waste) */
 const ECO_KG=0.5, ECO_CO2=1.3;
+/* Telegram-канал-витрина: handle подставляет сервер (index()/build_docs) в
+   плейсхолдер ниже. Не заменён/пусто → канал выключен, остаётся ссылка на бота. */
+const TG_CHANNEL=(v=>v.startsWith("__")?"":v.replace(/^@/,""))("");
+const tgChannelUrl=()=>TG_CHANNEL?"https://t.me/"+TG_CHANNEL:"";
 const CATS=[["all","Все","🔥"],["sweet","Сладкое","🍩"],["bakery","Выпечка","🥐"],["snack","Снеки","🥪"],["mixed","Микс","🧺"]];
 const REVIEWS={
  "Coffee Point":[["Айгерим","Бокс превзошёл ожидания — 2 пончика и маффин, всё свежее!",5],["Дамир","Хорошая выгода, но приходите к началу окна выдачи.",4]],
@@ -1742,7 +1747,7 @@ function successScreen(res){
     <p style="font-size:.84rem;color:var(--txt2);margin:.5rem 0">Покажите код или QR на кассе.<br>Забрать: <b style="color:var(--brown)">${win(o.pickup_from,o.pickup_to)}</b></p>
     <p style="font-size:.8rem;color:var(--green);font-weight:700;margin:.3rem 0 .6rem">🌱 Вы спасли ~${ECO_KG} кг еды и предотвратили ~${ECO_CO2} кг CO₂</p>
     <a class="btn sec" style="display:block;text-decoration:none;margin-bottom:.5rem" href="${gisUrl(o.partner_name,o.address)}" target="_blank" rel="noopener">🗺 Маршрут в 2ГИС</a>
-    <a class="btn sec" style="display:block;text-decoration:none;margin-bottom:.5rem" href="https://t.me/yummy_astana_bot" target="_blank" rel="noopener">🔔 Узнавать о новых боксах в Telegram</a>
+    <a class="btn sec" style="display:block;text-decoration:none;margin-bottom:.5rem" href="${tgChannelUrl()||"https://t.me/yummy_astana_bot"}" target="_blank" rel="noopener">🔔 Узнавать о новых боксах в Telegram</a>
     <button class="btn sec" data-act="closeModal">Готово</button>
   </div>`);
 }
@@ -2070,6 +2075,9 @@ if(!localStorage.getItem("ym_cookies")){
   cb.querySelector("button").onclick=()=>{localStorage.setItem("ym_cookies","1");cb.remove();};
   document.body.appendChild(cb);
 }
+
+/* Telegram-канал в футере — показываем, только если handle настроен на бэке */
+if(TG_CHANNEL){const cl=$("#tgChanLink");if(cl){cl.href=tgChannelUrl();cl.classList.remove("hidden");}}
 
 /* PWA: установка на телефон + оффлайн-доступ к купленным кодам */
 if("serviceWorker" in navigator){navigator.serviceWorker.register("sw.js").catch(()=>{});}
