@@ -1,0 +1,27 @@
+# Keep-warm против cold-start free-Render (засыпает через 15 мин простоя).
+# GitHub Actions пингует /health каждые 10 минут — бесплатно, без внешних сервисов.
+#
+# Включить (нужен токен со scope `workflow` — см. историю проекта):
+#   cp ci/keep-warm.yml.example .github/workflows/keep-warm.yml
+#   git add .github/workflows/keep-warm.yml && git push
+# Либо добавить файл через GitHub web UI (Actions → New workflow → paste).
+#
+# Ограничения: GitHub отключает cron после 60 дней бездействия репо; для потока
+# клиентов надёжнее Render Starter ($7/мес, без сна). Это — бесплатный компромисс.
+name: keep-warm
+on:
+  schedule:
+    - cron: "*/10 * * * *"   # каждые 10 минут
+  workflow_dispatch:          # и вручную по кнопке
+permissions:
+  contents: read
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - name: Ping /health
+        run: |
+          code=$(curl -s -o /dev/null -w "%{http_code}" --max-time 60 https://yummy-astana.onrender.com/health)
+          echo "health: $code"
+          test "$code" = "200"

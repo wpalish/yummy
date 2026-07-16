@@ -25,6 +25,7 @@
 <link rel="apple-touch-icon" href="/static/img/logo.png" />
 <link rel="manifest" href="/static/manifest.json" />
 <script type="application/ld+json">{"@context":"https://schema.org","@type":"WebSite","name":"Yummy","url":"https://wpalish.github.io/yummy/","description":"Сюрприз-боксы из кофеен и пекарен Астаны со скидкой до 70%","inLanguage":"ru"}</script>
+<link rel="icon" type="image/svg+xml" href="/static/img/logo.svg" />
 <link rel="icon" type="image/png" href="/static/img/favicon.png" />
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
 <style>
@@ -407,7 +408,7 @@
     <div class="topline"></div>
     <div class="hwrap">
       <div class="hrow">
-        <div class="logo"><img src="/static/img/logo.png" alt="Yummy — спасай еду" />
+        <div class="logo"><img src="/static/img/logo.svg" alt="Yummy — спасай еду" />
           <div class="txt"><div class="nm">Yummy</div><div class="tg">Спасай еду</div></div></div>
         <button class="loc" title="Город">📍 Астана <span style="font-size:.6rem;color:var(--txt2)">▾</span></button>
         <button class="loc" id="langBtn" title="Тіл / Язык" aria-label="Тіл / Язык"></button>
@@ -609,7 +610,7 @@
 
   <footer>
     <div class="fwrap">
-      <div class="flogo">Yummy</div>
+      <div class="flogo"><img src="/static/img/logo.svg" alt="" style="height:1.1em;vertical-align:-.12em;margin-right:.35rem"/>Yummy</div>
       <p style="margin:0 0 1.4rem;font-size:.86rem;color:var(--txt2);max-width:640px">
         <b style="color:var(--brown)">О сервисе.</b> Yummy — пилотный проект из Астаны против выбрасывания еды.
         Делает его Алишер Нурсаин (<a href="https://github.com/wpalish">github.com/wpalish</a>).
@@ -991,7 +992,7 @@ function hideOnboarding(){$("#onboard").className="hidden";$("#onboard").innerHT
 function showOnboarding(){
   const o=$("#onboard");o.className="onb";
   o.innerHTML=`<div class="onb-card">
-    <div class="onb-logo"><img src="/static/img/logo.png" alt=""><b>Yummy</b></div>
+    <div class="onb-logo"><img src="/static/img/logo.svg" alt=""><b>Yummy</b></div>
     <h2>Добро пожаловать 👋</h2>
     <p class="lead">Спасайте свежую еду из кофеен и пекарен Астаны со скидкой до 70%. Кто вы?</p>
     <button class="role-card" onclick="onbBuyer()"><span class="ic">🛍️</span><div><div class="t">Я покупатель</div><div class="d">Бронировать и забирать сюрприз-боксы</div></div></button>
