@@ -24,15 +24,32 @@ _SQLITE_PATH = Path(os.getenv("YUMMY_DB_PATH", str(Path(__file__).parent.parent 
 # (и для SQLite, и для Postgres). Пул PG даёт параллельные соединения под чтение.
 lock = threading.RLock()
 
+class _Row(dict):
+    """Ряд как sqlite3.Row: поддерживает и позиционный r[0], и именованный
+    r["col"] доступ, keys(), dict(r). Нужен, т.к. в коде есть оба паттерна."""
+    def __init__(self, cols, values):
+        super().__init__(zip(cols, values))
+
+    def __getitem__(self, k):
+        if isinstance(k, int):
+            return list(self.values())[k]
+        return dict.__getitem__(self, k)
+
+
+def _row_factory(cursor):
+    cols = [d.name for d in cursor.description] if cursor.description else []
+    def make(values):
+        return _Row(cols, values)
+    return make
+
+
 _pool = None
 if POSTGRES:  # ленивая инициализация зависимостей только когда реально нужен PG
     import psycopg  # noqa: F401
-    from psycopg.rows import dict_row
     from psycopg_pool import ConnectionPool
 
-    _SQLITE_PATH.parent.mkdir(parents=True, exist_ok=True)  # no-op, симметрия
     _pool = ConnectionPool(_URL, min_size=1, max_size=int(os.getenv("YUMMY_DB_POOL_MAX", "5")),
-                           kwargs={"row_factory": dict_row}, open=True)
+                           kwargs={"row_factory": _row_factory}, open=True)
 
 _IGNORE_RE = re.compile(r"INSERT\s+OR\s+IGNORE\s+INTO", re.IGNORECASE)
 
@@ -60,7 +77,12 @@ class _PgConn:
         if pg is None:
             return _Empty()
         cur = self._raw.cursor()
-        cur.execute(pg, params)
+        # Без параметров — execute без них: иначе psycopg включает разбор
+        # плейсхолдеров и падает на литеральном '%' в DDL/запросах.
+        if params:
+            cur.execute(pg, params)
+        else:
+            cur.execute(pg)
         return cur                        # psycopg cursor: fetchone/fetchall/rowcount
 
     def executescript(self, script: str):
