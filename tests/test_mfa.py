@@ -91,6 +91,12 @@ def test_admin_login_requires_mfa_and_refresh_preserves_assurance(client):
     database = c.get("/admin/system/database", headers=admin_headers)
     assert database.status_code == 200
     assert database.json()["backend"] == "sqlite" and "url" not in str(database.json()).lower()
+    users = c.get("/admin/users", headers=admin_headers)
+    assert users.status_code == 200
+    assert "pw_hash" not in str(users.json()) and "mfa_secret" not in str(users.json())
+    assert c.get("/admin/security-audit", headers=admin_headers).status_code == 200
+    assert c.get("/admin/payments", headers=admin_headers).status_code == 200
+    assert c.get("/admin/webhook-events?mismatches_only=true", headers=admin_headers).status_code == 200
 
     refreshed = c.post("/auth/refresh", json={"refresh_token": body["refresh_token"]})
     assert refreshed.status_code == 200

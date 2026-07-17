@@ -104,6 +104,11 @@ class StaffInvitationResult(BaseModel):
     expires_in: int = 604800
 
 
+class AdminAccountAction(BaseModel):
+    action: Literal["block", "unblock", "revoke_sessions"]
+    reason: str = Field(..., min_length=3, max_length=500)
+
+
 class ManualEmailVerifyInput(BaseModel):
     reason: str = Field(..., min_length=3, max_length=500)
 
@@ -163,6 +168,8 @@ class Box(BaseModel):
     district: str
     address: str
     rating: float
+    lat: float = 51.128
+    lng: float = 71.430
     category: BoxCategory
     title: str
     price: int

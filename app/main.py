@@ -9,6 +9,7 @@ import csv
 import hashlib
 import hmac
 import io
+import json
 import logging
 import os
 import secrets
@@ -45,6 +46,7 @@ from .distributed_limit import limiter as distributed_limiter
 from .email_delivery import assert_email_config
 from .models import (
     CATEGORY_RU,
+    AdminAccountAction,
     Box,
     ManualEmailVerifyInput,
     BoxCreate,
@@ -748,6 +750,14 @@ def list_partners() -> list[Partner]:
     return store.partners()
 
 
+@app.get("/partners/{partner_id}", response_model=Partner, tags=["Store"])
+def get_partner(partner_id: str) -> Partner:
+    partner = store.partner(partner_id)
+    if not partner:
+        raise HTTPException(404, "Заведение не найдено")
+    return partner
+
+
 @app.post("/boxes", response_model=Box, status_code=201, tags=["Partner"])
 def create_box(
     payload: BoxCreate,
@@ -971,6 +981,96 @@ def redeem(
 # --------------------------------------------------------------------------- #
 #  Админка
 # --------------------------------------------------------------------------- #
+@app.get("/admin/users", tags=["Admin"])
+def admin_users(
+    role: str | None = None, limit: int = 200,
+    admin: PublicUser = Depends(require_role("admin")),
+) -> list[dict]:
+    del admin
+    from .accounts import accounts as users_db
+    return [{
+        "id": row["id"], "email": row["email"], "email_verified": bool(row["email_verified"]),
+        "role": row["role"], "partner_id": row["partner_id"],
+        "partner_role": row["partner_role"], "partner_status": row["partner_status"],
+        "is_active": bool(row["is_active"]), "mfa_enabled": bool(row["mfa_enabled"]),
+        "created_at": row["created_at"],
+    } for row in users_db.list_users(role, max(1, min(limit, 500)))]
+
+
+@app.post("/admin/users/{user_id}/action", tags=["Admin"])
+def admin_user_action(
+    user_id: str, payload: AdminAccountAction, req: HttpRequest,
+    admin: PublicUser = Depends(require_role("admin")),
+) -> dict:
+    from .accounts import accounts as users_db
+    if user_id == admin.id and payload.action == "block":
+        raise HTTPException(409, "Нельзя заблокировать собственный admin account")
+    row = users_db.admin_account_action(user_id, payload.action)
+    if not row:
+        raise HTTPException(404, "Пользователь не найден")
+    reason = payload.reason.replace("\r", " ").replace("\n", " ")
+    store.audit_event(_new("ae", 12), f"user.{payload.action}", admin.id,
+                      "user", user_id, "warning", reason)
+    return {"status": "ok", "is_active": bool(row["is_active"])}
+
+
+@app.post("/admin/users/{user_id}/rotate-mfa", tags=["Admin"])
+def admin_rotate_user_mfa(
+    user_id: str, payload: ManualEmailVerifyInput,
+    admin: PublicUser = Depends(require_role("admin")),
+) -> dict:
+    from .accounts import accounts as users_db
+    row = users_db.by_id(user_id)
+    if not row or row["role"] != "admin":
+        raise HTTPException(404, "Admin user не найден")
+    setup = users_db.configure_mfa(user_id, row["email"])
+    store.audit_event(_new("ae", 12), "admin.mfa_rotated", admin.id,
+                      "user", user_id, "critical", payload.reason)
+    return {"secret": setup["secret"], "uri": setup["uri"],
+            "recovery_codes": setup["recovery_codes"]}
+
+
+@app.get("/admin/payment-accounts", tags=["Admin"])
+def admin_payment_accounts(
+    admin: PublicUser = Depends(require_role("admin")),
+) -> list[PartnerPaymentAccount]:
+    del admin
+    return [_public_payment_account(row) for row in store.payment_accounts()]
+
+
+@app.get("/admin/payments", tags=["Admin"])
+def admin_payments(admin: PublicUser = Depends(require_role("admin"))) -> list[dict]:
+    del admin
+    return store.admin_payments()
+
+
+@app.get("/admin/webhook-events", tags=["Admin"])
+def admin_webhook_events(
+    mismatches_only: bool = False,
+    admin: PublicUser = Depends(require_role("admin")),
+) -> list[dict]:
+    del admin
+    return store.admin_stripe_events(mismatches_only)
+
+
+@app.get("/admin/commission-ledger", tags=["Admin"])
+def admin_commission_ledger(admin: PublicUser = Depends(require_role("admin"))) -> list[dict]:
+    del admin
+    return store.admin_commission_ledger()
+
+
+@app.get("/admin/commission-invoices", tags=["Admin"])
+def admin_commission_invoices(admin: PublicUser = Depends(require_role("admin"))) -> list[dict]:
+    del admin
+    return store.admin_commission_invoices()
+
+
+@app.get("/admin/security-audit", tags=["Admin"])
+def admin_security_audit(admin: PublicUser = Depends(require_role("admin"))) -> list[dict]:
+    del admin
+    return store.audit_events()
+
+
 @app.post("/admin/partner-payment-accounts", response_model=PartnerPaymentAccount,
           status_code=201, tags=["Admin"])
 def admin_upsert_payment_account(
@@ -1031,7 +1131,7 @@ def admin_create_staff_invitation(
     req: HttpRequest,
     admin: PublicUser = Depends(require_role("admin")),
 ) -> StaffInvitationResult:
-    from .accounts import accounts as users_db
+    from .accounts import accounts as users_db, encrypt_mfa_secret
     if users_db.by_email(payload.email):
         raise HTTPException(409, "Email уже зарегистрирован")
     if payload.partner_role == "owner":
@@ -1046,6 +1146,17 @@ def admin_create_staff_invitation(
         district=payload.district.strip(),
     )
     url = f"{os.getenv('YUMMY_PUBLIC_URL', '').rstrip('/')}/?invite={raw}"
+    notification_id = _new("nt", 12)
+    notification_payload = json.dumps({
+        "subject": "Приглашение в команду Yummy",
+        "text": f"Одноразовая ссылка действует 7 дней: {url}",
+    }, ensure_ascii=False)
+    store.enqueue_notification(
+        notification_id,
+        f"staff-invite:{payload.email}:{hashlib.sha256(raw.encode()).hexdigest()[:12]}",
+        payload.email, "staff_invitation",
+        encrypt_mfa_secret(notification_payload, notification_id),
+    )
     log.warning("audit: staff-invite role=%s actor=%s ip=%s",
                 payload.partner_role, admin.id, req.client.host if req.client else "?")
     return StaffInvitationResult(invite_url=url)

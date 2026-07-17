@@ -79,6 +79,10 @@ inventory как `payment_pending`, создаёт idempotent Checkout Session �
 
 Разработка: `make help` (dev / test / docs / seed / zip).
 
+Admin control plane включает users/partners/staff/payment accounts/payments/webhooks,
+reconciliation mismatches, refunds, commission ledger/invoices, persistent security
+аудит, account blocking/session revoke и MFA rotation.
+
 Partner billing: merchant credentials шифруются AES-256-GCM, payment account должен
 быть active, а комиссия фиксируется integer basis points в immutable ledger.
 

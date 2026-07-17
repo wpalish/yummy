@@ -60,6 +60,15 @@ class Store:
                     status TEXT, pickup_from TEXT, pickup_to TEXT, created_at TEXT,
                     user_id TEXT, payment_status TEXT DEFAULT 'paid',
                     reservation_expires_at TEXT);
+                CREATE TABLE IF NOT EXISTS notification_outbox(
+                    id TEXT PRIMARY KEY, dedupe_key TEXT UNIQUE, recipient_email TEXT,
+                    template TEXT, payload TEXT, status TEXT DEFAULT 'pending',
+                    attempts INTEGER DEFAULT 0, next_attempt_at TEXT,
+                    created_at TEXT, sent_at TEXT, last_error TEXT);
+                CREATE TABLE IF NOT EXISTS audit_events(
+                    id TEXT PRIMARY KEY, event_type TEXT, actor_id TEXT,
+                    target_type TEXT, target_id TEXT, severity TEXT,
+                    details TEXT, created_at TEXT);
                 CREATE TABLE IF NOT EXISTS reviews(
                     id TEXT PRIMARY KEY,
                     partner_id TEXT REFERENCES partners(id),
@@ -108,6 +117,8 @@ class Store:
                 CREATE INDEX IF NOT EXISTS ix_orders_partner ON orders(partner_id, created_at);
                 CREATE INDEX IF NOT EXISTS ix_orders_user    ON orders(user_id, created_at);
                 CREATE INDEX IF NOT EXISTS ix_orders_status  ON orders(status);
+                CREATE INDEX IF NOT EXISTS ix_outbox_due ON notification_outbox(status,next_attempt_at);
+                CREATE INDEX IF NOT EXISTS ix_audit_created ON audit_events(created_at,event_type);
                 CREATE INDEX IF NOT EXISTS ix_reviews_partner ON reviews(partner_id, status, created_at);
                 CREATE INDEX IF NOT EXISTS ix_partner_payment_accounts ON partner_payment_accounts(partner_id,status);
                 CREATE INDEX IF NOT EXISTS ix_commission_rules ON commission_rules(partner_id,valid_from);
@@ -181,6 +192,7 @@ class Store:
             district=p["district"] if p else "",
             address=p["address"] if p else "",
             rating=p["rating"] if p else 0.0,
+            lat=p["lat"] if p else 51.128, lng=p["lng"] if p else 71.430,
             category=r["category"], title=r["title"], price=r["price"],
             value_est=r["value_est"], qty_total=r["qty_total"], qty_left=r["qty_left"],
             pickup_from=r["pickup_from"], pickup_to=r["pickup_to"],
@@ -456,6 +468,10 @@ class Store:
                          and obj.get("client_reference_id") == payment["order_id"])
                 if not valid:
                     c.execute("UPDATE stripe_events SET status='rejected',error='reconciliation',processed_at=? WHERE event_id=?", (_now_iso(), event_id))
+                    c.execute("""INSERT INTO audit_events(id,event_type,actor_id,target_type,
+                        target_id,severity,details,created_at) VALUES(?,?,?,?,?,?,?,?)""",
+                        (f"ae-{event_id}", "payment.reconciliation_mismatch", "stripe",
+                         "payment", payment_id, "critical", "amount/currency/order mismatch", _now_iso()))
                     return "rejected"
                 c.execute("UPDATE payments SET status='paid',payment_intent_id=?,updated_at=? WHERE id=? AND status='pending'", (obj.get("payment_intent"), _now_iso(), payment_id))
                 c.execute("UPDATE orders SET status='paid',payment_status='paid' WHERE id=? AND status='payment_pending'", (payment["order_id"],))
@@ -544,6 +560,11 @@ class Store:
                  encrypted_credentials, now, now))
             return dict(c.execute("SELECT * FROM partner_payment_accounts WHERE partner_id=? AND provider=?",
                                   (partner_id, provider)).fetchone())
+
+    def payment_accounts(self) -> list[dict]:
+        with self._lock, self._conn() as c:
+            return [dict(row) for row in c.execute(
+                "SELECT * FROM partner_payment_accounts ORDER BY created_at DESC").fetchall()]
 
     def payment_account(self, partner_id: str, provider: str | None = None) -> dict | None:
         with self._lock, self._conn() as c:
@@ -734,6 +755,75 @@ class Store:
             "fill_rate": round(issued / closed * 100) if closed else 0,
         }
 
+    def enqueue_notification(self, notification_id: str, dedupe_key: str,
+                             recipient_email: str, template: str, payload: str) -> bool:
+        now = _now_iso()
+        with self._lock, self._conn() as c:
+            inserted = c.execute("""INSERT INTO notification_outbox(id,dedupe_key,
+                recipient_email,template,payload,status,attempts,next_attempt_at,created_at)
+                VALUES(?,?,?,?,?,'pending',0,?,?) ON CONFLICT(dedupe_key) DO NOTHING""",
+                (notification_id, dedupe_key, recipient_email, template, payload, now, now))
+            return inserted.rowcount == 1
+
+    def due_notifications(self, limit: int = 50) -> list[dict]:
+        with self._lock, self._conn() as c:
+            return [dict(row) for row in c.execute("""SELECT * FROM notification_outbox
+                WHERE status IN ('pending','retry') AND next_attempt_at<=?
+                ORDER BY created_at LIMIT ?""", (_now_iso(), limit)).fetchall()]
+
+    def finish_notification(self, notification_id: str, success: bool, error: str = "") -> None:
+        now = datetime.now(timezone.utc)
+        with self._lock, self._conn() as c:
+            row = c.execute("SELECT * FROM notification_outbox WHERE id=?", (notification_id,)).fetchone()
+            if not row or row["status"] in {"sent", "dead"}:
+                return
+            attempts = int(row["attempts"]) + 1
+            if success:
+                c.execute("UPDATE notification_outbox SET status='sent',attempts=?,sent_at=?,last_error='' WHERE id=?",
+                          (attempts, now.isoformat(), notification_id))
+            else:
+                status = "dead" if attempts >= 5 else "retry"
+                delay = min(3600, 30 * (2 ** (attempts - 1)))
+                c.execute("""UPDATE notification_outbox SET status=?,attempts=?,next_attempt_at=?,last_error=?
+                    WHERE id=?""", (status, attempts, (now + timedelta(seconds=delay)).isoformat(),
+                                     error[:500], notification_id))
+
+    def audit_event(self, event_id: str, event_type: str, actor_id: str,
+                    target_type: str, target_id: str, severity: str, details: str) -> None:
+        with self._lock, self._conn() as c:
+            c.execute("""INSERT INTO audit_events(id,event_type,actor_id,target_type,
+                target_id,severity,details,created_at) VALUES(?,?,?,?,?,?,?,?)""",
+                (event_id, event_type, actor_id, target_type, target_id,
+                 severity, details[:1000], _now_iso()))
+
+    def audit_events(self, limit: int = 200) -> list[dict]:
+        with self._lock, self._conn() as c:
+            return [dict(row) for row in c.execute(
+                "SELECT * FROM audit_events ORDER BY created_at DESC LIMIT ?", (limit,)).fetchall()]
+
+    def admin_payments(self, limit: int = 200) -> list[dict]:
+        with self._lock, self._conn() as c:
+            return [dict(row) for row in c.execute(
+                "SELECT * FROM payments ORDER BY created_at DESC LIMIT ?", (limit,)).fetchall()]
+
+    def admin_stripe_events(self, mismatches_only: bool = False, limit: int = 200) -> list[dict]:
+        with self._lock, self._conn() as c:
+            if mismatches_only:
+                rows = c.execute("SELECT * FROM stripe_events WHERE status IN ('rejected','error') ORDER BY received_at DESC LIMIT ?", (limit,)).fetchall()
+            else:
+                rows = c.execute("SELECT * FROM stripe_events ORDER BY received_at DESC LIMIT ?", (limit,)).fetchall()
+            return [dict(row) for row in rows]
+
+    def admin_commission_ledger(self, limit: int = 500) -> list[dict]:
+        with self._lock, self._conn() as c:
+            return [dict(row) for row in c.execute(
+                "SELECT * FROM commission_ledger ORDER BY created_at DESC LIMIT ?", (limit,)).fetchall()]
+
+    def admin_commission_invoices(self, limit: int = 200) -> list[dict]:
+        with self._lock, self._conn() as c:
+            return [dict(row) for row in c.execute(
+                "SELECT * FROM commission_invoices ORDER BY period_from DESC LIMIT ?", (limit,)).fetchall()]
+
     def ping(self) -> bool:
         with self._conn() as connection:
             return connection.execute("SELECT 1").fetchone()[0] == 1
@@ -750,7 +840,7 @@ class Store:
             # Порядок учитывает foreign keys и позволяет безопасно reseed'ить
             # непустую базу в dev/test окружении.
             c.executescript(
-                "DELETE FROM reviews; DELETE FROM refund_requests; DELETE FROM stripe_events; "
+                "DELETE FROM notification_outbox; DELETE FROM audit_events; DELETE FROM reviews; DELETE FROM refund_requests; DELETE FROM stripe_events; "
                 "DELETE FROM commission_ledger; DELETE FROM commission_invoices; DELETE FROM commission_rules; "
                 "DELETE FROM partner_payment_accounts; DELETE FROM payments; DELETE FROM orders; "
                 "DELETE FROM boxes; DELETE FROM partners;"

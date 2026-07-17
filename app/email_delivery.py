@@ -60,6 +60,10 @@ def _deliver(to: str, subject: str, text: str) -> bool:
     return True
 
 
+def send_outbox_email(to: str, subject: str, text: str) -> bool:
+    return _deliver(to, subject, text)
+
+
 def send_verification(to: str, token: str) -> bool:
     url = f"{_PUBLIC_URL}/?verify={token}"
     return _deliver(to, "Подтвердите email в Yummy", f"Откройте ссылку в течение 24 часов:\n{url}")

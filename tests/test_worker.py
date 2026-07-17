@@ -6,7 +6,7 @@ from datetime import datetime, timedelta, timezone
 
 from app.accounts import Accounts
 from app.db import Store
-from app.worker import cleanup_security_data, expire_reservations, heartbeat
+from app.worker import cleanup_security_data, deliver_notifications, expire_reservations, heartbeat
 
 
 class FakeRedis:
@@ -35,6 +35,39 @@ def test_worker_cleans_expired_action_tokens(tmp_path):
     accounts.issue_action_token(uid, "verify_email", -1)
     result = asyncio.run(cleanup_security_data({"accounts": accounts}))
     assert result["action_tokens"] == 1
+
+
+def test_notification_outbox_delivers_and_deduplicates(tmp_path, monkeypatch):
+    import json
+    import app.worker as worker
+    from app.accounts import encrypt_mfa_secret
+
+    store = Store(tmp_path / "outbox.db")
+    notification_id = "nt1"
+    payload = encrypt_mfa_secret(json.dumps({"subject": "S", "text": "T"}), notification_id)
+    assert store.enqueue_notification(notification_id, "dedupe", "user@example.com", "test", payload)
+    assert not store.enqueue_notification("nt2", "dedupe", "user@example.com", "test", payload)
+    monkeypatch.setattr(worker, "send_outbox_email", lambda to, subject, text: True)
+    assert asyncio.run(deliver_notifications({"store": store})) == 1
+    assert store.due_notifications() == []
+
+
+def test_notification_outbox_retries_then_dead_letters(tmp_path, monkeypatch):
+    import json
+    import app.worker as worker
+    from app.accounts import encrypt_mfa_secret
+
+    store = Store(tmp_path / "dead.db")
+    payload = encrypt_mfa_secret(json.dumps({"subject": "S", "text": "T"}), "nt")
+    store.enqueue_notification("nt", "dead", "user@example.com", "test", payload)
+    monkeypatch.setattr(worker, "send_outbox_email", lambda *args: False)
+    for _ in range(5):
+        with store._conn() as connection:
+            connection.execute("UPDATE notification_outbox SET next_attempt_at='2000-01-01'")
+        asyncio.run(deliver_notifications({"store": store}))
+    with store._conn() as connection:
+        row = connection.execute("SELECT * FROM notification_outbox WHERE id='nt'").fetchone()
+    assert row["status"] == "dead" and row["attempts"] == 5
 
 
 def test_commission_invoice_generation_is_idempotent(tmp_path):

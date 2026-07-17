@@ -384,6 +384,29 @@ class Accounts:
         with self._lock, self._conn() as c:
             return c.execute("SELECT * FROM users WHERE id=?", (uid,)).fetchone()
 
+    def list_users(self, role: str | None = None, limit: int = 200) -> list[sqlite3.Row]:
+        with self._lock, self._conn() as c:
+            if role:
+                return c.execute("SELECT * FROM users WHERE role=? ORDER BY created_at DESC LIMIT ?",
+                                 (role, limit)).fetchall()
+            return c.execute("SELECT * FROM users ORDER BY created_at DESC LIMIT ?", (limit,)).fetchall()
+
+    def admin_account_action(self, user_id: str, action: str) -> sqlite3.Row | None:
+        with self._lock, self._conn() as c:
+            row = c.execute("SELECT * FROM users WHERE id=?", (user_id,)).fetchone()
+            if not row:
+                return None
+            if action == "block":
+                c.execute("UPDATE users SET is_active=0,token_ver=COALESCE(token_ver,0)+1 WHERE id=?", (user_id,))
+            elif action == "unblock":
+                c.execute("UPDATE users SET is_active=1,token_ver=COALESCE(token_ver,0)+1 WHERE id=?", (user_id,))
+            elif action == "revoke_sessions":
+                c.execute("UPDATE users SET token_ver=COALESCE(token_ver,0)+1 WHERE id=?", (user_id,))
+            else:
+                return None
+            c.execute("UPDATE refresh_tokens SET revoked=1 WHERE user_id=?", (user_id,))
+            return c.execute("SELECT * FROM users WHERE id=?", (user_id,)).fetchone()
+
     # ---- MFA setup/verification ----------------------------------------- #
     def configure_mfa(self, user_id: str, email: str) -> dict:
         secret = generate_totp_secret()

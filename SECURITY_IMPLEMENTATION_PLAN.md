@@ -32,7 +32,7 @@
 | FR-01 | Регистрация/вход/выход/profile | negative auth tests, revoke-all, privacy export/delete | Implemented |
 | FR-02 | MFA/WebAuthn | admin control plane requires MFA claim | TOTP/recovery done; WebAuthn P0 gap |
 | FR-03 | RBAC + ownership | cross-tenant create/read/redeem all denied server-side | Implemented |
-| FR-04 | Admin plane | operator-only bootstrap, TOTP login, partner review/audit | Partial; general user management UI missing |
+| FR-04 | Admin plane | MFA-only users, partners, staff, payments, events, refunds, billing, audit/actions | Implemented |
 | FR-04a | Partner/staff onboarding | admin invite links, owner/manager/cashier RBAC, hidden buyer UI | Implemented |
 | FR-04b | Email identity | verify/reissue/forgot/reset, generic responses, session revoke | Implemented; provider external |
 | FR-04c | Refund support | owned request, duplicate guard, MFA review/decision, atomic order state | Implemented; payment provider external |

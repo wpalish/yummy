@@ -339,6 +339,8 @@ const REVIEWS={
  "Утром Кофе":[["Инкар","Отличная выпечка по вечерней цене.",5],["Санжар","Всё чётко по коду выдали.",4]],
 };
 let curDistrict="all", curCat="all", curQuery="", curNow=false, curFav=false, mapMode=false, mapObj=null;
+let USER_LOCATION=null;
+const distanceKm=(a,b,c,d)=>{const r=6371,toRad=x=>x*Math.PI/180,dp=toRad(c-a),dl=toRad(d-b),q=Math.sin(dp/2)**2+Math.cos(toRad(a))*Math.cos(toRad(c))*Math.sin(dl/2)**2;return 2*r*Math.asin(Math.sqrt(q));};
 const favs=()=>{try{return JSON.parse(localStorage.getItem("ym_favs")||"[]");}catch(e){return [];}};
 window.toggleFav=pid=>{let f=favs();f=f.includes(pid)?f.filter(x=>x!==pid):[...f,pid];
   localStorage.setItem("ym_favs",JSON.stringify(f));renderBoxes();toast(f.includes(pid)?"Кофейня в избранном ♥":"Убрано из избранного");};
@@ -421,6 +423,7 @@ document.addEventListener("click",e=>{
     case "refund-decision": decideRefund(d.id,d.actionValue); break;
     case "request-verification": requestVerification(); break;
     case "forgot-password": forgotPasswordForm(); break;
+    case "user-action": adminUserAction(d.id,d.actionValue); break;
   }
 },true);
 
@@ -715,6 +718,11 @@ let _qT;
   clearTimeout(_qT);_qT=setTimeout(renderBoxes,180);                                          // дебаунс
 });});
 
+$("#nearMeBtn").onclick=()=>{
+  if(!navigator.geolocation){toast("Геолокация не поддерживается",true);return;}
+  navigator.geolocation.getCurrentPosition(pos=>{USER_LOCATION={lat:pos.coords.latitude,lng:pos.coords.longitude};renderBoxes();toast("Сортировка по расстоянию включена");},()=>toast("Нет доступа к геолокации",true),{enableHighAccuracy:false,timeout:8000,maximumAge:300000});
+};
+
 /* ============ МАГАЗИН ============ */
 let ALL_BOXES=[];
 const skCard=()=>'<div class="sk"><div class="a"></div><div class="b"></div><div class="c"></div></div>';
@@ -765,8 +773,8 @@ function filtered(){
   if(curNow){const t=Date.now();bs=bs.filter(b=>Date.parse(b.pickup_from)<=t&&t<=Date.parse(b.pickup_to));}
   if(curFav){const f=favs();bs=bs.filter(b=>f.includes(b.partner_id));}
   if(curQuery)bs=bs.filter(b=>(b.title+" "+b.partner_name+" "+(b.description||"")+" "+b.category_ru).toLowerCase().includes(curQuery));
-  // по умолчанию — «скоро закроется окно выдачи» выше (стимул забрать сейчас)
-  bs.sort((a,b)=>Date.parse(a.pickup_to)-Date.parse(b.pickup_to));
+  if(USER_LOCATION)bs.sort((a,b)=>distanceKm(USER_LOCATION.lat,USER_LOCATION.lng,a.lat,a.lng)-distanceKm(USER_LOCATION.lat,USER_LOCATION.lng,b.lat,b.lng));
+  else bs.sort((a,b)=>Date.parse(a.pickup_to)-Date.parse(b.pickup_to));
   return bs;
 }
 function renderBoxes(){
@@ -1054,8 +1062,8 @@ function updateCart(){const n=myCodes().length;const el=$("#cartCnt");el.textCon
 async function renderMyOrders(){
   updateCart();
   const el=$("#myorders"); const a=account();
-  let orders=null;
-  if(a&&a.server){ try{orders=await get("/me/orders");}catch(e){} }  // кросс-девайс история аккаунта
+  let orders=null,refunds=[];
+  if(a&&a.server){try{orders=await get("/me/orders");refunds=await get("/me/refund-requests");}catch(e){}}
   if(!orders){
     const codes=myCodes();
     if(!codes.length){el.innerHTML="";return;}
@@ -1071,6 +1079,7 @@ async function renderMyOrders(){
       <div style="font-size:.76rem;color:var(--txt2)">${win(o.pickup_from,o.pickup_to)} · ${money(o.price)}</div>
       ${(a&&a.server&&o.status==="paid"&&Date.now()>=Date.parse(o.pickup_from))?`<button class="linkbtn" data-action="support-refund" data-id="${esc(o.id)}">Не выдали заказ? Открыть заявку</button>`:""}
       ${(a&&a.server&&o.status==="issued"&&!reviewed.includes(o.id))?`<button class="linkbtn" data-action="leave-review" data-order-id="${esc(o.id)}" data-partner-id="${esc(o.partner_id)}" data-name="${esc(o.partner_name)}">⭐ Оставить отзыв</button>`:""}
+      ${refunds.find(r=>r.order_id===o.id)?`<span class="tag">Возврат: ${esc(refunds.find(r=>r.order_id===o.id).status)}</span>`:""}
       <button class="linkbtn" data-action="show-code" data-code="${esc(o.code)}">Показать код и QR</button></div>
     <span class="tag t-${o.status}">${STATUS_RU[o.status]}</span></div>`).join("")}</div>`;
 }
@@ -1254,11 +1263,14 @@ $("#inviteCreate").onclick=async()=>{
 };
 
 async function loadAdmin(){
-  let s={},orders=[],partners=[],refunds=[];
+  let s={},orders=[],partners=[],refunds=[],users=[],payments=[],audit=[];
   try{s=await get("/admin/stats");}catch(e){}
   try{orders=await get("/admin/orders");}catch(e){}
   try{partners=await get("/admin/partner-applications");}catch(e){}
   try{refunds=await get("/admin/refund-requests");}catch(e){}
+  try{users=await get("/admin/users");}catch(e){}
+  try{payments=await get("/admin/payments");}catch(e){}
+  try{audit=await get("/admin/security-audit");}catch(e){}
   $("#aStats").innerHTML=[
     [money(s.gmv||0),"GMV (оборот)"],[s.orders_total||0,"заказов"],
     [(s.fill_rate||0)+"%","выкуплено (fill rate)"],[s.no_show||0,"не забрали (no-show)"],
@@ -1278,6 +1290,9 @@ async function loadAdmin(){
       ?`<button class="btn sec" data-action="refund-decision" data-id="${esc(r.id)}" data-action-value="reviewing">В работу</button><button class="btn sec" data-action="refund-decision" data-id="${esc(r.id)}" data-action-value="approve">Одобрить</button><button class="btn sec" data-action="refund-decision" data-id="${esc(r.id)}" data-action-value="reject">Отклонить</button>`:"";
     return `<div class="lrow"><div class="g"><b>${esc(r.reason)}</b><div style="font-size:.76rem;color:var(--txt2)">${esc(r.details)} · order ${esc(r.order_id)}</div></div><span class="tag">${esc(r.status)}</span><div style="display:flex;gap:.3rem">${actions}</div></div>`;
   }).join(""):'<p class="empty">Запросов пока нет.</p>';
+  $("#aUsers").innerHTML=users.slice(0,100).map(u=>`<div class="lrow"><div class="g"><b>${esc(u.email)}</b><div>${esc(u.role)} ${u.partner_role?"· "+esc(u.partner_role):""}</div></div><span class="tag">${u.is_active?"active":"blocked"}</span><button class="btn sec" data-action="user-action" data-id="${esc(u.id)}" data-action-value="${u.is_active?"block":"unblock"}">${u.is_active?"Блок":"Разблок"}</button><button class="btn sec" data-action="user-action" data-id="${esc(u.id)}" data-action-value="revoke_sessions">Сессии</button></div>`).join("")||'<p class="empty">Нет пользователей</p>';
+  $("#aPayments").innerHTML=payments.slice(0,100).map(p=>`<div class="lrow"><div class="g"><b>${esc(p.id)}</b><div>${esc(p.provider)} · ${esc(p.currency)} · ${p.amount_minor}</div></div><span class="tag">${esc(p.status)}</span></div>`).join("")||'<p class="empty">Нет платежей</p>';
+  $("#aAudit").innerHTML=audit.slice(0,100).map(a=>`<div class="lrow"><div class="g"><b>${esc(a.event_type)}</b><div>${esc(a.target_type||"")} ${esc(a.target_id||"")} · ${esc(a.details)}</div></div><span class="tag">${esc(a.severity)}</span></div>`).join("")||'<p class="empty">Audit пуст</p>';
   // графики из заказов
   const cnt={paid:0,issued:0,expired:0,refunded:0,cancelled:0};
   const byPartner={};
@@ -1299,6 +1314,7 @@ async function loadAdmin(){
   $("#aOrders").innerHTML=orders.length?orders.map(o=>orderRow(o,true)).join(""):'<p class="empty">Заказов нет.</p>';
 }
 window.refund=async id=>{try{await post("/admin/refund/"+id);toast("Возврат оформлен");loadAdmin();}catch(e){toast(e.message,true);}};
+window.adminUserAction=async(id,action)=>{const reason=prompt(`Причина: ${action}`)||"";if(reason.length<3)return;try{await post(`/admin/users/${id}/action`,{action,reason});toast("Действие выполнено");loadAdmin();}catch(e){toast(e.message,true);}};
 window.decideRefund=async(id,action)=>{
   const resolution=prompt(`Решение по заявке (${action}):`)||"";if(resolution.length<3)return;
   try{await post(`/admin/refund-requests/${id}/decision`,{action,resolution});toast("Решение сохранено");loadAdmin();}
@@ -1346,12 +1362,13 @@ window.showLegal=k=>{const [t,body]=LEGAL[k];
   <button class="btn sec" data-action="close" style="margin-top:.9rem">Закрыть</button></div>`);};
 
 /* ---- модалка ---- */
-function showModal(html){const m=$("#modal");m.className="modal-bg";
-  m.innerHTML=`<div class="modal" role="dialog" aria-modal="true">${html}</div>`;
+let _modalReturnFocus=null;
+function showModal(html){const m=$("#modal");_modalReturnFocus=document.activeElement;m.className="modal-bg";
+  m.innerHTML=`<div class="modal" role="dialog" aria-modal="true" aria-label="Диалог Yummy">${html}</div>`;
   m.onclick=e=>{if(e.target===m)closeModal();};
-  const inp=m.querySelector("input,button");if(inp)inp.focus();}
-document.addEventListener("keydown",e=>{if(e.key==="Escape"&&!$("#modal").classList.contains("hidden"))closeModal();});
-window.closeModal=()=>{$("#modal").className="hidden";$("#modal").innerHTML="";if(!$("#view-store").classList.contains("hidden"))renderMyOrders();};
+  const inp=m.querySelector("input,button,select,textarea,a[href]");if(inp)inp.focus();}
+document.addEventListener("keydown",e=>{const m=$("#modal");if(m.classList.contains("hidden"))return;if(e.key==="Escape"){closeModal();return;}if(e.key==="Tab"){const f=[...m.querySelectorAll("button,input,select,textarea,a[href]")].filter(x=>!x.disabled);if(!f.length)return;const first=f[0],last=f[f.length-1];if(e.shiftKey&&document.activeElement===first){e.preventDefault();last.focus();}else if(!e.shiftKey&&document.activeElement===last){e.preventDefault();first.focus();}}});
+window.closeModal=()=>{const m=$("#modal");m.className="hidden";m.innerHTML="";_modalReturnFocus?.focus?.();_modalReturnFocus=null;if(!$("#view-store").classList.contains("hidden"))renderMyOrders();};
 
 /* ---- уведомление о хранении данных ---- */
 $("#yr").textContent=new Date().getFullYear();

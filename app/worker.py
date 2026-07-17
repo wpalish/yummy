@@ -10,8 +10,9 @@ from datetime import datetime, timedelta, timezone
 from arq import cron
 from arq.connections import RedisSettings
 
-from .accounts import Accounts
+from .accounts import Accounts, decrypt_mfa_secret
 from .db import Store
+from .email_delivery import send_outbox_email
 from .payments import PaymentUnavailable, gateway, payment_mode
 
 
@@ -61,6 +62,26 @@ async def reconcile_payments(ctx):
     return processed
 
 
+async def deliver_notifications(ctx):
+    rows = await asyncio.to_thread(ctx["store"].due_notifications, 50)
+    delivered = 0
+    for row in rows:
+        try:
+            payload = json.loads(decrypt_mfa_secret(row["payload"], row["id"]))
+            success = await asyncio.to_thread(
+                send_outbox_email, row["recipient_email"],
+                payload.get("subject", "Yummy"), payload.get("text", ""),
+            )
+        except Exception as exc:
+            await asyncio.to_thread(ctx["store"].finish_notification, row["id"], False,
+                                    type(exc).__name__)
+            continue
+        await asyncio.to_thread(ctx["store"].finish_notification, row["id"], success,
+                                "delivery failed" if not success else "")
+        delivered += int(success)
+    return delivered
+
+
 async def generate_commission_invoices(ctx):
     now = datetime.now(timezone.utc)
     first_this_month = datetime(now.year, now.month, 1, tzinfo=timezone.utc)
@@ -83,11 +104,12 @@ class WorkerSettings:
     redis_settings = redis_settings()
     on_startup = startup
     functions = [heartbeat, expire_reservations, cleanup_security_data,
-                 reconcile_payments, generate_commission_invoices]
+                 reconcile_payments, deliver_notifications, generate_commission_invoices]
     cron_jobs = [
         cron(heartbeat, second={0, 30}),
         cron(expire_reservations, minute=None, second=5),
         cron(reconcile_payments, minute=None, second=20),
+        cron(deliver_notifications, minute=None, second=40),
         cron(cleanup_security_data, hour=3, minute=15),
         cron(generate_commission_invoices, day=1, hour=4, minute=0),
     ]

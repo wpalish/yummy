@@ -51,8 +51,9 @@ def test_initial_migration_applies_to_fresh_sqlite(tmp_path):
     assert {"users", "partners", "boxes", "orders", "reviews", "refund_requests",
             "refresh_tokens", "action_tokens", "mfa_recovery_codes", "payments",
             "stripe_events", "staff_invitations", "partner_payment_accounts",
-            "commission_rules", "commission_ledger", "commission_invoices"} <= tables
-    assert version == "20260714_0004"
+            "commission_rules", "commission_ledger", "commission_invoices",
+            "audit_events", "notification_outbox"} <= tables
+    assert version == "20260714_0006"
 
 
 def test_postgresql_offline_migration_compiles():
