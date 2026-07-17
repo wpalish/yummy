@@ -5,8 +5,10 @@
 """
 from __future__ import annotations
 
+import csv
 import hashlib
 import hmac
+import io
 import logging
 import os
 import secrets
@@ -19,7 +21,7 @@ from pathlib import Path
 from fastapi import Depends, FastAPI, HTTPException
 from fastapi import Request as HttpRequest
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse, JSONResponse, PlainTextResponse
+from fastapi.responses import FileResponse, JSONResponse, PlainTextResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from starlette.middleware.trustedhost import TrustedHostMiddleware
 
@@ -48,6 +50,7 @@ from .models import (
     BoxCreate,
     BoxDescribeInput,
     BoxDescribeResult,
+    BoxUpdate,
     CheckoutSessionResult,
     CheckoutStatus,
     Order,
@@ -241,7 +244,7 @@ app.add_middleware(TrustedHostMiddleware, allowed_hosts=_ALLOWED_HOSTS)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=_CORS,
-    allow_methods=["GET", "POST", "DELETE"],
+    allow_methods=["GET", "POST", "PATCH", "DELETE"],
     allow_headers=["Authorization", "Content-Type", "X-CSRF-Token"],
 )
 
@@ -474,6 +477,13 @@ def _public_payment_account(row: dict) -> PartnerPaymentAccount:
         updated_at=row["updated_at"], verified_at=row["verified_at"],
         verified_by=row["verified_by"],
     )
+
+
+def require_partner_manager(user: PublicUser) -> Partner:
+    partner = _partner_for_user(user)
+    if user.partner_role not in {"owner", "manager"}:
+        raise HTTPException(403, "Только владелец или менеджер")
+    return partner
 
 
 def require_approved_partner(
@@ -784,11 +794,62 @@ def my_partner_profile(
     return _partner_for_user(user, require_approved=False)
 
 
+@app.patch("/partner/me/boxes/{box_id}", response_model=Box, tags=["Partner"])
+def update_my_partner_box(
+    box_id: str, payload: BoxUpdate,
+    user: PublicUser = Depends(require_role("partner")),
+) -> Box:
+    partner = require_partner_manager(user)
+    if payload.price and payload.value_est and payload.value_est < payload.price:
+        raise HTTPException(422, "Ценность не может быть ниже цены")
+    updated = store.update_partner_box(box_id, partner.id, payload.model_dump())
+    if not updated:
+        raise HTTPException(404, "Бокс не найден")
+    return updated
+
+
+@app.post("/partner/me/boxes/{box_id}/close", response_model=Box, tags=["Partner"])
+def close_my_partner_box(box_id: str, user: PublicUser = Depends(require_role("partner"))) -> Box:
+    partner = require_partner_manager(user)
+    box = store.set_partner_box_status(box_id, partner.id, "closed")
+    if not box:
+        raise HTTPException(404, "Бокс не найден")
+    return box
+
+
 @app.get("/partner/me/boxes", response_model=list[Box], tags=["Partner"])
 def my_partner_boxes(
     user: PublicUser = Depends(require_role("partner")),
 ) -> list[Box]:
     return store.partner_boxes(_partner_for_user(user).id)
+
+
+@app.get("/partner/me/staff", tags=["Partner"])
+def my_partner_staff(user: PublicUser = Depends(require_role("partner"))) -> list[dict]:
+    from .accounts import accounts as users_db
+    partner = require_partner_manager(user)
+    return [{
+        "id": row["id"], "email": row["email"], "partner_role": row["partner_role"],
+        "is_active": bool(row["is_active"]), "created_at": row["created_at"],
+    } for row in users_db.partner_staff(partner.id)]
+
+
+@app.get("/partner/me/invitations", tags=["Partner"])
+def my_partner_invitations(user: PublicUser = Depends(require_role("partner"))) -> list[dict]:
+    from .accounts import accounts as users_db
+    partner = require_partner_manager(user)
+    return [dict(row) for row in users_db.partner_invitations(partner.id)]
+
+
+@app.delete("/partner/me/invitations/{token_hash}", tags=["Partner"])
+def revoke_my_partner_invitation(
+    token_hash: str, user: PublicUser = Depends(require_role("partner")),
+) -> dict:
+    from .accounts import accounts as users_db
+    partner = require_partner_manager(user)
+    if not users_db.revoke_staff_invitation(token_hash, partner.id):
+        raise HTTPException(404, "Приглашение не найдено")
+    return {"status": "revoked"}
 
 
 @app.get("/partner/me/payment-account", response_model=PartnerPaymentAccount | None,
@@ -809,6 +870,37 @@ def my_partner_commission_ledger(
     if user.partner_role not in {"owner", "manager"}:
         raise HTTPException(403, "Недостаточно прав")
     return store.partner_commission_ledger(partner.id)
+
+
+@app.get("/partner/me/commission-invoices", tags=["Partner"])
+def my_partner_commission_invoices(
+    user: PublicUser = Depends(require_role("partner")),
+) -> list[dict]:
+    partner = require_partner_manager(user)
+    return store.partner_commission_invoices(partner.id)
+
+
+@app.get("/partner/me/analytics/daily", tags=["Partner"])
+def my_partner_daily_analytics(
+    days: int = 30, user: PublicUser = Depends(require_role("partner")),
+) -> list[dict]:
+    partner = require_partner_manager(user)
+    return store.partner_daily_analytics(partner.id, max(1, min(days, 365)))
+
+
+@app.get("/partner/me/export.csv", tags=["Partner"])
+def export_partner_orders_csv(
+    user: PublicUser = Depends(require_role("partner")),
+) -> StreamingResponse:
+    partner = require_partner_manager(user)
+    output = io.StringIO()
+    writer = csv.writer(output)
+    writer.writerow(["order_id", "code", "status", "price", "pickup_from", "pickup_to", "created_at"])
+    for order in store.partner_orders(partner.id):
+        writer.writerow([order.id, order.code, order.status, order.price,
+                         order.pickup_from, order.pickup_to, order.created_at.isoformat()])
+    return StreamingResponse(iter([output.getvalue()]), media_type="text/csv; charset=utf-8",
+                             headers={"Content-Disposition": "attachment; filename=orders.csv"})
 
 
 @app.get("/partner/me/orders", response_model=list[Order], tags=["Partner"])

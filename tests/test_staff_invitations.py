@@ -72,6 +72,14 @@ def test_cashier_is_bound_to_partner_and_cannot_publish(client):
     owner_headers = {"Authorization": f"Bearer {owner['access_token']}"}
     partner_id = c.get("/partner/me", headers=owner_headers).json()["id"]
 
+    manager_token = invite(c, admin, {
+        "email": "manager@cafe.kz", "partner_role": "manager", "partner_id": partner_id,
+    })
+    invitations = c.get("/partner/me/invitations", headers=owner_headers).json()
+    pending_hash = next(row["token_hash"] for row in invitations if row["used_at"] is None)
+    assert c.delete(f"/partner/me/invitations/{pending_hash}", headers=owner_headers).status_code == 200
+    assert accept(c, manager_token).status_code == 400
+
     cashier_token = invite(c, admin, {
         "email": "cashier@cafe.kz", "partner_role": "cashier", "partner_id": partner_id,
     })
@@ -79,6 +87,25 @@ def test_cashier_is_bound_to_partner_and_cannot_publish(client):
     assert cashier["user"]["partner_id"] == partner_id
     cashier_headers = {"Authorization": f"Bearer {cashier['access_token']}"}
     assert c.get("/partner/me/orders", headers=cashier_headers).status_code == 200
+    staff = c.get("/partner/me/staff", headers=owner_headers)
+    assert staff.status_code == 200 and len(staff.json()) == 2
+    created = c.post("/boxes", headers=owner_headers, json={
+        "partner_id": partner_id, "category": "sweet", "price": 500,
+        "value_est": 1000, "qty": 2,
+        "pickup_from": "2030-01-01T10:00:00+00:00",
+        "pickup_to": "2030-01-01T12:00:00+00:00",
+    })
+    assert created.status_code == 201
+    box_id = created.json()["id"]
+    updated = c.patch(f"/partner/me/boxes/{box_id}", headers=owner_headers,
+                      json={"title": "Новый бокс", "qty_left": 3})
+    assert updated.status_code == 200 and updated.json()["qty_left"] == 3
+    assert c.patch(f"/partner/me/boxes/{box_id}", headers=cashier_headers,
+                   json={"title": "Взлом"}).status_code == 403
+    assert c.post(f"/partner/me/boxes/{box_id}/close", headers=owner_headers).status_code == 200
+    assert c.get("/partner/me/analytics/daily", headers=owner_headers).status_code == 200
+    assert c.get("/partner/me/export.csv", headers=owner_headers).status_code == 200
+
     assert c.post("/boxes", headers=cashier_headers, json={
         "partner_id": partner_id, "category": "sweet", "price": 500,
         "value_est": 1000, "qty": 1,

@@ -10,7 +10,7 @@ from __future__ import annotations
 import os
 import sqlite3
 import threading
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 from .database import Database
@@ -242,6 +242,43 @@ class Store:
         if district and district != "all":
             boxes = [b for b in boxes if b.district == district]
         return boxes
+
+    def update_partner_box(self, box_id: str, partner_id: str, changes: dict) -> Box | None:
+        allowed = {k: v for k, v in changes.items() if v is not None and k in {
+            "title", "description", "price", "value_est", "qty_left"
+        }}
+        if not allowed:
+            return self.box(box_id)
+        with self._lock, self._conn() as c:
+            row = c.execute("SELECT * FROM boxes WHERE id=? AND partner_id=?",
+                            (box_id, partner_id)).fetchone()
+            if not row:
+                return None
+            qty_total = None
+            if "qty_left" in allowed:
+                sold = int(row["qty_total"]) - int(row["qty_left"])
+                qty_total = sold + int(allowed["qty_left"])
+            c.execute("""UPDATE boxes SET
+                title=COALESCE(?,title),description=COALESCE(?,description),
+                price=COALESCE(?,price),value_est=COALESCE(?,value_est),
+                qty_left=COALESCE(?,qty_left),qty_total=COALESCE(?,qty_total)
+                WHERE id=? AND partner_id=?""",
+                (allowed.get("title"), allowed.get("description"), allowed.get("price"),
+                 allowed.get("value_est"), allowed.get("qty_left"), qty_total,
+                 box_id, partner_id))
+            updated = c.execute("SELECT * FROM boxes WHERE id=?", (box_id,)).fetchone()
+            return self._box_from_row(c, updated)
+
+    def set_partner_box_status(self, box_id: str, partner_id: str, status: str) -> Box | None:
+        if status not in {"active", "closed"}:
+            return None
+        with self._lock, self._conn() as c:
+            updated = c.execute("UPDATE boxes SET status=? WHERE id=? AND partner_id=?",
+                                (status, box_id, partner_id))
+            if updated.rowcount != 1:
+                return None
+            row = c.execute("SELECT * FROM boxes WHERE id=?", (box_id,)).fetchone()
+            return self._box_from_row(c, row)
 
     def partner_boxes(self, partner_id: str) -> list[Box]:
         with self._lock, self._conn() as c:
@@ -568,6 +605,24 @@ class Store:
             return [dict(row) for row in c.execute(
                 "SELECT * FROM commission_ledger WHERE partner_id=? ORDER BY created_at DESC",
                 (partner_id,)).fetchall()]
+
+    def partner_commission_invoices(self, partner_id: str) -> list[dict]:
+        with self._lock, self._conn() as c:
+            return [dict(row) for row in c.execute(
+                "SELECT * FROM commission_invoices WHERE partner_id=? ORDER BY period_from DESC",
+                (partner_id,)).fetchall()]
+
+    def partner_daily_analytics(self, partner_id: str, days: int = 30) -> list[dict]:
+        cutoff = (datetime.now(timezone.utc) - timedelta(days=days)).isoformat()
+        with self._lock, self._conn() as c:
+            rows = c.execute("""SELECT SUBSTR(created_at,1,10) AS day,
+                COUNT(*) AS orders_total,
+                SUM(CASE WHEN status='issued' THEN 1 ELSE 0 END) AS issued,
+                SUM(CASE WHEN status IN ('paid','issued','expired') THEN price ELSE 0 END) AS gross
+                FROM orders WHERE partner_id=? AND created_at>=?
+                GROUP BY SUBSTR(created_at,1,10) ORDER BY day DESC""",
+                (partner_id, cutoff)).fetchall()
+            return [dict(row) for row in rows]
 
     def pending_payments(self, limit: int = 100) -> list[dict]:
         with self._lock, self._conn() as c:

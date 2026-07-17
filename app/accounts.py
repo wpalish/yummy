@@ -557,6 +557,24 @@ class Accounts:
                 raise ValueError("пользователь не найден")
         self.revoke_all_refresh(user_id)
 
+    def partner_staff(self, partner_id: str) -> list[sqlite3.Row]:
+        with self._lock, self._conn() as c:
+            return c.execute("""SELECT * FROM users WHERE role='partner' AND partner_id=?
+                ORDER BY partner_role,created_at""", (partner_id,)).fetchall()
+
+    def partner_invitations(self, partner_id: str) -> list[sqlite3.Row]:
+        with self._lock, self._conn() as c:
+            return c.execute("""SELECT token_hash,email,partner_role,expires_at,used_at,created_at
+                FROM staff_invitations WHERE partner_id=? ORDER BY created_at DESC""",
+                (partner_id,)).fetchall()
+
+    def revoke_staff_invitation(self, token_hash: str, partner_id: str) -> bool:
+        with self._lock, self._conn() as c:
+            updated = c.execute("""UPDATE staff_invitations SET used_at=?
+                WHERE token_hash=? AND partner_id=? AND used_at IS NULL""",
+                (int(time.time()), token_hash, partner_id))
+            return updated.rowcount == 1
+
     def partner_accounts(self, status: str | None = None) -> list[sqlite3.Row]:
         with self._lock, self._conn() as c:
             if status:

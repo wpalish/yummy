@@ -148,6 +148,14 @@ class BoxCreate(BaseModel):
         return self
 
 
+class BoxUpdate(BaseModel):
+    title: str | None = Field(default=None, max_length=120)
+    description: str | None = Field(default=None, max_length=1000)
+    price: int | None = Field(default=None, ge=100, le=50_000)
+    value_est: int | None = Field(default=None, ge=100, le=1_000_000)
+    qty_left: int | None = Field(default=None, ge=0, le=50)
+
+
 class Box(BaseModel):
     id: str
     partner_id: str
