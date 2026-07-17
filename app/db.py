@@ -824,6 +824,24 @@ class Store:
             return [dict(row) for row in c.execute(
                 "SELECT * FROM commission_invoices ORDER BY period_from DESC LIMIT ?", (limit,)).fetchall()]
 
+    def operational_metrics(self) -> dict:
+        now = datetime.now(timezone.utc)
+        def age(value):
+            if not value:
+                return 0
+            try:
+                return max(0, (now - datetime.fromisoformat(value.replace("Z", "+00:00"))).total_seconds())
+            except (ValueError, AttributeError):
+                return 0
+        with self._lock, self._conn() as c:
+            payment = c.execute("SELECT MIN(created_at) AS oldest FROM payments WHERE status='pending'").fetchone()
+            refund = c.execute("SELECT MIN(created_at) AS oldest FROM refund_requests WHERE status IN ('pending','reviewing')").fetchone()
+            webhook_failures = c.execute("SELECT COUNT(*) FROM stripe_events WHERE status IN ('rejected','error')").fetchone()[0]
+            email_failures = c.execute("SELECT COUNT(*) FROM notification_outbox WHERE status IN ('retry','dead')").fetchone()[0]
+        return {"payment_pending_age": age(payment["oldest"]),
+                "refund_pending_age": age(refund["oldest"]),
+                "webhook_failures": webhook_failures, "email_failures": email_failures}
+
     def ping(self) -> bool:
         with self._conn() as connection:
             return connection.execute("SELECT 1").fetchone()[0] == 1

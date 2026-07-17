@@ -7,6 +7,12 @@ fail-closed проверяет worker heartbeat при `YUMMY_REQUIRE_WORKER=1`.
 Скопируй `deploy/env.production.example` в
 `.env.production`, заполни secrets локально и запусти `deploy/deploy.sh`.
 
+Observability настраивается env-переменными `SENTRY_DSN`,
+`OTEL_EXPORTER_OTLP_ENDPOINT` и `YUMMY_METRICS_TOKEN`. Для backup установи
+`pg_dump`, `pg_restore` и `age`, затем запускай `deploy/backup.sh`; restore
+проверяется только на отдельном `RESTORE_DATABASE_URL` через
+`deploy/restore-drill.sh`. RPO/RTO описаны в `INCIDENT_RESPONSE.md`.
+
 `render.yaml` остаётся reference-вариантом managed deployment.
 
 ## Шаг 1. Аккаунт Render

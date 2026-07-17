@@ -27,7 +27,11 @@ async def heartbeat(ctx):
 
 
 async def expire_reservations(ctx):
-    return await asyncio.to_thread(ctx["store"].expire_payment_reservations)
+    count = await asyncio.to_thread(ctx["store"].expire_payment_reservations)
+    if count:
+        from .observability import RESERVATION_EXPIRY
+        RESERVATION_EXPIRY.inc(count)
+    return count
 
 
 async def cleanup_security_data(ctx):

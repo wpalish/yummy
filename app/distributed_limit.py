@@ -54,6 +54,8 @@ class DistributedLimiter:
         try:
             current, ttl = self.client.eval(_SCRIPT, 1, key, window)
         except RedisError as exc:
+            from .observability import record_redis_failure
+            record_redis_failure()
             # A configured distributed guard must not silently degrade, otherwise
             # an attacker can trigger failover and bypass limits on every replica.
             raise RuntimeError("distributed rate limiter unavailable") from exc

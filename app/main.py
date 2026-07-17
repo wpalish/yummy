@@ -19,10 +19,11 @@ from collections import deque
 from contextlib import asynccontextmanager
 from pathlib import Path
 
-from fastapi import Depends, FastAPI, HTTPException
+from fastapi import Depends, FastAPI, Header, HTTPException
 from fastapi import Request as HttpRequest
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse, JSONResponse, PlainTextResponse, StreamingResponse
+from fastapi.responses import FileResponse, JSONResponse, PlainTextResponse, Response, StreamingResponse
+from prometheus_client import CONTENT_TYPE_LATEST, generate_latest
 from fastapi.staticfiles import StaticFiles
 from starlette.middleware.trustedhost import TrustedHostMiddleware
 
@@ -74,6 +75,10 @@ from .models import (
     ReviewCreate,
     StaffInvitationCreate,
     StaffInvitationResult,
+)
+from .observability import (
+    DB_POOL_WAITING, EMAIL_FAILURES, PAYMENT_PENDING_AGE, REFUND_PENDING_AGE,
+    WEBHOOK_FAILURES, configure_observability, observe_http,
 )
 from .payments import (
     PaymentUnavailable,
@@ -324,6 +329,7 @@ async def security_headers(request: HttpRequest, call_next):
     except Exception:
         log.exception("request ERROR id=%s method=%s path=%s", request_id,
                       request.method, audit_path)
+        observe_http(request.method, audit_path, 500, started)
         raise
     for k, v in _SEC_HEADERS.items():
         response.headers.setdefault(k, v)
@@ -334,6 +340,9 @@ async def security_headers(request: HttpRequest, call_next):
         # Auth/PII/API ответы не должны оставаться в shared/browser caches.
         response.headers.setdefault("Cache-Control", "no-store")
         response.headers.setdefault("Pragma", "no-cache")
+    route = request.scope.get("route")
+    route_path = getattr(route, "path", audit_path)
+    observe_http(request.method, route_path, response.status_code, started)
     log.info("request id=%s method=%s path=%s status=%s duration_ms=%s",
              request_id, request.method, audit_path, response.status_code,
              round((time.monotonic() - started) * 1000))
@@ -368,6 +377,7 @@ def service_worker() -> FileResponse:
 app.mount("/static", StaticFiles(directory=str(_STATIC)), name="static")
 app.include_router(telegram_router)
 app.include_router(accounts_router)
+configure_observability(app)
 
 _LOCAL = {"127.0.0.1", "::1", "testclient", "localhost"}
 
@@ -527,6 +537,21 @@ def health() -> dict:
         return {"status": "ok"}
     p, b, o = store.count()
     return {"status": "ok", "partners": p, "boxes": b, "orders": o}
+
+
+@app.get("/metrics", include_in_schema=False)
+def metrics_endpoint(authorization: str | None = Header(default=None)) -> Response:
+    token = os.getenv("YUMMY_METRICS_TOKEN", "")
+    if not token or not authorization or not hmac.compare_digest(authorization, f"Bearer {token}"):
+        raise HTTPException(404, "Not found")
+    stats = store._database.pool_stats()
+    DB_POOL_WAITING.set(stats.get("requests_waiting", 0))
+    operational = store.operational_metrics()
+    PAYMENT_PENDING_AGE.set(operational["payment_pending_age"])
+    REFUND_PENDING_AGE.set(operational["refund_pending_age"])
+    WEBHOOK_FAILURES.set(operational["webhook_failures"])
+    EMAIL_FAILURES.set(operational["email_failures"])
+    return Response(generate_latest(), media_type=CONTENT_TYPE_LATEST)
 
 
 @app.get("/config", include_in_schema=False)

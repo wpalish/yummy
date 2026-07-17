@@ -146,6 +146,8 @@ refund request ownership/admin workflow уже реализован, но реа
 | Partner/staff access | IMPLEMENTED | hidden buyer UI, invitation-only owner/manager/cashier, hashed single-use links, server RBAC |
 | Production demo isolation | IMPLEMENTED | no seed/fake-paid/static venues/example reviews/demo PIN; provider absent = fail-closed |
 | Background operations | IMPLEMENTED | ARQ heartbeat, expiry, reconciliation, cleanup, invoices, encrypted outbox retry/dead-letter |
+| Observability | IMPLEMENTED/PARTIAL | JSON logs, Sentry/OTLP hooks, protected Prometheus business metrics; external Grafana/uptime setup |
+| Backup/DR | IMPLEMENTED/PARTIAL | age-encrypted dump, checksum, safe separate-target restore drill/runbook; Supabase PITR external |
 | Admin control plane | IMPLEMENTED | MFA-only users/partners/payments/webhooks/refunds/billing/audit and account actions |
 | Partner merchant billing | IMPLEMENTED/PARTIAL | encrypted per-partner config, readiness gates, versioned bps rules/ledger; Kaspi adapter external |
 | Stripe Checkout payments | IMPLEMENTED/PARTIAL | reservation, idempotent session, signed webhook, event dedupe/reconciliation; live account external |

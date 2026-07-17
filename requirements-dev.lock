@@ -21,6 +21,8 @@ argon2-cffi-bindings==25.1.0
     # via argon2-cffi
 arq==0.28.0
     # via -r requirements.txt
+asgiref==3.12.1
+    # via opentelemetry-instrumentation-asgi
 async-timeout==5.0.1
     # via redis
 bandit==1.9.4
@@ -38,6 +40,7 @@ certifi==2026.6.17
     #   httpcore
     #   httpx
     #   requests
+    #   sentry-sdk
 cffi==2.1.0
     # via
     #   argon2-cffi-bindings
@@ -56,9 +59,13 @@ cyclonedx-python-lib==11.11.0
 defusedxml==0.7.1
     # via py-serializable
 fastapi==0.139.0
-    # via -r requirements.txt
+    # via
+    #   -r requirements.txt
+    #   sentry-sdk
 filelock==3.29.7
     # via cachecontrol
+googleapis-common-protos==1.75.0
+    # via opentelemetry-exporter-otlp-proto-http
 greenlet==3.5.3
     # via sqlalchemy
 h11==0.16.0
@@ -92,11 +99,51 @@ mdurl==0.1.2
     # via markdown-it-py
 msgpack==1.2.1
     # via cachecontrol
+opentelemetry-api==1.44.0
+    # via
+    #   -r requirements.txt
+    #   opentelemetry-exporter-otlp-proto-http
+    #   opentelemetry-instrumentation
+    #   opentelemetry-instrumentation-asgi
+    #   opentelemetry-instrumentation-fastapi
+    #   opentelemetry-sdk
+    #   opentelemetry-semantic-conventions
+opentelemetry-exporter-otlp-proto-common==1.44.0
+    # via opentelemetry-exporter-otlp-proto-http
+opentelemetry-exporter-otlp-proto-http==1.44.0
+    # via -r requirements.txt
+opentelemetry-instrumentation==0.65b0
+    # via
+    #   opentelemetry-instrumentation-asgi
+    #   opentelemetry-instrumentation-fastapi
+opentelemetry-instrumentation-asgi==0.65b0
+    # via opentelemetry-instrumentation-fastapi
+opentelemetry-instrumentation-fastapi==0.65b0
+    # via -r requirements.txt
+opentelemetry-proto==1.44.0
+    # via
+    #   opentelemetry-exporter-otlp-proto-common
+    #   opentelemetry-exporter-otlp-proto-http
+opentelemetry-sdk==1.44.0
+    # via
+    #   -r requirements.txt
+    #   opentelemetry-exporter-otlp-proto-http
+opentelemetry-semantic-conventions==0.65b0
+    # via
+    #   opentelemetry-instrumentation
+    #   opentelemetry-instrumentation-asgi
+    #   opentelemetry-instrumentation-fastapi
+    #   opentelemetry-sdk
+opentelemetry-util-http==0.65b0
+    # via
+    #   opentelemetry-instrumentation-asgi
+    #   opentelemetry-instrumentation-fastapi
 packageurl-python==0.17.6
     # via cyclonedx-python-lib
 packaging==26.2
     # via
     #   build
+    #   opentelemetry-instrumentation
     #   pip-audit
     #   pip-requirements-parser
     #   pytest
@@ -113,6 +160,12 @@ platformdirs==4.10.0
     # via pip-audit
 pluggy==1.6.0
     # via pytest
+prometheus-client==0.25.0
+    # via -r requirements.txt
+protobuf==7.35.1
+    # via
+    #   googleapis-common-protos
+    #   opentelemetry-proto
 psycopg==3.3.4
     # via -r requirements.txt
 psycopg-binary==3.3.4
@@ -158,6 +211,7 @@ redis==5.3.1
 requests==2.34.2
     # via
     #   cachecontrol
+    #   opentelemetry-exporter-otlp-proto-http
     #   pip-audit
     #   stripe
 rich==15.0.0
@@ -167,6 +221,8 @@ rich==15.0.0
 ruff==0.15.21
     # via -r requirements-dev.txt
 segno==1.6.6
+    # via -r requirements.txt
+sentry-sdk==2.66.0
     # via -r requirements.txt
 sortedcontainers==2.4.0
     # via cyclonedx-python-lib
@@ -190,6 +246,10 @@ typing-extensions==4.16.0
     #   anyio
     #   cyclonedx-python-lib
     #   fastapi
+    #   opentelemetry-api
+    #   opentelemetry-exporter-otlp-proto-http
+    #   opentelemetry-sdk
+    #   opentelemetry-semantic-conventions
     #   psycopg
     #   psycopg-pool
     #   pydantic
@@ -203,7 +263,9 @@ typing-inspection==0.4.2
     #   fastapi
     #   pydantic
 urllib3==2.7.0
-    # via requests
+    # via
+    #   requests
+    #   sentry-sdk
 uvicorn==0.51.0
     # via -r requirements.txt
 uvloop==0.22.1
@@ -214,6 +276,8 @@ websockets==16.1
     # via uvicorn
 wheel==0.47.0
     # via pip-tools
+wrapt==2.2.2
+    # via opentelemetry-instrumentation
 
 # The following packages are considered to be unsafe in a requirements file:
 # pip

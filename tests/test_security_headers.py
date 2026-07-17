@@ -98,6 +98,16 @@ def test_readiness_fails_when_required_worker_heartbeat_is_missing(monkeypatch):
     assert response.json()["detail"] == "background worker unavailable"
 
 
+def test_metrics_endpoint_is_secret_protected(monkeypatch):
+    client = _client()
+    monkeypatch.setenv("YUMMY_METRICS_TOKEN", "metrics-secret")
+    assert client.get("/metrics").status_code == 404
+    response = client.get("/metrics", headers={"Authorization": "Bearer metrics-secret"})
+    assert response.status_code == 200
+    assert "yummy_http_requests_total" in response.text
+    assert "DATABASE_URL" not in response.text
+
+
 def test_host_header_allowlist_rejects_unknown_host():
     from fastapi.testclient import TestClient
     from app.main import app
