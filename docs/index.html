@@ -533,7 +533,7 @@
     <section id="view-venues" class="hidden">
       <div class="vh">
         <h2 class="pageh" style="margin:1.1rem 0 .2rem">Заведения рядом</h2>
-        <p class="sub" style="margin-bottom:.7rem">Кофейни-партнёры Yummy в Астане — выбери район и забери сюрприз-бокс сегодня.</p>
+        <p class="sub" style="margin-bottom:.7rem">Кофейни и пекарни Астаны, которые мы подключаем к Yummy. Отметь, где хочешь боксы — начнём с самых востребованных.</p>
       </div>
       <div class="chainf" id="chainFilter"></div>
       <div class="dists" id="vDistricts"></div>
@@ -723,7 +723,7 @@ const ACT = {
   toggleFav:       el => toggleFav(el.dataset.a1),
   showReviews:     el => showReviews(el.dataset.pid, el.dataset.name),
   openVenue:       el => openVenue(el.dataset.a1),
-  bookVenueBox:    el => bookVenueBox(el.dataset.a1, +el.dataset.a2),
+  callVenue:       el => callVenue(el.dataset.a1),
   mapShop:         el => shopFromMap(el.dataset.name),
   cancelOrder:     el => cancelOrder(el.dataset.a1),
   userRefund:      el => userRefund(el.dataset.a1),
@@ -774,7 +774,8 @@ const KZ={
 "Показать код и QR":"Код пен QR көрсету","Не выдали заказ? Вернуть деньги":"Тапсырыс берілмеді ме? Ақшаны қайтару",
 "оплачен":"төленді","выдан":"берілді","не забран":"алынбады","возврат":"қайтарым","отменён":"жойылды",
 "Заведения рядом":"Маңайдағы мекемелер",
-"Кофейни-партнёры Yummy в Астане — выбери район и забери сюрприз-бокс сегодня.":"Yummy серіктес-кофеханалары Астанада — ауданды таңдап, бүгін сюрприз-бокс алып кет.",
+"Кофейни и пекарни Астаны, которые мы подключаем к Yummy. Отметь, где хочешь боксы — начнём с самых востребованных.":"Yummy-ге қосып жатқан Астананың кофеханалары мен наубайханалары. Қай жерден бокс қалайтыныңды белгіле — ең сұранысқа иеден бастаймыз.",
+"Заведение ещё не в Yummy.":"Мекеме әлі Yummy-де жоқ.","📣 Хочу боксы отсюда":"📣 Осы жерден бокс қалаймын","📍 на карте":"📍 картада",
 "Сегодня боксов нет":"Бүгін бокс жоқ","Доступно сегодня — можно забрать:":"Бүгін қолжетімді — алуға болады:",
 "Забрать":"Алу","Ничего не нашлось в этом фильтре.":"Бұл сүзгіде ештеңе табылмады.",
 "Есильский":"Есіл","Нура":"Нұра","Сарайшык":"Сарайшық","Байконур":"Байқоңыр","Сарыарка":"Сарыарқа","Алматинский":"Алматы",
@@ -1598,8 +1599,6 @@ async function fetchVenues(){
   }
   ALL_VENUES=[]; return ALL_VENUES;
 }
-const vBoxCount=v=>v.boxes.reduce((s,b)=>s+b.qty,0);
-const vMinPrice=v=>Math.min(...v.boxes.map(b=>b.price));
 async function loadVenues(){
   const vs=await fetchVenues();
   // фильтр по сети
@@ -1623,17 +1622,15 @@ function venuesFiltered(){
   return vs;
 }
 function vCard(v){
-  const m=CHAIN_META[v.chain]||{cls:"",ic:"☕"}, n=vBoxCount(v);
-  const fomo=n<=3;
+  const m=CHAIN_META[v.chain]||{cls:"",ic:"☕"};
   return `<article class="vcard" data-id="${v.id}">
     <div class="logo ${m.cls}">${m.ic}</div>
     <div class="b">
       <h3>${esc(v.chain)}</h3>
       <div class="addr">${esc(v.addr)} · ${esc(v.district)}</div>
       <div class="meta">
-        ${v.rating?`<span class="star">⭐ ${v.rating}</span>`:""}
-        <span class="pill${fomo?"":" gr"}">${fomo?"🔥 ":""}${n} ${plural(n,["бокс","бокса","боксов"])}</span>
-        <span class="pill gr">от ${money(vMinPrice(v))}</span>
+        ${v.rating?`<span class="star">⭐ ${v.rating}${v.reviews?` · ${v.reviews}`:""}</span>`:""}
+        <span class="pill gr">📍 на карте</span>
       </div>
     </div></article>`;
 }
@@ -1666,17 +1663,12 @@ function renderVMap(){
   vmapObj._mk=vs.map(v=>{
     const color=v.chain==="Zebra Coffee"?"#2b2b2b":"#6F4E37";
     const mk=L.circleMarker([v.lat,v.lon],{radius:6,fillColor:color,color:"#fff",weight:1.5,fillOpacity:.9}).addTo(vmapObj);
-    mk.bindPopup(`<b>${esc(v.chain)}</b><br>${esc(v.addr)}<br>${esc(v.district)} · ${v.rating?"⭐ "+v.rating+" · ":""}${vBoxCount(v)} ${plural(vBoxCount(v),["бокс","бокса","боксов"])}<br><button data-act="openVenue" data-a1="${v.id}" style="margin-top:6px;width:100%;background:oklch(22% .03 45);border:0;padding:7px;border-radius:999px;font-weight:700;color:oklch(97% .018 82);cursor:pointer">Смотреть боксы</button>`);
+    mk.bindPopup(`<b>${esc(v.chain)}</b><br>${esc(v.addr)}<br>${esc(v.district)}${v.rating?" · ⭐ "+v.rating:""}<br><button data-act="openVenue" data-a1="${v.id}" style="margin-top:6px;width:100%;background:oklch(22% .03 45);border:0;padding:7px;border-radius:999px;font-weight:700;color:oklch(97% .018 82);cursor:pointer">Подробнее</button>`);
     return mk;
   });
   if(vs.length){const g=L.featureGroup(vmapObj._mk); try{vmapObj.fitBounds(g.getBounds().pad(0.1));}catch(e){}}
 }
 const CAT_EMO={sweet:"🍩",bakery:"🥐",mixed:"🧺",snack:"🥪"};
-function venueWin(fromMin,durH){
-  const from=new Date(Date.now()+fromMin*60000); from.setMinutes(from.getMinutes()<30?0:30,0,0);
-  const to=new Date(from.getTime()+durH*3600000);
-  return win(from.toISOString(),to.toISOString());
-}
 window.openVenue=id=>{
   const v=(ALL_VENUES||[]).find(x=>x.id===id); if(!v)return;
   const m=CHAIN_META[v.chain]||{ic:"☕"};
@@ -1686,36 +1678,17 @@ window.openVenue=id=>{
       <div><h3 style="margin:0">${esc(v.chain)}</h3><div style="font-size:.8rem;color:var(--txt2)">${esc(v.addr)} · ${esc(v.district)}${v.rating?" · ⭐ "+v.rating:""}</div></div>
     </div>
     <a href="https://2gis.kz/astana/firm/${v.id}" target="_blank" rel="noopener" style="display:inline-block;margin:.6rem 0 .2rem;font-size:.78rem;font-weight:700">🗺 Открыть в 2ГИС →</a>
-    <p style="font-size:.8rem;color:var(--txt2);margin:.5rem 0 .3rem">Доступно сегодня — можно забрать:</p>
-    <div id="vBoxes">${v.boxes.map((b,i)=>`
-      <div class="lrow">
-        <div style="font-size:1.4rem">${CAT_EMO[b.cat]||"🧺"}</div>
-        <div class="g"><b>${esc(b.title)}</b>
-          <div style="font-size:.76rem;color:var(--txt2)">⏱ ${venueWin(b.from,b.dur)} · осталось ${b.qty}</div>
-          <div style="font-size:.8rem;margin-top:.1rem"><b style="color:var(--brown)">${money(b.price)}</b> <s style="color:#A08D7D">${money(b.value)}</s> <span style="color:var(--green);font-weight:800">−${Math.round((1-b.price/b.value)*100)}%</span></div>
-        </div>
-        <button class="btn" style="width:auto;padding:.5rem .8rem;font-size:.82rem" data-act="bookVenueBox" data-a1="${v.id}" data-a2="${i}">Забрать</button>
-      </div>`).join("")}</div>
-    <button class="btn sec" data-act="closeModal" style="margin-top:.8rem">Закрыть</button>
+    <div class="rules" style="margin-top:.7rem"><b>Заведение ещё не в Yummy.</b> Это кофейня из карты Астаны, которую мы хотим подключить. Как только она начнёт продавать вечерние излишки — здесь появятся боксы со скидкой.</div>
+    <button class="btn" style="margin-top:.7rem" data-act="callVenue" data-a1="${esc(v.chain)}">📣 Хочу боксы отсюда</button>
+    <button class="btn sec" data-act="closeModal" style="margin-top:.5rem">Закрыть</button>
   </div>`);
 };
-window.bookVenueBox=(id,i)=>{
-  const v=(ALL_VENUES||[]).find(x=>x.id===id); if(!v)return; const b=v.boxes[i]; if(!b||b.qty<=0)return;
-  const acc=account();
-  const name=(acc&&acc.name)||"Гость", phone=(acc&&acc.phone)||"";
-  const code="YM-"+Math.random().toString(16).slice(2,6).toUpperCase();
-  b.qty--; saveCode(code);
-  let qr="";
-  try{ if(typeof qrcode==="function"){const q=qrcode(0,"M");q.addData(code);q.make();qr=`<div class="qr">${q.createSvgTag({cellSize:6,margin:2})}</div>`;} }catch(e){}
-  showModal(`<div class="mc ok-wrap" style="padding-top:1.3rem">
-    <div class="ok-ic">✅</div><h3>Бокс забронирован!</h3>
-    <p style="color:var(--txt2);font-size:.86rem;margin:.2rem 0 0">${esc(v.chain)} · ${esc(v.addr)}</p>
-    ${qr}<div class="code">${esc(code)}</div>
-    <p style="font-size:.84rem;color:var(--txt2);margin:.5rem 0">Покажите код на кассе.<br>Забрать: <b style="color:var(--brown)">${venueWin(b.from,b.dur)}</b></p>
-    <p style="font-size:.8rem;color:var(--green);font-weight:700">🌱 Вы спасли ~0.5 кг еды и ~1.3 кг CO₂</p>
-    <a class="btn sec" style="display:block;text-decoration:none;margin:.3rem 0 .5rem" href="https://2gis.kz/astana/firm/${v.id}" target="_blank" rel="noopener">🗺 Маршрут в 2ГИС</a>
-    <button class="btn" data-act="closeLoadVenues">Готово</button>
-  </div>`);
+/* «Позвать заведение» — честный интерес вместо фейковой брони */
+window.callVenue=name=>{
+  const key="ym_called", called=JSON.parse(localStorage.getItem(key)||"[]");
+  if(!called.includes(name)){called.push(name);localStorage.setItem(key,JSON.stringify(called));}
+  closeModal();
+  toast(`Спасибо! Передадим ${name}, что их ждут в Yummy 💛`);
 };
 /* отзывы (демо) */
 window.showReviews=async(partnerId,name)=>{
