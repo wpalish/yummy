@@ -54,6 +54,42 @@ class PartnerStatusUpdate(BaseModel):
     reason: str = Field(default="", max_length=500)
 
 
+class PartnerPaymentAccountCreate(BaseModel):
+    partner_id: str = Field(..., min_length=1, max_length=64)
+    provider: Literal["kaspi", "stripe"]
+    merchant_reference: str = Field(..., min_length=2, max_length=200)
+    point_of_service_id: str = Field(default="", max_length=200)
+    credentials: str = Field(..., min_length=8, max_length=4000)
+
+
+class PartnerPaymentAccount(BaseModel):
+    id: str
+    partner_id: str
+    provider: str
+    merchant_reference_masked: str
+    point_of_service_id: str
+    status: Literal["pending", "active", "suspended"]
+    payments_enabled: bool
+    refunds_enabled: bool
+    credentials_configured: bool = True
+    created_at: str
+    updated_at: str
+    verified_at: str | None = None
+    verified_by: str | None = None
+
+
+class PaymentAccountStatusUpdate(BaseModel):
+    status: Literal["pending", "active", "suspended"]
+    payments_enabled: bool = False
+    refunds_enabled: bool = False
+    reason: str = Field(..., min_length=3, max_length=500)
+
+
+class CommissionRuleCreate(BaseModel):
+    partner_id: str
+    rate_basis_points: int = Field(..., ge=0, le=5000)
+
+
 class StaffInvitationCreate(BaseModel):
     email: str = Field(..., max_length=254)
     partner_role: Literal["owner", "manager", "cashier"]

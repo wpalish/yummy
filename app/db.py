@@ -68,6 +68,25 @@ class Store:
                     rating INTEGER, text TEXT,
                     status TEXT DEFAULT 'approved', reject_reason TEXT,
                     created_at TEXT);
+                CREATE TABLE IF NOT EXISTS partner_payment_accounts(
+                    id TEXT PRIMARY KEY, partner_id TEXT, provider TEXT,
+                    merchant_reference TEXT, point_of_service_id TEXT,
+                    credentials_encrypted TEXT, status TEXT DEFAULT 'pending',
+                    payments_enabled INTEGER DEFAULT 0, refunds_enabled INTEGER DEFAULT 0,
+                    created_at TEXT, updated_at TEXT, verified_at TEXT, verified_by TEXT,
+                    UNIQUE(partner_id, provider));
+                CREATE TABLE IF NOT EXISTS commission_rules(
+                    id TEXT PRIMARY KEY, partner_id TEXT, rate_basis_points INTEGER,
+                    valid_from TEXT, valid_to TEXT, created_by TEXT, created_at TEXT);
+                CREATE TABLE IF NOT EXISTS commission_ledger(
+                    id TEXT PRIMARY KEY, partner_id TEXT, order_id TEXT UNIQUE,
+                    payment_id TEXT, gross_amount_minor INTEGER, commission_rate_bps INTEGER,
+                    commission_amount_minor INTEGER, status TEXT, invoice_id TEXT,
+                    created_at TEXT, reversed_at TEXT);
+                CREATE TABLE IF NOT EXISTS commission_invoices(
+                    id TEXT PRIMARY KEY, partner_id TEXT, period_from TEXT, period_to TEXT,
+                    amount_minor INTEGER, status TEXT, issued_at TEXT, due_at TEXT, paid_at TEXT,
+                    document_number TEXT UNIQUE);
                 CREATE TABLE IF NOT EXISTS payments(
                     id TEXT PRIMARY KEY, order_id TEXT UNIQUE REFERENCES orders(id),
                     user_id TEXT, provider TEXT, status TEXT, currency TEXT,
@@ -90,6 +109,10 @@ class Store:
                 CREATE INDEX IF NOT EXISTS ix_orders_user    ON orders(user_id, created_at);
                 CREATE INDEX IF NOT EXISTS ix_orders_status  ON orders(status);
                 CREATE INDEX IF NOT EXISTS ix_reviews_partner ON reviews(partner_id, status, created_at);
+                CREATE INDEX IF NOT EXISTS ix_partner_payment_accounts ON partner_payment_accounts(partner_id,status);
+                CREATE INDEX IF NOT EXISTS ix_commission_rules ON commission_rules(partner_id,valid_from);
+                CREATE INDEX IF NOT EXISTS ix_commission_ledger ON commission_ledger(partner_id,status,created_at);
+                CREATE INDEX IF NOT EXISTS ix_commission_invoices ON commission_invoices(partner_id,status);
                 CREATE INDEX IF NOT EXISTS ix_payments_status ON payments(status, reservation_expires_at);
                 CREATE INDEX IF NOT EXISTS ix_payments_user ON payments(user_id, created_at);
                 CREATE INDEX IF NOT EXISTS ix_refunds_user ON refund_requests(user_id, created_at);
@@ -399,6 +422,17 @@ class Store:
                     return "rejected"
                 c.execute("UPDATE payments SET status='paid',payment_intent_id=?,updated_at=? WHERE id=? AND status='pending'", (obj.get("payment_intent"), _now_iso(), payment_id))
                 c.execute("UPDATE orders SET status='paid',payment_status='paid' WHERE id=? AND status='payment_pending'", (payment["order_id"],))
+                # Commission is derived from the versioned partner rule and is idempotent by order_id.
+                order = c.execute("SELECT * FROM orders WHERE id=?", (payment["order_id"],)).fetchone()
+                rule = c.execute("SELECT * FROM commission_rules WHERE partner_id=? AND valid_to IS NULL ORDER BY valid_from DESC LIMIT 1",
+                                 (order["partner_id"],)).fetchone()
+                rate = int(rule["rate_basis_points"]) if rule else 0
+                commission = (int(payment["amount_minor"]) * rate + 9999) // 10000
+                c.execute("""INSERT INTO commission_ledger(id,partner_id,order_id,payment_id,
+                    gross_amount_minor,commission_rate_bps,commission_amount_minor,status,created_at)
+                    VALUES(?,?,?,?,?,?,?,'accrued',?) ON CONFLICT(order_id) DO NOTHING""",
+                    (f"cl-{payment_id}", order["partner_id"], order["id"], payment_id,
+                     payment["amount_minor"], rate, commission, _now_iso()))
                 result = "paid"
             elif event_type in {"checkout.session.expired", "checkout.session.async_payment_failed"}:
                 order = c.execute("SELECT * FROM orders WHERE id=?", (payment["order_id"],)).fetchone()
@@ -454,6 +488,86 @@ class Store:
                 (partner_id,),
             )
             return cur.rowcount
+
+    def upsert_payment_account(self, account_id: str, partner_id: str, provider: str,
+                               merchant_reference: str, point_of_service_id: str,
+                               encrypted_credentials: str) -> dict:
+        now = _now_iso()
+        with self._lock, self._conn() as c:
+            c.execute("""INSERT INTO partner_payment_accounts(
+                id,partner_id,provider,merchant_reference,point_of_service_id,
+                credentials_encrypted,status,payments_enabled,refunds_enabled,created_at,updated_at)
+                VALUES(?,?,?,?,?,?,'pending',0,0,?,?)
+                ON CONFLICT(partner_id,provider) DO UPDATE SET
+                merchant_reference=excluded.merchant_reference,
+                point_of_service_id=excluded.point_of_service_id,
+                credentials_encrypted=excluded.credentials_encrypted,
+                status='pending',payments_enabled=0,refunds_enabled=0,updated_at=excluded.updated_at""",
+                (account_id, partner_id, provider, merchant_reference, point_of_service_id,
+                 encrypted_credentials, now, now))
+            return dict(c.execute("SELECT * FROM partner_payment_accounts WHERE partner_id=? AND provider=?",
+                                  (partner_id, provider)).fetchone())
+
+    def payment_account(self, partner_id: str, provider: str | None = None) -> dict | None:
+        with self._lock, self._conn() as c:
+            if provider:
+                row = c.execute("SELECT * FROM partner_payment_accounts WHERE partner_id=? AND provider=?",
+                                (partner_id, provider)).fetchone()
+            else:
+                row = c.execute("SELECT * FROM partner_payment_accounts WHERE partner_id=? ORDER BY status='active' DESC LIMIT 1",
+                                (partner_id,)).fetchone()
+            return dict(row) if row else None
+
+    def set_payment_account_status(self, account_id: str, status: str,
+                                   payments_enabled: bool, refunds_enabled: bool,
+                                   admin_id: str) -> dict | None:
+        now = _now_iso()
+        with self._lock, self._conn() as c:
+            updated = c.execute("""UPDATE partner_payment_accounts SET status=?,payments_enabled=?,
+                refunds_enabled=?,verified_at=?,verified_by=?,updated_at=? WHERE id=?""",
+                (status, int(payments_enabled), int(refunds_enabled),
+                 now if status == 'active' else None, admin_id, now, account_id))
+            if updated.rowcount != 1:
+                return None
+            return dict(c.execute("SELECT * FROM partner_payment_accounts WHERE id=?", (account_id,)).fetchone())
+
+    def create_commission_rule(self, rule_id: str, partner_id: str, rate_bps: int,
+                               admin_id: str) -> dict:
+        now = _now_iso()
+        with self._lock, self._conn() as c:
+            c.execute("UPDATE commission_rules SET valid_to=? WHERE partner_id=? AND valid_to IS NULL",
+                      (now, partner_id))
+            c.execute("""INSERT INTO commission_rules(id,partner_id,rate_basis_points,
+                valid_from,created_by,created_at) VALUES(?,?,?,?,?,?)""",
+                (rule_id, partner_id, rate_bps, now, admin_id, now))
+            return dict(c.execute("SELECT * FROM commission_rules WHERE id=?", (rule_id,)).fetchone())
+
+    def accrue_commission(self, order_id: str, payment_id: str) -> dict | None:
+        with self._lock, self._conn() as c:
+            order = c.execute("SELECT * FROM orders WHERE id=?", (order_id,)).fetchone()
+            payment = c.execute("SELECT * FROM payments WHERE id=?", (payment_id,)).fetchone()
+            if not order or not payment:
+                return None
+            rule = c.execute("""SELECT * FROM commission_rules WHERE partner_id=?
+                AND valid_from<=? AND (valid_to IS NULL OR valid_to>?)
+                ORDER BY valid_from DESC LIMIT 1""",
+                (order["partner_id"], payment["updated_at"], payment["updated_at"])).fetchone()
+            rate = int(rule["rate_basis_points"]) if rule else 0
+            amount = (int(payment["amount_minor"]) * rate + 9999) // 10000
+            ledger_id = f"cl-{payment_id}"
+            c.execute("""INSERT INTO commission_ledger(id,partner_id,order_id,payment_id,
+                gross_amount_minor,commission_rate_bps,commission_amount_minor,status,created_at)
+                VALUES(?,?,?,?,?,?,?,'accrued',?) ON CONFLICT(order_id) DO NOTHING""",
+                (ledger_id, order["partner_id"], order_id, payment_id,
+                 payment["amount_minor"], rate, amount, _now_iso()))
+            row = c.execute("SELECT * FROM commission_ledger WHERE order_id=?", (order_id,)).fetchone()
+            return dict(row) if row else None
+
+    def partner_commission_ledger(self, partner_id: str) -> list[dict]:
+        with self._lock, self._conn() as c:
+            return [dict(row) for row in c.execute(
+                "SELECT * FROM commission_ledger WHERE partner_id=? ORDER BY created_at DESC",
+                (partner_id,)).fetchall()]
 
     def partner_orders(self, partner_id: str) -> list[Order]:
         with self._lock, self._conn() as c:
@@ -554,7 +668,8 @@ class Store:
             # непустую базу в dev/test окружении.
             c.executescript(
                 "DELETE FROM reviews; DELETE FROM refund_requests; DELETE FROM stripe_events; "
-                "DELETE FROM payments; DELETE FROM orders; "
+                "DELETE FROM commission_ledger; DELETE FROM commission_invoices; DELETE FROM commission_rules; "
+                "DELETE FROM partner_payment_accounts; DELETE FROM payments; DELETE FROM orders; "
                 "DELETE FROM boxes; DELETE FROM partners;"
             )
 

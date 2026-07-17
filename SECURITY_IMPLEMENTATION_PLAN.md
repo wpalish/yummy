@@ -36,6 +36,7 @@
 | FR-04a | Partner/staff onboarding | admin invite links, owner/manager/cashier RBAC, hidden buyer UI | Implemented |
 | FR-04b | Email identity | verify/reissue/forgot/reset, generic responses, session revoke | Implemented; provider external |
 | FR-04c | Refund support | owned request, duplicate guard, MFA review/decision, atomic order state | Implemented; payment provider external |
+| FR-04d | Partner billing | encrypted merchant accounts, readiness, bps rules, commission ledger | Implemented; Kaspi API external |
 | FR-05 | File upload | MIME + magic bytes + AV + private object storage | N/A until product requires uploads |
 | FR-06 | REST API | OpenAPI in dev, schema validation, rate limits | Implemented/partial distributed limit |
 | FR-07 | HTTPS only | edge redirects HTTP, strict origin TLS evidence | External |

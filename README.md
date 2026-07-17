@@ -79,6 +79,13 @@ inventory как `payment_pending`, создаёт idempotent Checkout Session �
 
 Разработка: `make help` (dev / test / docs / seed / zip).
 
+Partner billing: merchant credentials шифруются AES-256-GCM, payment account должен
+быть active, а комиссия фиксируется integer basis points в immutable ledger.
+
+VPS deployment готов в `deploy/`: Caddy, Docker Compose, internal Redis, health
+checks, `.env` template и deploy script. `tools/check_production.py` проверяет
+Supabase revision/таблицы/Redis без вывода secrets.
+
 Horizontal deployment: задай `REDIS_URL` — включатся атомарные distributed limits;
 при configured Redis outage limiter fail-closed возвращает `503`, а не деградирует.
 

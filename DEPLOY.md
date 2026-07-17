@@ -1,8 +1,11 @@
-# Деплой Yummy на Render — пошагово (~15 минут, $0)
+# Деплой Yummy: VPS production и Render reference
 
-Бэкенд уже готов к деплою: `render.yaml` описывает сервис и переменные, Render
-сам сгенерирует секрет. Ниже — что кликать. Всё проверено: приложение стартует с
-этими переменными, БД создаётся, защита включается, CORS открыт для Pages.
+Рекомендуемый production путь — `deploy/docker-compose.production.yml` на VPS:
+Caddy выдаёт TLS, FastAPI закрыт внутренней сетью, Redis не публикует порт, а
+PostgreSQL находится в Supabase. Скопируй `deploy/env.production.example` в
+`.env.production`, заполни secrets локально и запусти `deploy/deploy.sh`.
+
+`render.yaml` остаётся reference-вариантом managed deployment.
 
 ## Шаг 1. Аккаунт Render
 1. Открой **render.com** → **Get Started** → войди **через GitHub** (тот же

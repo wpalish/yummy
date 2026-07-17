@@ -55,6 +55,10 @@ from .models import (
     OrderResult,
     Partner,
     PartnerApplication,
+    PartnerPaymentAccount,
+    PartnerPaymentAccountCreate,
+    PaymentAccountStatusUpdate,
+    CommissionRuleCreate,
     PartnerStatusUpdate,
     PublicOrder,
     RedeemInput,
@@ -459,6 +463,19 @@ def _authorized_partner_id(user: PublicUser, requested_id: str | None = None) ->
     return partner.id
 
 
+def _public_payment_account(row: dict) -> PartnerPaymentAccount:
+    merchant = row["merchant_reference"] or ""
+    masked = ("*" * max(0, len(merchant) - 4)) + merchant[-4:]
+    return PartnerPaymentAccount(
+        id=row["id"], partner_id=row["partner_id"], provider=row["provider"],
+        merchant_reference_masked=masked, point_of_service_id=row["point_of_service_id"] or "",
+        status=row["status"], payments_enabled=bool(row["payments_enabled"]),
+        refunds_enabled=bool(row["refunds_enabled"]), created_at=row["created_at"],
+        updated_at=row["updated_at"], verified_at=row["verified_at"],
+        verified_by=row["verified_by"],
+    )
+
+
 def require_approved_partner(
     user: PublicUser = Depends(require_role("partner", "admin")),
 ) -> PublicUser:
@@ -571,6 +588,10 @@ def create_checkout_session(
     if payment_mode() == "disabled":
         raise HTTPException(503, "Онлайн-оплата пока не подключена")
     box = store.box(payload.box_id)
+    if _PRODUCTION and box:
+        account = store.payment_account(box.partner_id, payment_mode())
+        if not account or account["status"] != "active" or not account["payments_enabled"]:
+            raise HTTPException(409, "Заведение ещё не подключило приём оплаты")
     if not box or store.box_orderability(payload.box_id) != "available":
         raise HTTPException(409, "Бокс недоступен")
     payment_id, order_id = _new("pay", 12), _new("o")
@@ -767,6 +788,26 @@ def my_partner_boxes(
     return store.partner_boxes(_partner_for_user(user).id)
 
 
+@app.get("/partner/me/payment-account", response_model=PartnerPaymentAccount | None,
+         tags=["Partner"])
+def my_partner_payment_account(
+    user: PublicUser = Depends(require_role("partner")),
+) -> PartnerPaymentAccount | None:
+    partner = _partner_for_user(user)
+    row = store.payment_account(partner.id)
+    return _public_payment_account(row) if row else None
+
+
+@app.get("/partner/me/commission-ledger", tags=["Partner"])
+def my_partner_commission_ledger(
+    user: PublicUser = Depends(require_role("partner")),
+) -> list[dict]:
+    partner = _partner_for_user(user)
+    if user.partner_role not in {"owner", "manager"}:
+        raise HTTPException(403, "Недостаточно прав")
+    return store.partner_commission_ledger(partner.id)
+
+
 @app.get("/partner/me/orders", response_model=list[Order], tags=["Partner"])
 def my_partner_orders(
     user: PublicUser = Depends(require_role("partner")),
@@ -835,6 +876,59 @@ def redeem(
 # --------------------------------------------------------------------------- #
 #  Админка
 # --------------------------------------------------------------------------- #
+@app.post("/admin/partner-payment-accounts", response_model=PartnerPaymentAccount,
+          status_code=201, tags=["Admin"])
+def admin_upsert_payment_account(
+    payload: PartnerPaymentAccountCreate,
+    req: HttpRequest,
+    admin: PublicUser = Depends(require_role("admin")),
+) -> PartnerPaymentAccount:
+    from .accounts import encrypt_mfa_secret
+    if not store.partner(payload.partner_id):
+        raise HTTPException(404, "Заведение не найдено")
+    existing = store.payment_account(payload.partner_id, payload.provider)
+    account_id = existing["id"] if existing else _new("pa", 12)
+    encrypted = encrypt_mfa_secret(payload.credentials, account_id)
+    row = store.upsert_payment_account(
+        account_id, payload.partner_id, payload.provider,
+        payload.merchant_reference.strip(), payload.point_of_service_id.strip(), encrypted,
+    )
+    log.warning("audit: payment-account configured id=%s partner=%s provider=%s actor=%s ip=%s",
+                row["id"], payload.partner_id, payload.provider, admin.id,
+                req.client.host if req.client else "?")
+    return _public_payment_account(row)
+
+
+@app.post("/admin/partner-payment-accounts/{account_id}/status",
+          response_model=PartnerPaymentAccount, tags=["Admin"])
+def admin_payment_account_status(
+    account_id: str, payload: PaymentAccountStatusUpdate, req: HttpRequest,
+    admin: PublicUser = Depends(require_role("admin")),
+) -> PartnerPaymentAccount:
+    row = store.set_payment_account_status(
+        account_id, payload.status, payload.payments_enabled,
+        payload.refunds_enabled, admin.id,
+    )
+    if not row:
+        raise HTTPException(404, "Payment account не найден")
+    reason = payload.reason.replace("\r", " ").replace("\n", " ")[:120]
+    log.warning("audit: payment-account status id=%s status=%s actor=%s reason=%s ip=%s",
+                account_id, payload.status, admin.id, reason,
+                req.client.host if req.client else "?")
+    return _public_payment_account(row)
+
+
+@app.post("/admin/commission-rules", tags=["Admin"])
+def admin_create_commission_rule(
+    payload: CommissionRuleCreate,
+    admin: PublicUser = Depends(require_role("admin")),
+) -> dict:
+    if not store.partner(payload.partner_id):
+        raise HTTPException(404, "Заведение не найдено")
+    return store.create_commission_rule(_new("cr", 12), payload.partner_id,
+                                        payload.rate_basis_points, admin.id)
+
+
 @app.post("/admin/staff-invitations", response_model=StaffInvitationResult,
           status_code=201, tags=["Admin"])
 def admin_create_staff_invitation(
