@@ -10,6 +10,7 @@ from __future__ import annotations
 import os
 import sqlite3
 import threading
+import uuid
 from contextlib import contextmanager
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -137,6 +138,18 @@ class Store:
 
     def _partner_row(self, c: sqlite3.Connection, pid: str) -> sqlite3.Row | None:
         return c.execute("SELECT * FROM partners WHERE id=?", (pid,)).fetchone()
+
+    def partner(self, pid: str) -> Partner | None:
+        with self._lock, self._conn() as c:
+            r = self._partner_row(c, pid)
+        return Partner(**dict(r)) if r else None
+
+    def create_partner_for_owner(self, *, name: str, address: str,
+                                 district: str = "Есильский р-н") -> str:
+        """Завести карточку заведения при приёме инвайта владельцем."""
+        pid = "p" + uuid.uuid4().hex[:8]
+        self.upsert_partner(Partner(id=pid, name=name, district=district, address=address))
+        return pid
 
     def upsert_partner(self, p: Partner) -> None:
         with self._lock, self._conn() as c:

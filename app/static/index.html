@@ -465,7 +465,7 @@
 
       <div class="l-band reveal">
         <div><h2>Вы — кофейня или пекарня?</h2><p>Превращайте вечерние списания в выручку. Подключение бесплатно.</p></div>
-        <button class="cta light" data-act="landRoleScroll" data-a1="partner" data-a2="#l-reg">Стать партнёром</button>
+        <button class="cta light" data-act="partnerInfo">Стать партнёром</button>
       </div>
 
       <div id="l-reg" class="l-sec reveal">
@@ -474,7 +474,7 @@
         <div class="l-regcard">
           <div class="roles2">
             <button id="lr-buyer" class="on" data-act="landRole" data-a1="buyer">🛍️ Я покупатель</button>
-            <button id="lr-partner" data-act="landRole" data-a1="partner">☕ Я заведение</button>
+            <button id="lr-partner" data-act="partnerInfo">☕ Я заведение</button>
           </div>
           <label><span id="lrNameL">Имя</span> <input id="lrName" placeholder="Как к вам обращаться" autocomplete="name" /><span class="ferr" id="lr_name"></span></label>
           <label>Email <input id="lrEmail" type="email" placeholder="you@email.com" autocomplete="email" /><span class="ferr" id="lr_email"></span></label>
@@ -600,6 +600,26 @@
       <p class="sub">Контроль заказов, возвраты, ключевые метрики пилота.</p>
       <div class="stats" id="aStats"></div>
       <div class="charts" id="aCharts"></div>
+      <div class="cardp"><h3>Пригласить заведение или персонал</h3>
+        <p class="sub" style="margin:.2rem 0 .6rem">Партнёром становятся только по этой ссылке — покупатели этот путь не видят. Ссылка одноразовая и живёт 7 дней.</p>
+        <div class="frow">
+          <label>Email <input id="ivEmail" type="email" placeholder="cafe@example.kz" autocomplete="off" /></label>
+          <label>Роль <select id="ivRole">
+            <option value="owner">Владелец (новое заведение)</option>
+            <option value="manager">Менеджер (в существующее)</option>
+            <option value="cashier">Кассир (в существующее)</option>
+          </select></label>
+        </div>
+        <div class="frow" id="ivOwnerFields">
+          <label>Название заведения <input id="ivBrand" placeholder="Напр.: Coffee Point" /></label>
+          <label>Адрес <input id="ivAddr" placeholder="пр. Мангилик Ел, 55" /></label>
+        </div>
+        <div class="frow hidden" id="ivPartnerField">
+          <label>Заведение <select id="ivPartner"></select></label>
+        </div>
+        <button class="btn" id="ivCreate" style="margin-top:.5rem">Создать ссылку-приглашение</button>
+        <div id="ivResult" style="margin-top:.6rem;font-size:.84rem"></div>
+      </div>
       <div class="cardp"><h3>Платежи и комиссия партнёров</h3>
         <p class="sub" style="margin:.2rem 0 .6rem">Деньги идут напрямую заведению (его Kaspi). Yummy ведёт учёт комиссии. Реальный Kaspi-приём подключится с мерчант-аккаунтом.</p>
         <div id="aPayments" style="font-size:.84rem"></div></div>
@@ -684,6 +704,7 @@ const ACT = {
   logout:          () => logout(),
   onbBuyer:        () => onbBuyer(),
   onbPartner:      () => onbPartner(),
+  partnerInfo:     () => { $("#onboard").className="onb"; onbPartner(); },
   onbGuest:        () => onbGuest(),
   loginForm:       () => loginForm(),
   showOnboarding:  () => showOnboarding(),
@@ -809,7 +830,10 @@ const KZ={
 "Стандарты пищевой безопасности":"Тағам қауіпсіздігі стандарттары","Договор с заведением":"Мекемемен келісім",
 "Необходимо согласие с офертой и обработкой данных":"Оферта мен деректерді өңдеуге келісім қажет",
 "💬 Telegram-бот: новые боксы":"💬 Telegram-бот: жаңа бокстар","📣 Telegram-канал: витрина боксов":"📣 Telegram-арна: бокстар витринасы","🔔 Узнавать о новых боксах в Telegram":"🔔 Жаңа бокстар туралы Telegram-нан білу","📲 Установить приложение":"📲 Қосымшаны орнату","Код на GitHub":"GitHub-тағы код",
-"Доступ для персонала":"Қызметкерлерге арналған кіру","PIN-код":"PIN-код",
+"Раздел для заведений":"Мекемелерге арналған бөлім","✉️ Стать партнёром":"✉️ Серіктес болу",
+"Заведениям":"Мекемелерге","✉️ Оставить заявку":"✉️ Өтінім қалдыру","Сначала посмотрю боксы":"Алдымен бокстарды қараймын",
+"Приглашение в Yummy":"Yummy-ге шақыру","Принять приглашение":"Шақыруды қабылдау","Позже":"Кейінірек",
+"Пригласить заведение или персонал":"Мекеме немесе қызметкер шақыру","Создать ссылку-приглашение":"Шақыру сілтемесін жасау","Копировать":"Көшіру",
 "Данные (коды заказов, избранное, фильтры) хранятся только в вашем браузере — localStorage. Cookies не используем.":"Деректер (тапсырыс кодтары, таңдаулылар, сүзгілер) тек сіздің браузеріңізде сақталады — localStorage. Cookies қолданбаймыз.",
 "Понятно":"Түсінікті",
 "Боксы в Астане":"Астанадағы бокстар","Свежее, дешевле и без списаний.":"Жаңа, арзан және шығынсыз.",
@@ -944,20 +968,28 @@ const saveFilters=()=>localStorage.setItem("ym_filters",JSON.stringify({d:curDis
 /* ---- роли + bottom-nav + демо-доступ персонала ---- */
 const roleBtns=[...document.querySelectorAll(".roles button")];
 const navBtns=[...document.querySelectorAll(".bnav button")];
+/* Партнёрка/админка — только по роли аккаунта. Демо-PIN убран: партнёром
+   становятся ТОЛЬКО по инвайту админа (/auth/accept-invite), покупатель эти
+   разделы не видит вовсе (см. applyStaffVisibility). Настоящая защита — на
+   бэкенде (require_role + JWT); здесь скрываем UI, чтобы не путать клиентов. */
+const STAFF_VIEWS={partner:["partner","admin"],admin:["admin"]};
+function staffRole(){const a=account();return a&&a.role?a.role:"guest";}
+function canView(v){return (STAFF_VIEWS[v]||[]).includes(staffRole());}
+function applyStaffVisibility(){
+  ["partner","admin"].forEach(v=>{
+    const ok=canView(v);
+    roleBtns.forEach(b=>{if(b.dataset.role===v)b.classList.toggle("hidden",!ok);});
+    navBtns.forEach(b=>{if(b.dataset.nav===v)b.classList.toggle("hidden",!ok);});
+  });
+}
 function requireStaff(cb){
-  if(sessionStorage.getItem("ym_staff")==="1"){cb();return;}
+  if(canView(window.__wantView||"partner")){cb();return;}
   showModal(`<div class="mc">
-    <h3>Доступ для персонала</h3>
-    <p style="font-size:.85rem;color:var(--txt2);margin:.3rem 0 .2rem">Раздел доступен сотрудникам заведений и администраторам. <br><b style="color:var(--brown)">Демо-PIN: 1234</b></p>
-    <label>PIN-код <input id="pinInp" type="password" inputmode="numeric" maxlength="4" placeholder="••••" /></label>
-    <button class="btn" id="pinBtn" style="margin-top:.8rem">Войти</button>
-    <button class="btn sec" data-act="closeModal" style="margin-top:.5rem">Отмена</button>
+    <h3>Раздел для заведений</h3>
+    <p style="font-size:.85rem;color:var(--txt2);margin:.3rem 0 .9rem">Партнёрская панель доступна заведениям-партнёрам Yummy. Подключение — по приглашению: напишите нам, и мы вышлем ссылку для входа.</p>
+    <a class="btn" style="display:block;text-decoration:none" href="mailto:alisher.nursain@gmail.com?subject=Хочу%20стать%20партнёром%20Yummy">✉️ Стать партнёром</a>
+    <button class="btn sec" data-act="closeModal" style="margin-top:.5rem">Закрыть</button>
   </div>`);
-  $("#pinInp").focus();
-  $("#pinBtn").onclick=()=>{
-    if($("#pinInp").value==="1234"){sessionStorage.setItem("ym_staff","1");closeModal();cb();}
-    else toast("Неверный PIN",true);
-  };
 }
 function switchView(v){
   const go=()=>{
@@ -970,6 +1002,7 @@ function switchView(v){
     window.scrollTo({top:0});
     if(v==="landing")setTimeout(revealCheck,60);
   };
+  window.__wantView=v;
   (v==="partner"||v==="admin")?requireStaff(go):go();
 }
 roleBtns.forEach(b=>b.onclick=()=>switchView(b.dataset.role));
@@ -988,6 +1021,7 @@ function account(){try{return JSON.parse(localStorage.getItem("ym_account")||"nu
 function setAccount(a){localStorage.setItem("ym_account",JSON.stringify(a));renderAccount();}
 function renderAccount(){
   const a=account(), btn=$("#acctBtn");
+  applyStaffVisibility();   // вкладки Партнёр/Админ — только своей роли
   if(!a){btn.innerHTML='<span class="av">?</span><span class="nm">Войти</span>';btn.onclick=showOnboarding;return;}
   const ini=((a.name||"?").trim()[0]||"?").toUpperCase();
   btn.innerHTML=`<span class="av">${esc(ini)}</span><span class="nm">${esc(a.name||ROLE_RU[a.role])}</span>`;
@@ -1050,7 +1084,7 @@ window.changePwForm=()=>{
     catch(e){ $("#pw_err").textContent=e.message; }
   };
 };
-function logout(){localStorage.removeItem("ym_account");sessionStorage.removeItem("ym_staff");closeModal();renderAccount();switchView("store");showOnboarding();}
+function logout(){localStorage.removeItem("ym_account");closeModal();renderAccount();switchView("store");showOnboarding();}
 function hideOnboarding(){$("#onboard").className="hidden";$("#onboard").innerHTML="";}
 function showOnboarding(){
   const o=$("#onboard");o.className="onb";
@@ -1088,9 +1122,9 @@ function loginForm(){
       const res=await post("/auth/login",{email,password:pass});
       const u=res.user, roleMap={customer:"buyer",partner:"partner",admin:"admin"};
       const acc={role:roleMap[u.role]||"buyer",name:u.brand_name||email.split("@")[0],email,
-        token:res.access_token,refresh:res.refresh_token||"",server:true,createdAt:Date.now()};
+        token:res.access_token,refresh:res.refresh_token||"",server:true,createdAt:Date.now(),
+        partner_role:u.partner_role||null,partner_id:u.partner_id||null};
       setAccount(acc);
-      if(u.role==="partner"||u.role==="admin")sessionStorage.setItem("ym_staff","1");
       hideOnboarding();
       toast(`С возвращением${acc.name?", "+acc.name:""}!`);
       switchView(u.role==="partner"?"partner":u.role==="admin"?"admin":"store");
@@ -1119,7 +1153,20 @@ async function tryRegister(payload){
   }
 }
 function onbBuyer(){ regForm("buyer"); }
-function onbPartner(){ regForm("partner"); }
+/* Заведения подключаются ТОЛЬКО по приглашению админа (одноразовая ссылка):
+   саморегистрация партнёра закрыта на бэкенде (403), иначе доступ к партнёрке
+   получил бы любой. Здесь — честная заявка вместо формы. */
+function onbPartner(){
+  const o=$("#onboard");
+  o.innerHTML=`<div class="onb-card">
+    <button class="onb-back" data-act="showOnboarding">← Назад к выбору роли</button>
+    <h2>Заведениям</h2>
+    <p class="lead">Кофейни и пекарни подключаются по приглашению: мы проверяем заведение и высылаем ссылку для входа в кабинет.</p>
+    <p style="font-size:.88rem;color:var(--txt2);margin:.2rem 0 1rem">Напишите нам название, адрес и контакт — ответим и пришлём доступ.</p>
+    <a class="btn" style="display:block;text-decoration:none" href="mailto:alisher.nursain@gmail.com?subject=Хочу%20стать%20партнёром%20Yummy&body=Заведение:%0AАдрес:%0AКонтакт:">✉️ Оставить заявку</a>
+    <button class="btn sec" style="margin-top:.5rem" data-act="guestStore">Сначала посмотрю боксы</button>
+  </div>`;
+}
 function regForm(role){
   const partner=role==="partner", o=$("#onboard");
   o.innerHTML=`<div class="onb-card">
@@ -1155,13 +1202,14 @@ function regForm(role){
       let out;
       try{ out=await tryRegister(payload); }
       catch(e){ setE("e_email",e.message); btn.disabled=false; btn.textContent="Зарегистрироваться"; return; }
-      const acc={role:partner?"partner":"buyer",name,email,createdAt:Date.now(),server:out.mode==="server"};
+      // роль приходит с сервера: публичная регистрация = только покупатель
+      const srvRole=(out.res&&out.res.user&&out.res.user.role)||"customer";
+      const acc={role:srvRole==="admin"?"admin":"buyer",name,email,createdAt:Date.now(),server:out.mode==="server"};
       if(out.mode==="server"&&out.res&&out.res.access_token){acc.token=out.res.access_token;acc.refresh=out.res.refresh_token||"";}
       setAccount(acc);
-      if(partner)sessionStorage.setItem("ym_staff","1");   // регистрация партнёра = доступ к кабинету
       hideOnboarding();
       toast(out.mode==="server"?"Аккаунт создан ✓":"Профиль создан (демо). Добро пожаловать!");
-      switchView(partner?"partner":"store");
+      switchView("store");
     }catch(e){ toast(e.message,true); btn.disabled=false; btn.textContent="Зарегистрироваться"; }
   };
 }
@@ -1179,7 +1227,7 @@ window.landRole=r=>{
 };
 $("#lrT").onclick=()=>{const p=$("#lrPass");p.type=p.type==="password"?"text":"password";};
 $("#lrBtn").onclick=async()=>{
-  const partner=window.__landRole==="partner";
+  const partner=false;   // лендинг-форма регистрирует только покупателя (заведения — по инвайту)
   const setE=(id,m)=>$("#"+id).textContent=m||"";
   ["lr_name","lr_email","lr_pass"].forEach(id=>setE(id,""));
   const name=$("#lrName").value.trim(), email=$("#lrEmail").value.trim(), pass=$("#lrPass").value;
@@ -1195,12 +1243,12 @@ $("#lrBtn").onclick=async()=>{
     let out;
     try{ out=await tryRegister(payload); }
     catch(e){ setE("lr_email",e.message); btn.disabled=false; btn.textContent="Зарегистрироваться"; return; }
-    const acc={role:partner?"partner":"buyer",name,email,createdAt:Date.now(),server:out.mode==="server"};
+    const srvRole=(out.res&&out.res.user&&out.res.user.role)||"customer";
+    const acc={role:srvRole==="admin"?"admin":"buyer",name,email,createdAt:Date.now(),server:out.mode==="server"};
     if(out.mode==="server"&&out.res&&out.res.access_token){acc.token=out.res.access_token;acc.refresh=out.res.refresh_token||"";}
     setAccount(acc);
-    if(partner)sessionStorage.setItem("ym_staff","1");
     toast(out.mode==="server"?"Аккаунт создан ✓":"Профиль создан (демо). Добро пожаловать!");
-    switchView(partner?"partner":"store");
+    switchView("store");
   }catch(e){ toast(e.message,true); }
   btn.disabled=false; btn.textContent="Зарегистрироваться";
 };
@@ -1789,8 +1837,40 @@ function barChart(rows){ // rows: [[name,value]]
   const max=Math.max(1,...rows.map(r=>r[1]));
   return rows.map(([n,v])=>`<div class="brow"><span class="nm">${esc(n)}</span><span class="bar"><i style="width:${Math.round(v/max*100)}%"></i></span><span class="val">${money(v)}</span></div>`).join("")||'<p class="empty" style="padding:.6rem">нет данных</p>';
 }
+/* Приглашения: единственный вход в партнёрку (покупатель его не видит) */
+function ivToggleFields(){
+  const owner=$("#ivRole").value==="owner";
+  $("#ivOwnerFields").classList.toggle("hidden",!owner);
+  $("#ivPartnerField").classList.toggle("hidden",owner);
+}
+async function loadInvites(){
+  const sel=$("#ivPartner"); if(!sel)return;
+  $("#ivRole").onchange=ivToggleFields; ivToggleFields();
+  try{const ps=await get("/partners");
+    sel.innerHTML=ps.map(p=>`<option value="${esc(p.id)}">${esc(p.name)}</option>`).join("");
+  }catch(e){}
+  $("#ivCreate").onclick=async()=>{
+    const b=$("#ivCreate"), role=$("#ivRole").value;
+    const body={email:$("#ivEmail").value.trim(),partner_role:role};
+    if(role==="owner"){body.brand_name=$("#ivBrand").value.trim();body.address=$("#ivAddr").value.trim();}
+    else body.partner_id=$("#ivPartner").value;
+    b.disabled=true;b.textContent="Создаём…";
+    try{
+      const r=await post("/admin/staff-invitations",body);
+      $("#ivResult").innerHTML=`<b style="color:var(--green)">Ссылка готова</b> — отправьте её заведению (одноразовая, 7 дней):
+        <div style="display:flex;gap:.4rem;margin-top:.35rem">
+          <input id="ivUrl" readonly value="${esc(r.invite_url)}" style="flex:1;font-size:.78rem" />
+          <button class="btn sec" id="ivCopy" style="width:auto;padding:.4rem .8rem">Копировать</button>
+        </div>`;
+      $("#ivCopy").onclick=async()=>{try{await navigator.clipboard.writeText(r.invite_url);toast("Скопировано 🔗");}catch(e){$("#ivUrl").select();}};
+      $("#ivEmail").value="";
+    }catch(e){toast(e.message,true);}
+    b.disabled=false;b.textContent="Создать ссылку-приглашение";
+  };
+}
 async function loadAdmin(){
   let s={},orders=[];
+  loadInvites();
   try{s=await get("/admin/stats");}catch(e){}
   try{orders=await get("/admin/orders");}catch(e){}
   $("#aStats").innerHTML=[
@@ -1950,7 +2030,38 @@ loadStore().then(()=>{
   // ярлыки PWA (manifest shortcuts): ?nav=orders|venues
   const nav=qs.get("nav");
   if(nav==="venues")switchView("venues"); else if(nav==="orders")gotoOrders();
+  // ссылка-приглашение от админа: ?invite=<токен> — единственный путь в партнёрку
+  const inv=qs.get("invite"); if(inv)acceptInviteForm(inv);
 });
+
+/* ============ ПРИГЛАШЕНИЕ ПЕРСОНАЛА (ссылка от админа) ============ */
+const STAFF_ROLE_RU={owner:"владелец заведения",manager:"менеджер",cashier:"кассир"};
+async function acceptInviteForm(token){
+  let inv;
+  try{ inv=await get("/auth/invite/"+encodeURIComponent(token)); }
+  catch(e){ toast("Приглашение недействительно или истекло",true); return; }
+  showModal(`<div class="mc">
+    <h3>Приглашение в Yummy</h3>
+    <p style="font-size:.85rem;color:var(--txt2);margin:.3rem 0 .9rem">
+      Вас приглашают как <b style="color:var(--brown)">${esc(STAFF_ROLE_RU[inv.partner_role]||inv.partner_role)}</b>${inv.brand_name?` · ${esc(inv.brand_name)}`:""}.<br>
+      Аккаунт: <b>${esc(inv.email)}</b></p>
+    <label>Придумайте пароль <input id="ivPass" type="password" placeholder="Минимум 8 символов, буквы и цифры" autocomplete="new-password" /></label>
+    <button class="btn" id="ivBtn" style="margin-top:.8rem">Принять приглашение</button>
+    <button class="btn sec" data-act="closeModal" style="margin-top:.5rem">Позже</button>
+  </div>`);
+  $("#ivBtn").onclick=async()=>{
+    const b=$("#ivBtn"); b.disabled=true; b.textContent="Активируем…";
+    try{
+      const r=await post("/auth/accept-invite",{token,password:$("#ivPass").value});
+      setAccount({name:r.user.brand_name||r.user.email,role:r.user.role,
+                  token:r.access_token,refresh:r.refresh_token,
+                  partner_role:r.user.partner_role,partner_id:r.user.partner_id});
+      closeModal(); toast("Добро пожаловать в Yummy 🎉");
+      history.replaceState({},"",location.pathname);   // убрать токен из адресной строки
+      switchView("partner");
+    }catch(e){ toast(e.message,true); b.disabled=false; b.textContent="Принять приглашение"; }
+  };
+}
 </script>
 </body>
 </html>

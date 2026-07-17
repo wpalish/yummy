@@ -25,7 +25,12 @@ from . import __version__
 from . import ai as ai_mod
 from . import notify as notify_mod
 from .accounts import (
+    AuthResult,
+    InviteAcceptInput,
+    InvitePreview,
     PublicUser,
+    StaffInvitationCreate,
+    StaffInvitationResult,
     _ENFORCE,
     assert_prod_config,
     current_user,
@@ -426,6 +431,71 @@ def get_payment_account(partner_id: str) -> dict:
             "payments_enabled": bool(a["payments_enabled"]),
             "merchant_masked": ("…" + ref[-4:]) if ref else "",
             "can_sell_paid": store.can_sell_paid(partner_id)}
+
+
+@app.get("/auth/invite/{token}", response_model=InvitePreview, tags=["Accounts"])
+def invite_preview(token: str) -> InvitePreview:
+    """Показать, на что инвайт, до ввода пароля. Токен НЕ гасится."""
+    from .accounts import accounts as users_db
+    row = users_db.peek_invitation(token)
+    if not row:
+        raise HTTPException(404, "Приглашение недействительно или истекло")
+    return InvitePreview(email=row["email"], partner_role=row["partner_role"],
+                         brand_name=row["brand_name"] or "")
+
+
+@app.post("/auth/accept-invite", response_model=AuthResult, status_code=201,
+          tags=["Accounts"])
+def accept_invite(data: InviteAcceptInput, req: HttpRequest) -> AuthResult:
+    """Единственный путь стать партнёром/персоналом — одноразовый инвайт админа."""
+    from .accounts import accounts as users_db
+    from .accounts import _public, _row_token_ver, create_token, hash_password
+    row = users_db.claim_invitation(data.token)          # атомарно гасит
+    if not row:
+        raise HTTPException(404, "Приглашение недействительно или истекло")
+    if users_db.by_email(row["email"]):
+        raise HTTPException(409, "Email уже зарегистрирован")
+    partner_id = row["partner_id"]
+    if row["partner_role"] == "owner" and not partner_id:
+        partner_id = store.create_partner_for_owner(
+            name=(row["brand_name"] or "").strip() or row["email"],
+            address=(row["address"] or "").strip())
+    uid = users_db.create(row["email"], hash_password(data.password), "partner",
+                          row["brand_name"] or None, row["address"] or None,
+                          partner_id=partner_id, partner_role=row["partner_role"])
+    u = users_db.by_id(uid)
+    log.info("audit: accept-invite id=%s partner_role=%s partner=%s ip=%s rid=%s",
+             uid, row["partner_role"], partner_id,
+             req.client.host if req.client else "?", getattr(req.state, "request_id", "-"))
+    return AuthResult(access_token=create_token(uid, "partner", ver=_row_token_ver(u)),
+                      refresh_token=users_db.issue_refresh(uid), user=_public(u))
+
+
+@app.post("/admin/staff-invitations", response_model=StaffInvitationResult,
+          status_code=201, tags=["Admin"])
+def create_staff_invitation(payload: StaffInvitationCreate, req: HttpRequest,
+                            admin: PublicUser | None = Depends(require_role("admin"))
+                            ) -> StaffInvitationResult:
+    # admin=None в демо-режиме (YUMMY_ENFORCE_AUTH выкл) — как у остальных admin-роутов
+    """Админ выдаёт одноразовую ссылку-приглашение: только по ней можно стать
+    партнёром/персоналом. Покупатели этот путь не видят и не могут пройти."""
+    from .accounts import accounts as users_db
+    if users_db.by_email(payload.email):
+        raise HTTPException(409, "Email уже зарегистрирован")
+    if payload.partner_role == "owner":
+        if not payload.brand_name.strip():
+            raise HTTPException(422, "Для владельца укажите название заведения")
+    elif not payload.partner_id or not store.partner(payload.partner_id):
+        raise HTTPException(404, "Заведение не найдено")
+    raw = users_db.issue_staff_invitation(
+        email=payload.email, partner_id=payload.partner_id,
+        partner_role=payload.partner_role, invited_by=(admin.id if admin else "demo"),
+        brand_name=payload.brand_name.strip(), address=payload.address.strip())
+    base = os.getenv("YUMMY_PUBLIC_URL", "https://wpalish.github.io/yummy/").rstrip("/")
+    log.info("audit: staff-invite role=%s by=%s ip=%s rid=%s", payload.partner_role,
+             (admin.id if admin else "demo"), req.client.host if req.client else "?",
+             getattr(req.state, "request_id", "-"))
+    return StaffInvitationResult(invite_url=f"{base}/?invite={raw}")
 
 
 @app.post("/partners/{partner_id}/payment-account", status_code=201, tags=["Admin"],

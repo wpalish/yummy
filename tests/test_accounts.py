@@ -124,15 +124,17 @@ def test_wrong_password_rejected(tmp_path, monkeypatch):
     assert r.status_code == 401
 
 
-def test_partner_requires_brand(tmp_path, monkeypatch):
+def test_partner_self_registration_forbidden(tmp_path, monkeypatch):
+    """Партнёром нельзя стать самому — только по инвайту админа (иначе любой
+    покупатель получил бы доступ к партнёрке)."""
     c = _client(tmp_path, monkeypatch)
     r = c.post("/auth/register", json={
-        "email": "cafe@yummy.kz", "password": "Secret123", "role": "partner"})
-    assert r.status_code == 422
-    r2 = c.post("/auth/register", json={
         "email": "cafe@yummy.kz", "password": "Secret123", "role": "partner",
         "brand_name": "Coffee Point", "address": "пр. Мангилик Ел, 55"})
-    assert r2.status_code == 201 and r2.json()["user"]["brand_name"] == "Coffee Point"
+    assert r.status_code == 403
+    # публичная регистрация всегда даёт покупателя
+    r2 = c.post("/auth/register", json={"email": "buyer@yummy.kz", "password": "Secret123"})
+    assert r2.status_code == 201 and r2.json()["user"]["role"] == "customer"
 
 
 # ---- iss-клейм (spring-security паттерн) и login-jail (xapax) --------------- #

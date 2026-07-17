@@ -45,6 +45,9 @@ def assert_prod_config() -> None:
             "YUMMY_ENFORCE_AUTH=1 требует настоящий YUMMY_SECRET_KEY "
             "(python -c 'import secrets;print(secrets.token_hex(32))'; см. .env.example)"
         )
+# Роли персонала внутри заведения (кто что может в партнёрке)
+_STAFF_ROLES = ("owner", "manager", "cashier")
+
 _PBKDF2_ROUNDS = 600_000        # OWASP-рекомендация для PBKDF2-SHA256; старые
                                  # хеши верифицируются по rounds из самой записи
 _TOKEN_TTL = 15 * 60             # короткий access-токен (Sentinel-паттерн)
@@ -174,19 +177,38 @@ class Accounts:
                 """CREATE TABLE IF NOT EXISTS users(
                     id TEXT PRIMARY KEY, email TEXT UNIQUE, pw_hash TEXT, role TEXT,
                     brand_name TEXT, address TEXT, is_active INTEGER DEFAULT 1,
-                    created_at TEXT, token_ver INTEGER DEFAULT 0)"""
+                    created_at TEXT, token_ver INTEGER DEFAULT 0,
+                    partner_id TEXT, partner_role TEXT)"""
             )
-            # миграция token_ver — только SQLite (на PG колонка сразу в CREATE)
+            # миграции колонок — только SQLite (на PG они сразу в CREATE)
             if not database.POSTGRES:
                 cols = {r[1] for r in c.execute("PRAGMA table_info(users)").fetchall()}
                 if "token_ver" not in cols:
                     c.execute("ALTER TABLE users ADD COLUMN token_ver INTEGER DEFAULT 0")
+                if "partner_id" not in cols:
+                    c.execute("ALTER TABLE users ADD COLUMN partner_id TEXT")
+                if "partner_role" not in cols:
+                    c.execute("ALTER TABLE users ADD COLUMN partner_role TEXT")
+            # существующие партнёры — владельцы своего заведения
+            c.execute("UPDATE users SET partner_role='owner' "
+                      "WHERE role='partner' AND partner_role IS NULL")
             c.execute(
                 """CREATE TABLE IF NOT EXISTS refresh_tokens(
                     token_hash TEXT PRIMARY KEY, user_id TEXT,
                     expires_at INTEGER, revoked INTEGER DEFAULT 0)"""
             )
             c.execute("CREATE INDEX IF NOT EXISTS ix_refresh_user ON refresh_tokens(user_id)")
+            # Приглашения персонала: доступ к партнёрке/админке ТОЛЬКО по инвайту от
+            # админа. В БД — SHA-256-хеш токена (как у refresh), не сырое значение.
+            c.execute(
+                """CREATE TABLE IF NOT EXISTS staff_invitations(
+                    token_hash TEXT PRIMARY KEY, email TEXT, partner_id TEXT,
+                    partner_role TEXT, brand_name TEXT, address TEXT,
+                    expires_at INTEGER, used_at INTEGER,
+                    invited_by TEXT, created_at INTEGER)"""
+            )
+            c.execute("CREATE INDEX IF NOT EXISTS ix_invites_email "
+                      "ON staff_invitations(email,used_at)")
 
     @contextmanager
     def _conn(self):
@@ -239,16 +261,60 @@ class Accounts:
             c.execute("UPDATE refresh_tokens SET revoked=1 WHERE user_id=?", (user_id,))
 
     def create(self, email: str, pw_hash: str, role: str,
-               brand_name: str | None, address: str | None) -> str:
+               brand_name: str | None, address: str | None,
+               partner_id: str | None = None, partner_role: str | None = None) -> str:
         uid = uuid.uuid4().hex
         with self._lock, self._conn() as c:
             c.execute(
-                "INSERT INTO users(id,email,pw_hash,role,brand_name,address,is_active,created_at)"
-                " VALUES(?,?,?,?,?,?,1,?)",
+                "INSERT INTO users(id,email,pw_hash,role,brand_name,address,is_active,"
+                "created_at,partner_id,partner_role) VALUES(?,?,?,?,?,?,1,?,?,?)",
                 (uid, email.lower(), pw_hash, role, brand_name, address,
-                 datetime.now(timezone.utc).isoformat()),
+                 datetime.now(timezone.utc).isoformat(), partner_id, partner_role),
             )
         return uid
+
+    # ---- приглашения персонала (доступ к партнёрке/админке только по инвайту) ---- #
+    def issue_staff_invitation(self, *, email: str, partner_id: str | None,
+                               partner_role: str, invited_by: str,
+                               brand_name: str = "", address: str = "",
+                               ttl: int = 7 * 86400) -> str:
+        """Создать одноразовый инвайт, вернуть СЫРОЙ токен (в БД — только хеш).
+        Прошлые неиспользованные инвайты на этот email гасятся."""
+        if partner_role not in _STAFF_ROLES:
+            raise ValueError("неизвестная роль персонала")
+        raw = secrets.token_urlsafe(32)
+        now = int(time.time())
+        with self._lock, self._conn() as c:
+            c.execute("UPDATE staff_invitations SET used_at=? WHERE email=? AND used_at IS NULL",
+                      (now, email.lower()))
+            c.execute(
+                "INSERT INTO staff_invitations(token_hash,email,partner_id,partner_role,"
+                "brand_name,address,expires_at,used_at,invited_by,created_at)"
+                " VALUES(?,?,?,?,?,?,?,NULL,?,?)",
+                (self._rt_hash(raw), email.lower(), partner_id, partner_role,
+                 brand_name, address, now + ttl, invited_by, now),
+            )
+        return raw
+
+    def peek_invitation(self, raw: str):
+        """Прочитать валидный инвайт, НЕ погашая (для превью формы регистрации)."""
+        with self._lock, self._conn() as c:
+            row = c.execute("SELECT * FROM staff_invitations WHERE token_hash=?",
+                            (self._rt_hash(raw),)).fetchone()
+        if not row or row["used_at"] is not None or row["expires_at"] < time.time():
+            return None
+        return row
+
+    def claim_invitation(self, raw: str):
+        """Атомарно погасить инвайт. Возвращает ряд или None (использован/просрочен)."""
+        h, now = self._rt_hash(raw), int(time.time())
+        with self._lock, self._conn() as c:
+            row = c.execute("SELECT * FROM staff_invitations WHERE token_hash=?", (h,)).fetchone()
+            if not row or row["used_at"] is not None or row["expires_at"] < now:
+                return None
+            c.execute("UPDATE staff_invitations SET used_at=? WHERE token_hash=? AND used_at IS NULL",
+                      (now, h))
+        return row
 
 
 accounts = Accounts()
@@ -291,6 +357,51 @@ class PublicUser(BaseModel):
     email: str
     role: str
     brand_name: str | None = None
+    partner_id: str | None = None
+    partner_role: str | None = None   # owner | manager | cashier (у персонала)
+
+
+class StaffInvitationCreate(BaseModel):
+    """Админ приглашает персонал/владельца заведения."""
+
+    email: str
+    partner_role: Literal["owner", "manager", "cashier"] = "owner"
+    partner_id: str | None = None      # для manager/cashier — в какое заведение
+    brand_name: str = ""               # для owner — новое заведение
+    address: str = ""
+
+    @field_validator("email")
+    @classmethod
+    def _email_ok(cls, v: str) -> str:
+        if not _EMAIL_RE.match(v.strip()):
+            raise ValueError("некорректный email")
+        return v.strip().lower()
+
+
+class StaffInvitationResult(BaseModel):
+    invite_url: str
+    expires_in_days: int = 7
+
+
+class InviteAcceptInput(BaseModel):
+    token: str
+    password: str
+    name: str = ""
+
+    @field_validator("password")
+    @classmethod
+    def _password_strong(cls, v: str) -> str:
+        if len(v) < 8:
+            raise ValueError("пароль должен быть не короче 8 символов")
+        if not any(ch.isdigit() for ch in v) or not any(ch.isalpha() for ch in v):
+            raise ValueError("пароль должен содержать буквы и цифры")
+        return v
+
+
+class InvitePreview(BaseModel):
+    email: str
+    partner_role: str
+    brand_name: str = ""
 
 
 class AuthResult(BaseModel):
@@ -301,7 +412,11 @@ class AuthResult(BaseModel):
 
 
 def _public(row: sqlite3.Row) -> PublicUser:
-    return PublicUser(id=row["id"], email=row["email"], role=row["role"], brand_name=row["brand_name"])
+    keys = row.keys()
+    return PublicUser(id=row["id"], email=row["email"], role=row["role"],
+                      brand_name=row["brand_name"],
+                      partner_id=row["partner_id"] if "partner_id" in keys else None,
+                      partner_role=row["partner_role"] if "partner_role" in keys else None)
 
 
 # --------------------------------------------------------------------------- #
@@ -317,12 +432,15 @@ def register(data: RegisterInput, request: HttpRequest) -> AuthResult:
     if accounts.by_email(data.email):
         audit.info("register DENIED (email занят) email=%s ip=%s", data.email, _ip(request))
         raise HTTPException(409, "Email уже зарегистрирован")
-    brand = data.brand_name if data.role == "partner" else None
-    addr = data.address if data.role == "partner" else None
-    if data.role == "partner" and not (brand and brand.strip()):
-        raise HTTPException(422, "Для заведения укажите название")
-    role = "admin" if data.email in _ADMIN_EMAILS else data.role
-    uid = accounts.create(data.email, hash_password(data.password), role, brand, addr)
+    # Партнёром/персоналом становятся ТОЛЬКО по инвайту от админа (/auth/accept-invite).
+    # Публичная регистрация — исключительно покупатель, иначе любой получил бы
+    # доступ к партнёрке. Админ — по allowlist почт (YUMMY_ADMIN_EMAILS).
+    if data.role == "partner":
+        audit.info("register DENIED (partner без инвайта) email=%s ip=%s",
+                   data.email, _ip(request))
+        raise HTTPException(403, "Заведения подключаются по приглашению — напишите нам")
+    role = "admin" if data.email in _ADMIN_EMAILS else "customer"
+    uid = accounts.create(data.email, hash_password(data.password), role, None, None)
     row = accounts.by_id(uid)
     audit.info("register OK id=%s role=%s email=%s ip=%s", uid, role, data.email, _ip(request))
     return AuthResult(access_token=create_token(uid, role, ver=_row_token_ver(row)),
