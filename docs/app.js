@@ -318,7 +318,10 @@ const get=u=>_demoGet(u);
 const post=(u,b)=>_demoPost(u,b);
 const api=(m,u,b)=>m==="GET"?_demoGet(u):_demoPost(u,b);
 const STATUS_RU={payment_pending:"ожидает оплату",paid:"оплачен",issued:"выдан",expired:"не забран",payment_failed:"оплата не прошла",refunded:"возврат",cancelled:"отменён"};
-let APP_CONFIG={payment_mode:"demo",currency:"kzt"};
+let APP_CONFIG={payment_mode:"demo",payments_enabled:false,production:false,currency:"kzt"};
+function applyEnvironmentVisibility(){
+  document.querySelectorAll(".demo-only").forEach(el=>el.classList.toggle("hidden",!!APP_CONFIG.production));
+}
 /* Kaspi Pay deep-link: после регистрации мерчанта в Kaspi Pay вставь свой
    service_id — в модалке оплаты появится настоящая кнопка Kaspi. */
 const KASPI_SERVICE_ID="";
@@ -949,6 +952,7 @@ window.openVenue=id=>{
   </div>`);
 };
 window.bookVenueBox=(id,i)=>{
+  if(APP_CONFIG.production){toast("Локальные демо-брони отключены",true);return;}
   const v=(ALL_VENUES||[]).find(x=>x.id===id); if(!v)return; const b=v.boxes[i]; if(!b||b.qty<=0)return;
   const code="YM-"+Math.random().toString(16).slice(2,6).toUpperCase();
   b.qty--; saveCode(code);
@@ -972,8 +976,10 @@ window.showReviews=async(partnerId,name)=>{
   const body=real.length
     ? `<p style="font-size:.76rem;color:var(--txt2);margin:.15rem 0 .5rem">Отзывы покупателей — только по подтверждённым заказам</p>
        ${real.map(r=>`<div class="rev"><b>${esc(r.author_name)}</b> <span class="st">${"★".repeat(r.rating)}${"☆".repeat(5-r.rating)}</span><br>${esc(r.text)}</div>`).join("")}`
-    : `<p style="font-size:.76rem;color:var(--txt2);margin:.15rem 0 .5rem">Реальных отзывов пока нет — вот примеры того, как это будет выглядеть (демо):</p>
-       ${(REVIEWS[name]||[["Гость","Пока нет отзывов — будь первым!",5]]).map(([n,t,s])=>`<div class="rev"><b>${esc(n)}</b> <span class="st">${"★".repeat(s)}${"☆".repeat(5-s)}</span><br>${esc(t)}</div>`).join("")}`;
+    : APP_CONFIG.production
+      ? `<p class="empty">Подтверждённых отзывов пока нет.</p>`
+      : `<p style="font-size:.76rem;color:var(--txt2);margin:.15rem 0 .5rem">Демо-примеры отзывов:</p>
+         ${(REVIEWS[name]||[["Гость","Пока нет отзывов — будь первым!",5]]).map(([n,t,s])=>`<div class="rev"><b>${esc(n)}</b> <span class="st">${"★".repeat(s)}${"☆".repeat(5-s)}</span><br>${esc(t)}</div>`).join("")}`;
   showModal(`<div class="mc"><h3>${esc(name)}</h3>${body}
     <button class="btn sec" data-action="close" style="margin-top:.9rem">Закрыть</button></div>`);
 };
@@ -1009,7 +1015,11 @@ async function openBox(id){
     try{ if(navigator.share){await navigator.share(data);} else {await navigator.clipboard.writeText(url);toast("Ссылка скопирована 🔗");} }
     catch(e){ try{await navigator.clipboard.writeText(url);toast("Ссылка скопирована 🔗");}catch(_){toast(url);} }
   };
+  if(APP_CONFIG.production&&!APP_CONFIG.payments_enabled){
+    $("#payBtn").disabled=true;$("#payBtn").textContent="Онлайн-оплата подключается";
+  }
   $("#payBtn").onclick=async()=>{
+    if(APP_CONFIG.production&&!APP_CONFIG.payments_enabled)return;
     const name=$("#oName").value.trim(), phone=$("#oPhone").value.trim();
     if(!name||phone.length<5){toast("Укажите имя и телефон",true);return;}
     $("#payBtn").disabled=true;$("#payBtn").textContent="Оплата…";
@@ -1420,6 +1430,7 @@ async function confirmStripePayment(sessionId){
 async function bootstrap(){
   await restoreBrowserSession();
   try{APP_CONFIG=await get("/config");}catch(e){}
+  applyEnvironmentVisibility();
   renderAccount();window.__view="store";
   if(!account())switchView("landing");
   await loadStore();

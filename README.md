@@ -41,7 +41,9 @@ DATABASE_URL=postgresql://... alembic upgrade head
 
 ## Про оплату (важно)
 
-Backend поддерживает два режима: `demo` и Stripe Checkout. Stripe flow резервирует
+Backend поддерживает `disabled`, development-only `demo` и Stripe Checkout.
+Production с `demo` не стартует; `disabled` оставляет каталог доступным, но
+покупки fail-closed выключены. Stripe flow резервирует
 inventory как `payment_pending`, создаёт idempotent Checkout Session и переводит
 заказ в `paid` только после подписанного/reconciled webhook. Для live запуска сначала
 проверь доступность Stripe merchant/Connect для юридической структуры в Казахстане;

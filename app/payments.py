@@ -22,8 +22,10 @@ def payment_mode() -> str:
 
 
 def assert_payment_config(production: bool) -> None:
-    if _MODE not in {"demo", "stripe"}:
-        raise RuntimeError("YUMMY_PAYMENT_MODE должен быть demo или stripe")
+    if _MODE not in {"demo", "disabled", "stripe"}:
+        raise RuntimeError("YUMMY_PAYMENT_MODE должен быть demo, disabled или stripe")
+    if production and _MODE == "demo":
+        raise RuntimeError("production запрещает demo payment mode")
     if _MODE == "stripe" and (
         not _SECRET_KEY.startswith(("sk_test_", "sk_live_"))
         or not _WEBHOOK_SECRET.startswith("whsec_")

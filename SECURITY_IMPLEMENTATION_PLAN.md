@@ -124,7 +124,7 @@ sequenceDiagram
 
 | Phase | Work | Estimate | Exit criterion |
 |---|---|---:|---|
-| 0 | BOLA, admin bootstrap, Argon2id, refresh reuse, request policy, CI baseline | 4–6 | repository checks green |
+| 0 | Security baseline + strict production/demo isolation | done | production bypass regression tests green |
 | 1 | Redis distributed limits | done | atomic/fail-closed/pseudonymous-key tests pass |
 | 1b | PostgreSQL adapter + initial Alembic schema | done | SQLite apply + PostgreSQL DDL + optional real-PG integration |
 | 1c | Shared bounded psycopg pool + two-replica oversell test | done | commit/rollback/checkout semantics tested |

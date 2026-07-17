@@ -144,6 +144,7 @@ refund request ownership/admin workflow уже реализован, но реа
 | TLS 1.3/PFS/OCSP/HTTP3 | EXTERNAL | Cloudflare/Render evidence required |
 | JWT/RBAC/BOLA/validation | IMPLEMENTED | automated negative tests |
 | Partner/staff access | IMPLEMENTED | hidden buyer UI, invitation-only owner/manager/cashier, hashed single-use links, server RBAC |
+| Production demo isolation | IMPLEMENTED | no seed/fake-paid/static venues/example reviews/demo PIN; provider absent = fail-closed |
 | Stripe Checkout payments | IMPLEMENTED/PARTIAL | reservation, idempotent session, signed webhook, event dedupe/reconciliation; live account external |
 | Refund workflow | IMPLEMENTED/PARTIAL | owned single request + MFA decision + atomic state; Stripe Refund API external |
 | Argon2id/salt | IMPLEMENTED | transparent PBKDF2 migration |

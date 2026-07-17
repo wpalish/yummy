@@ -212,7 +212,9 @@ async def lifespan(app: FastAPI):
     assert_payment_config(_PRODUCTION)
     _assert_database_config()
     _assert_edge_config()
-    if store.count() == (0, 0, 0):
+    # Demo fixtures are strictly development-only. Empty production DB stays empty
+    # until an MFA-admin approves a real invited partner.
+    if not _PRODUCTION and store.count() == (0, 0, 0):
         from .seed import seed
         seed(store)
     try:
@@ -243,6 +245,8 @@ app.add_middleware(
 @app.middleware("http")
 async def distributed_rate_guard(request: HttpRequest, call_next):
     path = request.url.path
+    if _PRODUCTION and path == "/static/venues.json":
+        return JSONResponse({"detail": "Not found"}, status_code=404)
     if path.startswith(("/auth/", "/session/")):
         bucket, limit, window = "auth", 30, 60
     elif path == "/orders":
@@ -495,7 +499,13 @@ def health() -> dict:
 
 @app.get("/config", include_in_schema=False)
 def public_config() -> dict:
-    return {"payment_mode": payment_mode(), "currency": os.getenv("STRIPE_CURRENCY", "kzt")}
+    mode = payment_mode()
+    return {
+        "payment_mode": mode,
+        "payments_enabled": mode == "stripe",
+        "production": _PRODUCTION,
+        "currency": os.getenv("STRIPE_CURRENCY", "kzt"),
+    }
 
 
 # --------------------------------------------------------------------------- #
@@ -528,6 +538,8 @@ def create_order(payload: OrderCreate, req: HttpRequest,
     С Bearer-токеном заказ привязывается к аккаунту → виден в GET /me/orders
     с любого устройства; без токена работает как гостевой (по коду).
     """
+    if _PRODUCTION or payment_mode() != "demo":
+        raise HTTPException(410, "Demo-оплата отключена; используйте payment checkout")
     box = store.box(payload.box_id)
     state = store.box_orderability(payload.box_id)
     if not box or state == "missing":
@@ -556,6 +568,8 @@ def create_checkout_session(
     req: HttpRequest,
     user: PublicUser | None = Depends(optional_user),
 ) -> CheckoutSessionResult:
+    if payment_mode() == "disabled":
+        raise HTTPException(503, "Онлайн-оплата пока не подключена")
     box = store.box(payload.box_id)
     if not box or store.box_orderability(payload.box_id) != "available":
         raise HTTPException(409, "Бокс недоступен")
@@ -991,6 +1005,8 @@ def admin_refund(
 
 @app.post("/admin/seed", tags=["Dev"], dependencies=[Depends(local_only)])
 def reseed() -> dict:
+    if _PRODUCTION:
+        raise HTTPException(404, "Not found")
     from .seed import seed
     seed(store)
     p, b, o = store.count()
