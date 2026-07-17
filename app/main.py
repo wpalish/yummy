@@ -63,6 +63,8 @@ from .models import (
     RefundRequestCreate,
     Review,
     ReviewCreate,
+    StaffInvitationCreate,
+    StaffInvitationResult,
 )
 from .payments import (
     PaymentUnavailable,
@@ -422,8 +424,10 @@ def _partner_for_user(user: PublicUser, *, require_approved: bool = True) -> Par
         raise HTTPException(403, f"Заведение не одобрено: {user.partner_status or 'pending'}")
     partner = store.partner(user.partner_id)
     if partner:
-        if not store.partner_owned_by(partner.id, user.id):
+        if user.partner_role == "owner" and not store.partner_owned_by(partner.id, user.id):
             raise HTTPException(403, "Заведение принадлежит другому аккаунту")
+        if user.partner_role not in {"owner", "manager", "cashier"}:
+            raise HTTPException(403, "Нет роли персонала")
         return partner
     partner = Partner(
         id=user.partner_id,
@@ -456,6 +460,8 @@ def require_approved_partner(
 ) -> PublicUser:
     if user.role == "partner":
         _partner_for_user(user)
+        if user.partner_role not in {"owner", "manager"}:
+            raise HTTPException(403, "Недостаточно прав персонала")
     return user
 
 
@@ -701,6 +707,8 @@ def create_box(
     user: PublicUser = Depends(require_role("partner", "admin")),
 ) -> Box:
     """Партнёр публикует бокс только в своём tenant; admin — в указанном."""
+    if user.role == "partner" and user.partner_role not in {"owner", "manager"}:
+        raise HTTPException(403, "Только владелец или менеджер публикует боксы")
     partner_id = _authorized_partner_id(user, payload.partner_id)
     if payload.value_est < payload.price:
         raise HTTPException(400, "Ценность содержимого должна быть не ниже цены бокса")
@@ -813,6 +821,33 @@ def redeem(
 # --------------------------------------------------------------------------- #
 #  Админка
 # --------------------------------------------------------------------------- #
+@app.post("/admin/staff-invitations", response_model=StaffInvitationResult,
+          status_code=201, tags=["Admin"])
+def admin_create_staff_invitation(
+    payload: StaffInvitationCreate,
+    req: HttpRequest,
+    admin: PublicUser = Depends(require_role("admin")),
+) -> StaffInvitationResult:
+    from .accounts import accounts as users_db
+    if users_db.by_email(payload.email):
+        raise HTTPException(409, "Email уже зарегистрирован")
+    if payload.partner_role == "owner":
+        if payload.partner_id or not payload.brand_name.strip() or not payload.address.strip():
+            raise HTTPException(422, "Для владельца укажите новое заведение и адрес")
+    elif not payload.partner_id or not store.partner(payload.partner_id):
+        raise HTTPException(404, "Заведение не найдено")
+    raw = users_db.issue_staff_invitation(
+        email=payload.email, partner_id=payload.partner_id,
+        partner_role=payload.partner_role, invited_by=admin.id,
+        brand_name=payload.brand_name.strip(), address=payload.address.strip(),
+        district=payload.district.strip(),
+    )
+    url = f"{os.getenv('YUMMY_PUBLIC_URL', '').rstrip('/')}/?invite={raw}"
+    log.warning("audit: staff-invite role=%s actor=%s ip=%s",
+                payload.partner_role, admin.id, req.client.host if req.client else "?")
+    return StaffInvitationResult(invite_url=url)
+
+
 @app.get("/admin/partner-applications", response_model=list[PartnerApplication], tags=["Admin"])
 def admin_partner_applications(
     status: str | None = None,

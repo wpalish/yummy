@@ -113,7 +113,7 @@ PWA-установка, маршрут в 2ГИС, deep-link на бокс, ре
 | RBAC | ✅ customer / partner / admin (`require_role`) |
 | Brute force / credential stuffing | ✅ rate-limit по IP + jail по email (5 неудач → 10 мин) |
 | Admin MFA | ✅ обязательный TOTP/recovery; AES-256-GCM seed; replay counter; JWT/refresh assurance |
-| Partner trust | ✅ pending-by-default; MFA admin approval; suspension отзывает sessions/inventory |
+| Partner trust | ✅ invitation-only production access; owner/manager/cashier RBAC; no demo PIN or buyer staff-nav |
 | Refund abuse | ✅ owner-only single request; issued-order guard; MFA admin decision; atomic inventory/order update |
 | SQLi / XSS / Clickjacking | ✅ параметризованный SQL / esc()+CSP / X-Frame-Options DENY |
 | CSRF | ✅ Browser: SameSite=Strict + double-submit token + Origin; Bearer API cookie-independent |

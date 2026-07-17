@@ -25,8 +25,10 @@ bandit==1.9.4
     # via -r requirements-dev.txt
 boolean-py==5.0
     # via license-expression
-build==1.5.1
-    # via pip-tools
+build==1.5.0
+    # via
+    #   -r requirements-dev.txt
+    #   pip-tools
 cachecontrol==0.14.4
     # via pip-audit
 certifi==2026.6.17

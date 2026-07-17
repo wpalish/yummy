@@ -302,7 +302,7 @@ class Accounts:
                 """CREATE TABLE IF NOT EXISTS users(
                     id TEXT PRIMARY KEY, email TEXT UNIQUE, email_verified INTEGER DEFAULT 0,
                     pw_hash TEXT, role TEXT, brand_name TEXT, address TEXT, district TEXT,
-                    partner_id TEXT, partner_status TEXT,
+                    partner_id TEXT, partner_status TEXT, partner_role TEXT,
                     is_active INTEGER DEFAULT 1, created_at TEXT,
                     token_ver INTEGER DEFAULT 0,
                     terms_accepted_at TEXT, terms_version TEXT,
@@ -323,6 +323,7 @@ class Accounts:
                 "district": "TEXT",
                 "partner_id": "TEXT",
                 "partner_status": "TEXT",
+                "partner_role": "TEXT",
                 "terms_accepted_at": "TEXT",
                 "terms_version": "TEXT",
                 "mfa_enabled": "INTEGER DEFAULT 0",
@@ -339,8 +340,9 @@ class Accounts:
                 "UPDATE users SET partner_status='pending' "
                 "WHERE role='partner' AND (partner_status IS NULL OR partner_status='')"
             )
-            c.execute("CREATE UNIQUE INDEX IF NOT EXISTS ux_users_partner ON users(partner_id) "
-                      "WHERE partner_id IS NOT NULL")
+            c.execute("UPDATE users SET partner_role='owner' WHERE role='partner' AND partner_role IS NULL")
+            c.execute("DROP INDEX IF EXISTS ux_users_partner")
+            c.execute("CREATE INDEX IF NOT EXISTS ix_users_partner ON users(partner_id)")
             c.execute(
                 """CREATE TABLE IF NOT EXISTS refresh_tokens(
                     token_hash TEXT PRIMARY KEY, user_id TEXT,
@@ -362,6 +364,11 @@ class Accounts:
             c.execute("""CREATE TABLE IF NOT EXISTS action_tokens(
                 token_hash TEXT PRIMARY KEY, user_id TEXT, purpose TEXT,
                 expires_at INTEGER, used_at INTEGER, created_at INTEGER)""")
+            c.execute("""CREATE TABLE IF NOT EXISTS staff_invitations(
+                token_hash TEXT PRIMARY KEY, email TEXT, partner_id TEXT,
+                partner_role TEXT, brand_name TEXT, address TEXT, district TEXT,
+                expires_at INTEGER, used_at INTEGER, invited_by TEXT, created_at INTEGER)""")
+            c.execute("CREATE INDEX IF NOT EXISTS ix_invites_email ON staff_invitations(email,used_at)")
             c.execute("CREATE INDEX IF NOT EXISTS ix_action_user ON action_tokens(user_id,purpose)")
             c.execute("CREATE INDEX IF NOT EXISTS ix_refresh_user ON refresh_tokens(user_id)")
             c.execute("CREATE INDEX IF NOT EXISTS ix_refresh_family ON refresh_tokens(family_id)")
@@ -512,20 +519,25 @@ class Accounts:
     def create(self, email: str, pw_hash: str, role: str,
                brand_name: str | None = None, address: str | None = None,
                district: str | None = None, *, accepted_terms: bool = False,
-               email_verified: bool = True, user_id: str | None = None) -> str:
+               email_verified: bool = True, user_id: str | None = None,
+               partner_id_override: str | None = None,
+               partner_status_override: str | None = None,
+               partner_role: str | None = None) -> str:
         uid = user_id or uuid.uuid4().hex
-        partner_id = uid if role == "partner" else None
-        partner_status = "pending" if role == "partner" else None
+        partner_id = partner_id_override or (uid if role == "partner" else None)
+        partner_status = partner_status_override or ("pending" if role == "partner" else None)
+        partner_role = partner_role or ("owner" if role == "partner" else None)
         accepted_at = datetime.now(timezone.utc).isoformat() if accepted_terms else None
         with self._lock, self._conn() as c:
             inserted = c.execute(
                 """INSERT INTO users(
                        id,email,email_verified,pw_hash,role,brand_name,address,district,partner_id,
-                       partner_status,is_active,created_at,terms_accepted_at,terms_version)
-                   VALUES(?,?,?,?,?,?,?,?,?,?,1,?,?,?)
+                       partner_status,partner_role,is_active,created_at,terms_accepted_at,terms_version)
+                   VALUES(?,?,?,?,?,?,?,?,?,?,?,1,?,?,?)
                    ON CONFLICT(email) DO NOTHING""",
                 (uid, email.lower(), int(email_verified), pw_hash, role, brand_name, address,
-                 district, partner_id, partner_status, datetime.now(timezone.utc).isoformat(), accepted_at,
+                 district, partner_id, partner_status, partner_role,
+                 datetime.now(timezone.utc).isoformat(), accepted_at,
                  _TERMS_VERSION if accepted_terms else None),
             )
             if inserted.rowcount != 1:
@@ -641,6 +653,33 @@ class Accounts:
             if cur.rowcount != 1:
                 raise ValueError("пользователь не найден")
 
+    def issue_staff_invitation(self, *, email: str, partner_id: str | None,
+                               partner_role: str, invited_by: str,
+                               brand_name: str = "", address: str = "",
+                               district: str = "", ttl: int = 7 * 86400) -> str:
+        if partner_role not in {"owner", "manager", "cashier"}:
+            raise ValueError("неизвестная роль персонала")
+        raw = secrets.token_urlsafe(32)
+        now = int(time.time())
+        with self._lock, self._conn() as c:
+            c.execute("UPDATE staff_invitations SET used_at=? WHERE email=? AND used_at IS NULL",
+                      (now, email.lower()))
+            c.execute("""INSERT INTO staff_invitations(
+                token_hash,email,partner_id,partner_role,brand_name,address,district,
+                expires_at,invited_by,created_at)
+                VALUES(?,?,?,?,?,?,?,?,?,?)""",
+                (self._rt_hash(raw), email.lower(), partner_id, partner_role,
+                 brand_name, address, district, now + ttl, invited_by, now))
+        return raw
+
+    def claim_staff_invitation(self, raw: str) -> sqlite3.Row | None:
+        now = int(time.time())
+        with self._lock, self._conn() as c:
+            row = c.execute("""UPDATE staff_invitations SET used_at=?
+                WHERE token_hash=? AND used_at IS NULL AND expires_at>=?
+                RETURNING *""", (now, self._rt_hash(raw), now)).fetchone()
+            return row
+
     def update_password_hash(self, user_id: str, pw_hash: str) -> None:
         """Rehash после успешной проверки; credential/session semantics не меняются."""
         with self._lock, self._conn() as c:
@@ -679,6 +718,17 @@ class RegisterInput(BaseModel):
         return v
 
 
+class InvitationAcceptInput(BaseModel):
+    token: str = Field(..., min_length=32, max_length=256)
+    password: str = Field(..., max_length=128)
+    accepted_terms: Literal[True]
+
+    @field_validator("password")
+    @classmethod
+    def _strong(cls, value: str) -> str:
+        return RegisterInput._password_strong(value)
+
+
 class LoginInput(BaseModel):
     email: str = Field(..., max_length=254)
     password: str = Field(..., max_length=128)
@@ -695,6 +745,7 @@ class PublicUser(BaseModel):
     district: str | None = None
     partner_id: str | None = None
     partner_status: str | None = None
+    partner_role: str | None = None
     auth_methods: list[str] = Field(default_factory=list, exclude=True)
     mfa_enabled: bool = Field(default=False, exclude=True)
 
@@ -749,6 +800,7 @@ def _public(row: sqlite3.Row, auth_methods: list[str] | None = None) -> PublicUs
         role=row["role"],
         brand_name=row["brand_name"], address=row["address"], district=row["district"],
         partner_id=row["partner_id"], partner_status=row["partner_status"],
+        partner_role=row["partner_role"],
         auth_methods=auth_methods or [], mfa_enabled=bool(row["mfa_enabled"]),
     )
 
@@ -768,6 +820,8 @@ def _email_tag(email: str) -> str:
 @router.post("/auth/register", response_model=AuthResult, status_code=201,
              dependencies=[Depends(auth_rate_limit)])
 def register(data: RegisterInput, request: HttpRequest) -> AuthResult:
+    if data.role == "partner" and _PRODUCTION:
+        raise HTTPException(403, "Регистрация персонала доступна только по приглашению")
     if accounts.by_email(data.email):
         audit.info("register DENIED email_tag=%s ip=%s", _email_tag(data.email), _ip(request))
         raise HTTPException(409, "Email уже зарегистрирован")
@@ -795,6 +849,35 @@ def register(data: RegisterInput, request: HttpRequest) -> AuthResult:
                uid, role, _email_tag(data.email), _ip(request))
     return AuthResult(access_token=create_token(uid, role, ver=_row_token_ver(row)),
                       refresh_token=accounts.issue_refresh(uid), user=_public(row))
+
+
+@router.post("/auth/invitations/accept", response_model=AuthResult,
+             dependencies=[Depends(auth_rate_limit)])
+def accept_invitation(data: InvitationAcceptInput, request: HttpRequest) -> AuthResult:
+    invitation = accounts.claim_staff_invitation(data.token)
+    if not invitation:
+        raise HTTPException(400, "Приглашение недействительно или истекло")
+    if accounts.by_email(invitation["email"]):
+        raise HTTPException(409, "Email уже зарегистрирован")
+    try:
+        uid = accounts.create(
+            invitation["email"], hash_password(data.password), "partner",
+            invitation["brand_name"] or None, invitation["address"] or None,
+            invitation["district"] or None, accepted_terms=data.accepted_terms,
+            email_verified=True,
+            partner_id_override=invitation["partner_id"],
+            partner_status_override="approved",
+            partner_role=invitation["partner_role"],
+        )
+    except ValueError as exc:
+        raise HTTPException(409, "Email уже зарегистрирован") from exc
+    row = accounts.by_id(uid)
+    audit.info("invitation ACCEPT id=%s role=%s inviter=%s ip=%s",
+               uid, invitation["partner_role"], invitation["invited_by"], _ip(request))
+    return AuthResult(
+        access_token=create_token(uid, "partner", ver=_row_token_ver(row)),
+        refresh_token=accounts.issue_refresh(uid), user=_public(row),
+    )
 
 
 @router.post("/auth/login", response_model=AuthResult, dependencies=[Depends(auth_rate_limit)])
@@ -1055,6 +1138,15 @@ def reset_password(data: ResetPasswordInput, request: HttpRequest) -> dict:
 def session_register(data: RegisterInput, request: HttpRequest,
                      response: Response) -> SessionResult:
     result = register(data, request)
+    csrf = _set_session_cookies(response, result)
+    return SessionResult(user=result.user, csrf_token=csrf)
+
+
+@router.post("/session/invitations/accept", response_model=SessionResult, tags=["Session"],
+             dependencies=[Depends(auth_rate_limit)])
+def session_accept_invitation(data: InvitationAcceptInput, request: HttpRequest,
+                              response: Response) -> SessionResult:
+    result = accept_invitation(data, request)
     csrf = _set_session_cookies(response, result)
     return SessionResult(user=result.user, csrf_token=csrf)
 

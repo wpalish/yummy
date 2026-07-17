@@ -43,8 +43,8 @@
         <div class="search desk"><input id="q" placeholder="Поиск боксов и заведений" aria-label="Поиск боксов и заведений" /></div>
         <div class="roles">
           <button data-role="store" class="on">Магазин</button>
-          <button data-role="partner">Партнёр</button>
-          <button data-role="admin">Админ</button>
+          <button data-role="partner" class="staff-nav hidden">Партнёр</button>
+          <button data-role="admin" class="admin-nav hidden">Админ</button>
         </div>
         <button class="hbtn" title="Мои заказы" aria-label="Мои заказы" data-action="goto-orders">🛒<span class="cnt hidden" id="cartCnt"></span></button>
         <button class="acct" id="acctBtn" aria-label="Профиль"></button>
@@ -94,7 +94,7 @@
 
       <div class="l-band reveal">
         <div><h2>Вы — кофейня или пекарня?</h2><p>Превращайте вечерние списания в выручку. Подключение бесплатно.</p></div>
-        <button class="cta light" data-action="partner-register">Стать партнёром</button>
+        <span class="cta light">Подключение заведений — только по приглашению администратора</span>
       </div>
 
       <div id="l-reg" class="l-sec reveal">
@@ -102,8 +102,7 @@
         <h2>Создай аккаунт за 20 секунд</h2>
         <div class="l-regcard">
           <div class="roles2">
-            <button id="lr-buyer" class="on" data-action="land-role" data-role="buyer">🛍️ Я покупатель</button>
-            <button id="lr-partner" data-action="land-role" data-role="partner">☕ Я заведение</button>
+            <button id="lr-buyer" class="on" data-action="land-role" data-role="buyer">🛍️ Создать аккаунт покупателя</button>
           </div>
           <label><span id="lrNameL">Имя</span> <input id="lrName" placeholder="Как к вам обращаться" autocomplete="name" /><span class="ferr" id="lr_name"></span></label>
           <div id="lrPartnerFields" class="hidden">
@@ -230,6 +229,7 @@
       <h2 class="pageh">Админ-панель</h2>
       <p class="sub">Контроль заказов, возвраты, ключевые метрики пилота.</p>
       <div class="stats" id="aStats"></div>
+      <div class="cardp"><h3>Добавить персонал</h3><div class="two"><label>Email <input id="inviteEmail" type="email" /></label><label>Роль <select id="inviteRole"><option value="owner">Владелец нового заведения</option><option value="manager">Менеджер</option><option value="cashier">Кассир</option></select></label></div><label>ID заведения (для менеджера/кассира) <input id="invitePartner" /></label><label>Название нового заведения <input id="inviteBrand" /></label><label>Адрес <input id="inviteAddress" /></label><label>Район <input id="inviteDistrict" /></label><button class="btn" id="inviteCreate">Создать одноразовую ссылку</button><div id="inviteResult"></div></div>
       <div class="cardp"><h3>Заявки заведений</h3><div id="aPartners"></div></div>
       <div class="cardp"><h3>Запросы на возврат</h3><div id="aRefunds"></div></div>
       <div class="charts" id="aCharts"></div>
@@ -283,8 +283,8 @@
     <button data-nav="store" class="on"><span class="ic">🏠</span>Главная</button>
     <button data-nav="venues"><span class="ic">☕</span>Рядом</button>
     <button data-nav="orders"><span class="ic">📦</span>Заказы</button>
-    <button data-nav="partner"><span class="ic">🧑‍🍳</span>Партнёр</button>
-    <button data-nav="admin"><span class="ic">⚙️</span>Админ</button>
+    <button data-nav="partner" class="staff-nav hidden"><span class="ic">🧑‍🍳</span>Партнёр</button>
+    <button data-nav="admin" class="admin-nav hidden"><span class="ic">⚙️</span>Админ</button>
   </nav>
 
   <div id="ptr" class="hidden" aria-hidden="true">⟳</div>

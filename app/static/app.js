@@ -207,22 +207,8 @@ const navBtns=[...document.querySelectorAll(".bnav button")];
 function requireStaff(cb){
   const a=account();
   if(a&&a.server&&(a.role==="partner"||a.role==="admin")){cb();return;}
-  // PIN существует только для полностью локальной Pages-демки. На живом API
-  // роль всегда подтверждается JWT, а клиентский флаг ничего не открывает.
-  if(a&&a.server){toast("Войдите аккаунтом партнёра или администратора",true);return;}
-  if(sessionStorage.getItem("ym_staff")==="1"){cb();return;}
-  showModal(`<div class="mc">
-    <h3>Доступ для персонала</h3>
-    <p style="font-size:.85rem;color:var(--txt2);margin:.3rem 0 .2rem">Раздел доступен сотрудникам заведений и администраторам. <br><b style="color:var(--brown)">Демо-PIN: 1234</b></p>
-    <label>PIN-код <input id="pinInp" type="password" inputmode="numeric" maxlength="4" placeholder="••••" /></label>
-    <button class="btn" id="pinBtn" style="margin-top:.8rem">Войти</button>
-    <button class="btn sec" data-action="close" style="margin-top:.5rem">Отмена</button>
-  </div>`);
-  $("#pinInp").focus();
-  $("#pinBtn").onclick=()=>{
-    if($("#pinInp").value==="1234"){sessionStorage.setItem("ym_staff","1");closeModal();cb();}
-    else toast("Неверный PIN",true);
-  };
+  toast("Доступ только по персональному приглашению",true);
+  openLogin();
 }
 function switchView(v){
   const go=()=>{
@@ -258,7 +244,6 @@ document.addEventListener("click",e=>{
     case "guest-store": onbGuest(); switchView("store"); break;
     case "guest-venues": onbGuest(); switchView("venues"); break;
     case "scroll-how": $("#l-how").scrollIntoView({behavior:"smooth"}); break;
-    case "partner-register": landRole("partner"); $("#l-reg").scrollIntoView({behavior:"smooth"}); break;
     case "land-role": landRole(d.role); break;
     case "legal": showLegal(d.key); break;
     case "open-login": openLogin(); break;
@@ -273,7 +258,6 @@ document.addEventListener("click",e=>{
     case "switch-role": closeModal(); showOnboarding(); break;
     case "logout": logout(); break;
     case "onb-buyer": onbBuyer(); break;
-    case "onb-partner": onbPartner(); break;
     case "login-form": loginForm(); break;
     case "onb-guest": onbGuest(); break;
     case "show-onboarding": showOnboarding(); break;
@@ -301,7 +285,13 @@ function safeAccount(a){return a?{v:3,role:a.role,name:a.name,server:!!a.server,
 function account(){try{const a=JSON.parse(localStorage.getItem("ym_account")||"null"),safe=safeAccount(a);
   if(a&&a.v!==3)localStorage.setItem("ym_account",JSON.stringify(safe));return safe;}catch(e){return null;}}
 function setAccount(a){const safe=safeAccount(a);if(safe)localStorage.setItem("ym_account",JSON.stringify(safe));else localStorage.removeItem("ym_account");renderAccount();}
+function applyRoleVisibility(){
+  const role=account()?.role;
+  document.querySelectorAll(".staff-nav").forEach(el=>el.classList.toggle("hidden",role!=="partner"));
+  document.querySelectorAll(".admin-nav").forEach(el=>el.classList.toggle("hidden",role!=="admin"));
+}
 function renderAccount(){
+  applyRoleVisibility();
   const a=account(), btn=$("#acctBtn");
   if(!a){btn.innerHTML='<span class="av">?</span><span class="nm">Войти</span>';btn.onclick=showOnboarding;return;}
   const ini=((a.name||"?").trim()[0]||"?").toUpperCase();
@@ -394,7 +384,6 @@ function showOnboarding(){
     <h2>Добро пожаловать 👋</h2>
     <p class="lead">Спасайте свежую еду из кофеен и пекарен Астаны со скидкой до 70%. Кто вы?</p>
     <button class="role-card" data-action="onb-buyer"><span class="ic">🛍️</span><div><div class="t">Я покупатель</div><div class="d">Бронировать и забирать сюрприз-боксы</div></div></button>
-    <button class="role-card" data-action="onb-partner"><span class="ic">☕</span><div><div class="t">Я заведение</div><div class="d">Кофейня/пекарня — продавать вечерние излишки</div></div></button>
     <button class="guest" data-action="login-form">Уже есть аккаунт? Войти</button>
     <button class="guest" data-action="onb-guest">Пропустить, просто осмотреться →</button>
   </div>`;
@@ -518,7 +507,7 @@ window.__landRole="buyer";
 window.landRole=r=>{
   window.__landRole=r;
   $("#lr-buyer").classList.toggle("on",r==="buyer");
-  $("#lr-partner").classList.toggle("on",r==="partner");
+  $("#lr-partner")?.classList.toggle("on",r==="partner");
   $("#lrNameL").textContent=r==="partner"?"Название заведения":"Имя";
   $("#lrName").placeholder=r==="partner"?"Напр.: Coffee Point":"Как к вам обращаться";
   $("#lrPartnerFields").classList.toggle("hidden",r!=="partner");
@@ -1106,6 +1095,12 @@ function barChart(rows){ // rows: [[name,value]]
   const max=Math.max(1,...rows.map(r=>r[1]));
   return rows.map(([n,v])=>`<div class="brow"><span class="nm">${esc(n)}</span><span class="bar"><i style="width:${Math.round(v/max*100)}%"></i></span><span class="val">${money(v)}</span></div>`).join("")||'<p class="empty" style="padding:.6rem">нет данных</p>';
 }
+$("#inviteCreate").onclick=async()=>{
+  const email=$("#inviteEmail").value.trim(),role=$("#inviteRole").value;
+  const body={email,partner_role:role,partner_id:$("#invitePartner").value.trim()||null,brand_name:$("#inviteBrand").value.trim(),address:$("#inviteAddress").value.trim(),district:$("#inviteDistrict").value.trim()};
+  try{const result=await post("/admin/staff-invitations",body);$("#inviteResult").innerHTML=`<p>Ссылка действует 7 дней:</p><input id="inviteLink" readonly value="${esc(result.invite_url)}" /><button class="btn sec" id="copyInvite">Копировать</button>`;$("#copyInvite").onclick=()=>navigator.clipboard.writeText(result.invite_url).then(()=>toast("Ссылка скопирована"));}catch(e){toast(e.message,true);}
+};
+
 async function loadAdmin(){
   let s={},orders=[],partners=[],refunds=[];
   try{s=await get("/admin/stats");}catch(e){}
@@ -1262,6 +1257,12 @@ async function restoreBrowserSession(){
     if(user.role==="partner"||user.role==="admin")sessionStorage.setItem("ym_staff","1");}
 }
 
+function invitationForm(token){
+  showModal(`<div class="mc"><h3>Приглашение в команду Yummy</h3><p>Создайте персональный аккаунт сотрудника. Ссылка одноразовая.</p><label>Пароль <input id="invitePass" type="password" autocomplete="new-password" /><span class="ferr" id="inviteErr"></span></label><label class="consent"><input type="checkbox" id="inviteTerms" /> Принимаю документы сервиса</label><button class="btn" id="inviteAccept">Принять приглашение</button></div>`);
+  $("#inviteAccept").onclick=async()=>{const password=$("#invitePass").value,err=_pwErr(password);if(err){$("#inviteErr").textContent=err;return;}if(!$("#inviteTerms").checked){$("#inviteErr").textContent="Нужно принять документы";return;}
+    try{const result=await post("/session/invitations/accept",{token,password,accepted_terms:true}),u=result.user;setAccount({role:"partner",name:u.brand_name||"Сотрудник",server:true,emailVerified:true});closeModal();toast("Доступ к заведению открыт");switchView("partner");}catch(e){$("#inviteErr").textContent=e.message;}};
+}
+
 async function confirmStripePayment(sessionId){
   showModal('<div class="mc"><h3>Проверяем оплату…</h3><p>Ожидаем подтверждённый Stripe webhook.</p></div>');
   for(let attempt=0;attempt<12;attempt++){
@@ -1280,9 +1281,10 @@ async function bootstrap(){
   renderAccount();window.__view="store";
   if(!account())switchView("landing");
   await loadStore();
-  const qs=new URLSearchParams(location.search),verify=qs.get("verify"),reset=qs.get("reset");
+  const qs=new URLSearchParams(location.search),verify=qs.get("verify"),reset=qs.get("reset"),invite=qs.get("invite");
   if(verify){try{await post("/auth/email/verify/confirm",{token:verify});toast("Email подтверждён ✓");const a=account();if(a){a.emailVerified=true;setAccount(a);}}catch(e){toast(e.message,true);}history.replaceState({},"",location.pathname);}
   if(reset){resetPasswordForm(reset);history.replaceState({},"",location.pathname);return;}
+  if(invite){invitationForm(invite);history.replaceState({},"",location.pathname);return;}
   if(qs.get("payment")==="success"&&qs.get("session_id")){await confirmStripePayment(qs.get("session_id"));history.replaceState({},"",location.pathname);return;}
   if(qs.get("payment")==="cancelled")toast("Оплата отменена — резерв освободится автоматически",true);
   const bid=qs.get("box");if(bid)openBox(bid);

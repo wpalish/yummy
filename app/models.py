@@ -54,6 +54,20 @@ class PartnerStatusUpdate(BaseModel):
     reason: str = Field(default="", max_length=500)
 
 
+class StaffInvitationCreate(BaseModel):
+    email: str = Field(..., max_length=254)
+    partner_role: Literal["owner", "manager", "cashier"]
+    partner_id: str | None = Field(default=None, max_length=64)
+    brand_name: str = Field(default="", max_length=120)
+    address: str = Field(default="", max_length=300)
+    district: str = Field(default="", max_length=80)
+
+
+class StaffInvitationResult(BaseModel):
+    invite_url: str
+    expires_in: int = 604800
+
+
 class ManualEmailVerifyInput(BaseModel):
     reason: str = Field(..., min_length=3, max_length=500)
 

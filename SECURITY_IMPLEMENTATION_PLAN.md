@@ -33,7 +33,7 @@
 | FR-02 | MFA/WebAuthn | admin control plane requires MFA claim | TOTP/recovery done; WebAuthn P0 gap |
 | FR-03 | RBAC + ownership | cross-tenant create/read/redeem all denied server-side | Implemented |
 | FR-04 | Admin plane | operator-only bootstrap, TOTP login, partner review/audit | Partial; general user management UI missing |
-| FR-04a | Partner approval | verified email + pending; approve/suspend/reject; inventory/session revoke | Implemented |
+| FR-04a | Partner/staff onboarding | admin invite links, owner/manager/cashier RBAC, hidden buyer UI | Implemented |
 | FR-04b | Email identity | verify/reissue/forgot/reset, generic responses, session revoke | Implemented; provider external |
 | FR-04c | Refund support | owned request, duplicate guard, MFA review/decision, atomic order state | Implemented; payment provider external |
 | FR-05 | File upload | MIME + magic bytes + AV + private object storage | N/A until product requires uploads |
