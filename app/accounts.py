@@ -180,8 +180,14 @@ class Accounts:
                     created_at TEXT, token_ver INTEGER DEFAULT 0,
                     partner_id TEXT, partner_role TEXT)"""
             )
-            # миграции колонок — только SQLite (на PG они сразу в CREATE)
-            if not database.POSTGRES:
+            # Миграции колонок. CREATE TABLE IF NOT EXISTS не трогает уже
+            # существующую таблицу — на живой БД (Supabase) колонки надо
+            # доливать явно, иначе UPDATE ниже падает UndefinedColumn.
+            if database.POSTGRES:
+                for col, ddl in (("token_ver", "INTEGER DEFAULT 0"),
+                                 ("partner_id", "TEXT"), ("partner_role", "TEXT")):
+                    c.execute(f"ALTER TABLE users ADD COLUMN IF NOT EXISTS {col} {ddl}")
+            else:
                 cols = {r[1] for r in c.execute("PRAGMA table_info(users)").fetchall()}
                 if "token_ver" not in cols:
                     c.execute("ALTER TABLE users ADD COLUMN token_ver INTEGER DEFAULT 0")
