@@ -8,4 +8,8 @@ __pycache__/
 # (dependabot.yml — не workflow, пушится обычным токеном)
 .github/workflows/
 backups/
+# все env-файлы с секретами (.env, .env.local, .env.production …),
+# кроме шаблона .env.example — иначе пароль БД уедет в git
 .env
+.env.*
+!.env.example
