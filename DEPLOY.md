@@ -1,8 +1,10 @@
 # Деплой Yummy: VPS production и Render reference
 
 Рекомендуемый production путь — `deploy/docker-compose.production.yml` на VPS:
-Caddy выдаёт TLS, FastAPI закрыт внутренней сетью, Redis не публикует порт, а
-PostgreSQL находится в Supabase. Скопируй `deploy/env.production.example` в
+Caddy выдаёт TLS, FastAPI закрыт внутренней сетью, Redis не публикует порт, ARQ
+worker работает отдельным container, а PostgreSQL находится в Supabase. `/health`
+fail-closed проверяет worker heartbeat при `YUMMY_REQUIRE_WORKER=1`.
+Скопируй `deploy/env.production.example` в
 `.env.production`, заполни secrets локально и запусти `deploy/deploy.sh`.
 
 `render.yaml` остаётся reference-вариантом managed deployment.

@@ -680,6 +680,18 @@ class Accounts:
                 RETURNING *""", (now, self._rt_hash(raw), now)).fetchone()
             return row
 
+    def cleanup_expired_security_data(self, now: int | None = None) -> dict:
+        cutoff = now if now is not None else int(time.time())
+        used_cutoff = cutoff - 30 * 86400
+        with self._lock, self._conn() as c:
+            action = c.execute("DELETE FROM action_tokens WHERE expires_at<? OR (used_at IS NOT NULL AND used_at<?)",
+                               (cutoff, used_cutoff)).rowcount
+            refresh = c.execute("DELETE FROM refresh_tokens WHERE expires_at<? OR (revoked=1 AND used_at IS NOT NULL AND used_at<?)",
+                                (cutoff, used_cutoff)).rowcount
+            invites = c.execute("DELETE FROM staff_invitations WHERE expires_at<? OR (used_at IS NOT NULL AND used_at<?)",
+                                (cutoff, used_cutoff)).rowcount
+        return {"action_tokens": action, "refresh_tokens": refresh, "staff_invitations": invites}
+
     def update_password_hash(self, user_id: str, pw_hash: str) -> None:
         """Rehash после успешной проверки; credential/session semantics не меняются."""
         with self._lock, self._conn() as c:

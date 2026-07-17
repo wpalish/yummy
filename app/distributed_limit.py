@@ -38,6 +38,14 @@ class DistributedLimiter:
     def _digest(identity: str) -> str:
         return hmac.new(_KEY_SECRET.encode(), identity.encode(), hashlib.sha256).hexdigest()[:32]
 
+    def worker_healthy(self) -> bool:
+        if not self.client:
+            return False
+        try:
+            return bool(self.client.exists("yummy:worker:heartbeat"))
+        except RedisError:
+            return False
+
     def check(self, bucket: str, identity: str, limit: int, window: int) -> tuple[bool, int]:
         """Return ``(allowed, retry_after)``; configured Redis errors fail closed."""
         if not self.client:

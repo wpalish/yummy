@@ -39,8 +39,12 @@ def main() -> int:
         print("FAIL schema revision/tables")
         return 4
     try:
-        if not Redis.from_url(redis_url, socket_connect_timeout=3).ping():
+        redis = Redis.from_url(redis_url, socket_connect_timeout=3)
+        if not redis.ping():
             raise RuntimeError("ping false")
+        if os.getenv("YUMMY_REQUIRE_WORKER", "0") in {"1", "true", "yes"}:
+            if not redis.exists("yummy:worker:heartbeat"):
+                raise RuntimeError("worker heartbeat missing")
     except Exception as exc:
         print("FAIL redis:", type(exc).__name__)
         return 5

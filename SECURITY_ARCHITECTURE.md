@@ -145,6 +145,7 @@ refund request ownership/admin workflow уже реализован, но реа
 | JWT/RBAC/BOLA/validation | IMPLEMENTED | automated negative tests |
 | Partner/staff access | IMPLEMENTED | hidden buyer UI, invitation-only owner/manager/cashier, hashed single-use links, server RBAC |
 | Production demo isolation | IMPLEMENTED | no seed/fake-paid/static venues/example reviews/demo PIN; provider absent = fail-closed |
+| Background operations | IMPLEMENTED/PARTIAL | ARQ worker heartbeat, expiry, reconciliation, cleanup, invoices; notification outbox P1 |
 | Partner merchant billing | IMPLEMENTED/PARTIAL | encrypted per-partner config, readiness gates, versioned bps rules/ledger; Kaspi adapter external |
 | Stripe Checkout payments | IMPLEMENTED/PARTIAL | reservation, idempotent session, signed webhook, event dedupe/reconciliation; live account external |
 | Refund workflow | IMPLEMENTED/PARTIAL | owned single request + MFA decision + atomic state; Stripe Refund API external |

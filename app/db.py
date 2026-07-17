@@ -569,6 +569,34 @@ class Store:
                 "SELECT * FROM commission_ledger WHERE partner_id=? ORDER BY created_at DESC",
                 (partner_id,)).fetchall()]
 
+    def pending_payments(self, limit: int = 100) -> list[dict]:
+        with self._lock, self._conn() as c:
+            return [dict(row) for row in c.execute(
+                "SELECT * FROM payments WHERE status='pending' AND checkout_session_id IS NOT NULL ORDER BY created_at LIMIT ?",
+                (limit,)).fetchall()]
+
+    def generate_commission_invoices(self, period_from: str, period_to: str,
+                                     due_at: str) -> int:
+        created = 0
+        with self._lock, self._conn() as c:
+            partners = c.execute("""SELECT partner_id,SUM(commission_amount_minor) AS total
+                FROM commission_ledger WHERE status='accrued' AND created_at>=? AND created_at<?
+                GROUP BY partner_id""", (period_from, period_to)).fetchall()
+            for row in partners:
+                invoice_id = f"inv-{row['partner_id']}-{period_from[:10]}"
+                inserted = c.execute("""INSERT INTO commission_invoices(
+                    id,partner_id,period_from,period_to,amount_minor,status,issued_at,due_at,document_number)
+                    VALUES(?,?,?,?,?,'issued',?,?,?) ON CONFLICT(id) DO NOTHING""",
+                    (invoice_id, row["partner_id"], period_from, period_to, row["total"],
+                     _now_iso(), due_at, invoice_id.upper()))
+                if inserted.rowcount != 1:
+                    continue
+                c.execute("""UPDATE commission_ledger SET status='invoiced',invoice_id=?
+                    WHERE partner_id=? AND status='accrued' AND created_at>=? AND created_at<?""",
+                    (invoice_id, row["partner_id"], period_from, period_to))
+                created += 1
+        return created
+
     def partner_orders(self, partner_id: str) -> list[Order]:
         with self._lock, self._conn() as c:
             rows = c.execute(

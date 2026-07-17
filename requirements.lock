@@ -19,6 +19,8 @@ argon2-cffi==25.1.0
     # via -r requirements.txt
 argon2-cffi-bindings==25.1.0
     # via argon2-cffi
+arq==0.28.0
+    # via -r requirements.txt
 async-timeout==5.0.1
     # via redis
 certifi==2026.6.17
@@ -33,7 +35,9 @@ cffi==2.1.0
 charset-normalizer==3.4.9
     # via requests
 click==8.4.2
-    # via uvicorn
+    # via
+    #   arq
+    #   uvicorn
 cryptography==48.0.1
     # via -r requirements.txt
 fastapi==0.139.0
@@ -44,6 +48,8 @@ h11==0.16.0
     # via
     #   httpcore
     #   uvicorn
+hiredis==3.4.0
+    # via redis
 httpcore==1.0.9
     # via httpx
 httptools==0.8.0
@@ -73,14 +79,18 @@ pydantic==2.13.4
     #   fastapi
 pydantic-core==2.46.4
     # via pydantic
+pyjwt==2.13.0
+    # via redis
 python-dotenv==1.2.2
     # via uvicorn
 python-multipart==0.0.32
     # via -r requirements.txt
 pyyaml==6.0.3
     # via uvicorn
-redis==7.4.1
-    # via -r requirements.txt
+redis==5.3.1
+    # via
+    #   -r requirements.txt
+    #   arq
 requests==2.34.2
     # via stripe
 segno==1.6.6

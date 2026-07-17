@@ -59,6 +59,15 @@ class StripeGateway:
             raise PaymentUnavailable("Stripe Checkout недоступен") from exc
         return {"id": session.id, "url": session.url}
 
+    def retrieve_checkout(self, session_id: str) -> dict[str, Any]:
+        if _MODE != "stripe":
+            raise PaymentUnavailable("Stripe payment mode выключен")
+        stripe.api_key = _SECRET_KEY
+        try:
+            return dict(stripe.checkout.Session.retrieve(session_id))
+        except stripe.StripeError as exc:
+            raise PaymentUnavailable("Stripe reconciliation недоступен") from exc
+
     def construct_event(self, payload: bytes, signature: str) -> dict[str, Any]:
         if not _WEBHOOK_SECRET:
             raise PaymentUnavailable("Stripe webhook secret не настроен")

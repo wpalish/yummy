@@ -141,7 +141,8 @@ sequenceDiagram
 | 5 | encrypted DB/backups, PITR, restore automation | 4–7 | documented restore drill meets RPO/RTO |
 | 6 | OTel metrics, log drain, SIEM detections and on-call | 4–7 | alerts tested by simulations |
 | 7 | Stripe Checkout reservation/webhook/idempotency/reconciliation | done | replay/amount/race/failure tests pass |
-| 7b | Stripe Connect/live refunds/reconciliation scheduler | 3–6 | live-account and payout evidence |
+| 7a | ARQ expiry/reconciliation/cleanup/invoice worker + heartbeat | done | independent task/readiness tests pass |
+| 7b | Stripe Connect/live refunds + notification outbox | 3–6 | live-account and payout evidence |
 | 8 | DAST, load test, ASVS evidence review, external pentest/remediation | 7–15 | signed report; no open critical/high |
 
 **Remaining to defensible real-money baseline:** roughly **17–38 person-days**, plus

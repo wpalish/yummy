@@ -19,6 +19,8 @@ argon2-cffi==25.1.0
     # via -r requirements.txt
 argon2-cffi-bindings==25.1.0
     # via argon2-cffi
+arq==0.28.0
+    # via -r requirements.txt
 async-timeout==5.0.1
     # via redis
 bandit==1.9.4
@@ -44,6 +46,7 @@ charset-normalizer==3.4.9
     # via requests
 click==8.4.2
     # via
+    #   arq
     #   pip-tools
     #   uvicorn
 cryptography==48.0.1
@@ -62,6 +65,8 @@ h11==0.16.0
     # via
     #   httpcore
     #   uvicorn
+hiredis==3.4.0
+    # via redis
 httpcore==1.0.9
     # via httpx
 httptools==0.8.0
@@ -128,6 +133,8 @@ pygments==2.20.0
     # via
     #   pytest
     #   rich
+pyjwt==2.13.0
+    # via redis
 pyparsing==3.3.2
     # via pip-requirements-parser
 pyproject-hooks==1.2.0
@@ -144,8 +151,10 @@ pyyaml==6.0.3
     # via
     #   bandit
     #   uvicorn
-redis==7.4.1
-    # via -r requirements.txt
+redis==5.3.1
+    # via
+    #   -r requirements.txt
+    #   arq
 requests==2.34.2
     # via
     #   cachecontrol

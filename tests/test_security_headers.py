@@ -86,6 +86,18 @@ def test_liveness_does_not_depend_on_database_but_readiness_does(monkeypatch):
     assert readiness.status_code == 503 and readiness.json()["detail"] == "database unavailable"
 
 
+def test_readiness_fails_when_required_worker_heartbeat_is_missing(monkeypatch):
+    import app.main as main_mod
+
+    client = _client()
+    monkeypatch.setenv("YUMMY_REQUIRE_WORKER", "1")
+    monkeypatch.setattr(main_mod.store, "ping", lambda: True)
+    monkeypatch.setattr(main_mod.distributed_limiter, "worker_healthy", lambda: False)
+    response = client.get("/health")
+    assert response.status_code == 503
+    assert response.json()["detail"] == "background worker unavailable"
+
+
 def test_host_header_allowlist_rejects_unknown_host():
     from fastapi.testclient import TestClient
     from app.main import app

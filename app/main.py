@@ -508,6 +508,9 @@ def health() -> dict:
     except Exception as exc:
         log.error("readiness database unavailable: %s", type(exc).__name__)
         raise HTTPException(503, "database unavailable") from exc
+    if os.getenv("YUMMY_REQUIRE_WORKER", "0").lower() in {"1", "true", "yes"}:
+        if not distributed_limiter.worker_healthy():
+            raise HTTPException(503, "background worker unavailable")
     if _PRODUCTION:
         return {"status": "ok"}
     p, b, o = store.count()
