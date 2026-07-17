@@ -57,7 +57,9 @@ def main() -> int:
                 # убираем, чтобы inline <script> остался валидным (без мёртвого nonce).
                 .replace(' nonce="__CSP_NONCE__"', "")
                 # Telegram-канал: handle из env запекаем в статику для Pages.
-                .replace("__TG_CHANNEL__", os.getenv("YUMMY_TG_CHANNEL", "")))
+                .replace("__TG_CHANNEL__", os.getenv("YUMMY_TG_CHANNEL", ""))
+                # Режим оплаты для Pages (demo — витрина-пилот, disabled — покупка выкл).
+                .replace("__PAYMENT_MODE__", os.getenv("YUMMY_PAYMENT_MODE", "demo")))
     if API_BLOCK not in html:
         print("ОШИБКА: api-блок не найден в app/static/index.html", file=sys.stderr)
         return 1

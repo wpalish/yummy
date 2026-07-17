@@ -946,6 +946,11 @@ const ECO_KG=0.5, ECO_CO2=1.3;
 /* Значение может быть @username (публичный канал) ИЛИ числовой -100… id
    (приватный — бот постит по нему, но публичной t.me-ссылки нет). Для UI-ссылки
    годится только username; числовой id/плейсхолдер → ссылки нет (фолбэк на бота). */
+/* Режим оплаты приходит с сервера: demo — имитация (пилот, честно подписано),
+   disabled — провайдера нет, покупка недоступна (никакого фейкового «оплачено»).
+   Плейсхолдер не заменён (открыт статический файл) → считаем demo. */
+const PAYMENT_MODE=(v=>v.startsWith("__")?"demo":v)("__PAYMENT_MODE__");
+const DEMO_PAY=PAYMENT_MODE==="demo";
 const TG_CHANNEL=(v=>(v.startsWith("__")||/^-?\d/.test(v))?"":v.replace(/^@/,""))("__TG_CHANNEL__");
 const tgChannelUrl=()=>TG_CHANNEL?"https://t.me/"+TG_CHANNEL:"";
 const CATS=[["all","Все","🔥"],["sweet","Сладкое","🍩"],["bakery","Выпечка","🥐"],["snack","Снеки","🥪"],["mixed","Микс","🧺"]];
@@ -1542,8 +1547,11 @@ window.showReviews=async(partnerId,name)=>{
   const body=real.length
     ? `<p style="font-size:.76rem;color:var(--txt2);margin:.15rem 0 .5rem">Отзывы покупателей — только по подтверждённым заказам</p>
        ${real.map(r=>`<div class="rev"><b>${esc(r.author_name)}</b> <span class="st">${"★".repeat(r.rating)}${"☆".repeat(5-r.rating)}</span><br>${esc(r.text)}</div>`).join("")}`
-    : `<p style="font-size:.76rem;color:var(--txt2);margin:.15rem 0 .5rem">Реальных отзывов пока нет — вот примеры того, как это будет выглядеть (демо):</p>
-       ${(REVIEWS[name]||[["Гость","Пока нет отзывов — будь первым!",5]]).map(([n,t,s])=>`<div class="rev"><b>${esc(n)}</b> <span class="st">${"★".repeat(s)}${"☆".repeat(5-s)}</span><br>${esc(t)}</div>`).join("")}`;
+    : DEMO_PAY
+      // демо-примеры отзывов — только в пилоте и с явной пометкой; в проде их нет
+      ? `<p style="font-size:.76rem;color:var(--txt2);margin:.15rem 0 .5rem">Реальных отзывов пока нет — вот примеры того, как это будет выглядеть (демо):</p>
+       ${(REVIEWS[name]||[["Гость","Пока нет отзывов — будь первым!",5]]).map(([n,t,s])=>`<div class="rev"><b>${esc(n)}</b> <span class="st">${"★".repeat(s)}${"☆".repeat(5-s)}</span><br>${esc(t)}</div>`).join("")}`
+      : `<p style="font-size:.82rem;color:var(--txt2);margin:.15rem 0 .5rem">Отзывов пока нет — станьте первым после заказа.</p>`;
   showModal(`<div class="mc"><h3>${esc(name)}</h3>${body}
     <button class="btn sec" data-act="closeModal" style="margin-top:.9rem">Закрыть</button></div>`);
 };
@@ -1560,16 +1568,17 @@ async function openBox(id){
       <div class="row"><span>Осталось</span><span>${b.qty_left} из ${b.qty_total}</span></div>
       ${b.description?`<div class="inside"><b>Что обычно внутри:</b> ${esc(b.description)}</div>`:""}
       <div class="rules"><b>Сюрприз-бокс.</b> Точный состав может отличаться — это набор из свежих остатков дня. Забрать нужно в окне самовывоза, иначе заказ сгорает (предоплата не возвращается). Если заведение не выдаст — полный возврат.</div>
-      <label>Ваше имя <input id="oName" placeholder="Имя" /></label>
+      ${DEMO_PAY?`<label>Ваше имя <input id="oName" placeholder="Имя" /></label>
       <label>Телефон <input id="oPhone" placeholder="+7 7XX XXX XX XX" /></label>
       <button class="btn" id="payBtn" style="margin-top:.8rem">Оплатить ${money(b.price)}</button>
-      <div id="kaspiSlot"></div>
+      <div id="kaspiSlot"></div>`
+      :`<div class="rules" style="border-color:var(--red)"><b>Покупка пока недоступна.</b> Заведение ещё не подключило приём платежей — как только подключит, бокс можно будет оплатить и забрать.</div>`}
       <button class="btn sec" id="shareBtn" style="margin-top:.5rem">🔗 Поделиться боксом</button>
-      <div class="demo-pay">💳 Демо-оплата. В продакшене — Kaspi Pay / Kaspi QR.</div>
+      ${DEMO_PAY?`<div class="demo-pay">💳 Демо-оплата. В продакшене — Kaspi Pay / Kaspi QR.</div>`:""}
     </div>`);
   const acc=account();  // зарегистрированному покупателю подставляем имя/телефон
-  if(acc&&acc.role==="buyer"){ if(acc.name)$("#oName").value=acc.name; if(acc.phone)$("#oPhone").value=acc.phone; }
-  if(KASPI_SERVICE_ID){ // включается автоматически, когда появится service_id мерчанта
+  if(DEMO_PAY&&acc&&acc.role==="buyer"){ if(acc.name)$("#oName").value=acc.name; if(acc.phone)$("#oPhone").value=acc.phone; }
+  if(DEMO_PAY&&KASPI_SERVICE_ID){ // включается автоматически, когда появится service_id мерчанта
     $("#kaspiSlot").innerHTML=`<a href="https://kaspi.kz/pay/${encodeURIComponent(KASPI_SERVICE_ID)}?amount=${b.price}"
       style="display:block;text-align:center;background:#F14635;color:#fff;font-weight:800;padding:.8rem 1rem;border-radius:13px;margin-top:.5rem;text-decoration:none">Оплатить через Kaspi</a>`;
   }
@@ -1579,6 +1588,7 @@ async function openBox(id){
     try{ if(navigator.share){await navigator.share(data);} else {await navigator.clipboard.writeText(url);toast("Ссылка скопирована 🔗");} }
     catch(e){ try{await navigator.clipboard.writeText(url);toast("Ссылка скопирована 🔗");}catch(_){toast(url);} }
   };
+  if(!DEMO_PAY)return;   // покупка недоступна — кнопки оплаты нет
   $("#payBtn").onclick=async()=>{
     const name=$("#oName").value.trim(), phone=$("#oPhone").value.trim();
     if(!name||phone.length<5){toast("Укажите имя и телефон",true);return;}

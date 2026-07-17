@@ -118,13 +118,36 @@ _MAX_BODY = int(os.getenv("YUMMY_MAX_BODY_BYTES", str(64 * 1024)))
 # В проде задать YUMMY_ALLOWED_HOSTS=yummy-astana.onrender.com (через запятую).
 _ALLOWED_HOSTS = [h.strip() for h in os.getenv("YUMMY_ALLOWED_HOSTS", "").split(",") if h.strip()] or ["*"]
 
+# --------------------------------------------------------------------------- #
+#  Демо vs прод: demo-поведение теперь ЯВНОЕ и выключаемое.
+#
+#  YUMMY_PAYMENT_MODE:
+#    demo (умолчание) — оплата имитируется, QR выдаётся сразу. Так живёт пилот,
+#                       в UI это честно подписано.
+#    disabled         — платёжного провайдера нет → покупка НЕДОСТУПНА (503),
+#                       вместо фейкового «оплачено». Публиковать платный бокс
+#                       можно только партнёру с активным мерчант-аккаунтом.
+#  (значение kaspi появится вместе с реальной Kaspi-интеграцией)
+#
+#  YUMMY_DEMO_SEED: посев демо-заведений. В проде (YUMMY_ENFORCE_AUTH=1) НИКОГДА
+#  не сеем сам — пустая БД должна давать пустой каталог, а не выдуманные кофейни.
+# --------------------------------------------------------------------------- #
+_PAYMENT_MODE = os.getenv("YUMMY_PAYMENT_MODE", "demo").strip().lower()
+_DEMO_PAY = _PAYMENT_MODE == "demo"
+_DEMO_SEED = (os.getenv("YUMMY_DEMO_SEED", "").lower() in {"1", "true", "yes"}
+              or not _ENFORCE)
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     assert_prod_config()  # fail-fast: прод-режим не стартует с dev-секретом
-    if store.count() == (0, 0, 0):
+    # Демо-заведения сеем ТОЛЬКО вне прода: иначе сервис показывал бы людям
+    # выдуманные кофейни с реальными адресами как настоящих партнёров.
+    if _DEMO_SEED and store.count() == (0, 0, 0):
         from .seed import seed
         seed(store)
+    elif not _DEMO_SEED:
+        log.info("demo-seed выключен (прод): пустая БД → пустой каталог")
     yield
 
 
@@ -254,14 +277,16 @@ def index() -> HTMLResponse:
     nonce = secrets.token_urlsafe(16)
     html = ((_STATIC / "index.html").read_text(encoding="utf-8")
             .replace("__CSP_NONCE__", nonce)
-            .replace("__TG_CHANNEL__", os.getenv("YUMMY_TG_CHANNEL", "")))
+            .replace("__TG_CHANNEL__", os.getenv("YUMMY_TG_CHANNEL", ""))
+            .replace("__PAYMENT_MODE__", _PAYMENT_MODE))
     return HTMLResponse(html, headers={"Content-Security-Policy": _csp(nonce)})
 
 
 @app.get("/health", tags=["Dev"])
 def health() -> dict:
     p, b, o = store.count()
-    return {"status": "ok", "partners": p, "boxes": b, "orders": o}
+    return {"status": "ok", "partners": p, "boxes": b, "orders": o,
+            "payment_mode": _PAYMENT_MODE, "demo_seed": _DEMO_SEED}
 
 
 # --------------------------------------------------------------------------- #
@@ -299,6 +324,10 @@ def create_order(payload: OrderCreate,
         raise HTTPException(404, "Бокс не найден")
     if box.qty_left <= 0:
         raise HTTPException(409, "Боксы закончились")
+    # Нет платёжного провайдера → покупка недоступна. Раньше заказ молча
+    # становился «оплаченным» и выдавал QR бесплатно — фейковая продажа.
+    if not _DEMO_PAY and not store.can_sell_paid(box.partner_id):
+        raise HTTPException(503, "Оплата пока недоступна — заведение ещё не подключило приём платежей")
 
     store.release_expired_pending()          # снять протухшие резервы под оплату
     require_payment = store.can_sell_paid(box.partner_id)
@@ -390,6 +419,10 @@ def create_box(payload: BoxCreate, bg: BackgroundTasks) -> Box:
     в фоне (best-effort): без TELEGRAM_BOT_TOKEN рассылка тихо пропускается."""
     if payload.value_est < payload.price:
         raise HTTPException(400, "Ценность содержимого должна быть не ниже цены бокса")
+    # Нет верифицированного мерчанта → платный бокс публиковать нельзя (иначе
+    # продавали бы то, за что невозможно принять деньги).
+    if not _DEMO_PAY and not store.can_sell_paid(payload.partner_id):
+        raise HTTPException(403, "Сначала подключите и активируйте приём платежей")
     box = store.create_box(_new("b"), payload)
     bg.add_task(notify_mod.broadcast_new_box, store, box)
     return box
