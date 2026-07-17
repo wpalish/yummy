@@ -1,0 +1,25 @@
+name: Authorized staging DAST
+on:
+  workflow_dispatch:
+    inputs:
+      staging_url:
+        description: Explicit authorized staging URL
+        required: true
+permissions:
+  contents: read
+jobs:
+  zap:
+    runs-on: ubuntu-latest
+    environment: staging-security
+    steps:
+      - uses: actions/checkout@v4
+      - name: Refuse production-like target
+        env:
+          STAGING_URL: ${{ inputs.staging_url }}
+        run: |
+          case "$STAGING_URL" in *prod*|*www.*) exit 2;; esac
+      - uses: zaproxy/action-baseline@v0.14.0
+        with:
+          target: ${{ inputs.staging_url }}
+          rules_file_name: security/zap-baseline.conf
+          artifact_name: zap-staging-report

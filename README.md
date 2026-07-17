@@ -97,6 +97,10 @@ Supabase revision/таблицы/Redis без вывода secrets.
 Horizontal deployment: задай `REDIS_URL` — включатся атомарные distributed limits;
 при configured Redis outage limiter fail-closed возвращает `503`, а не деградирует.
 
+Performance/security validation pack: `load/k6`, `load/locustfile.py`, guarded Redis/DB
+failure drills, ZAP staging workflow и `security/PENTEST_CHECKLIST.md`. Все active
+скрипты требуют явный staging flag и отказываются от production-looking URL.
+
 Security baseline, STRIDE и честная ASVS gap-матрица:
 [SECURITY_ARCHITECTURE.md](SECURITY_ARCHITECTURE.md). Технический roadmap,
 Mermaid-схемы и pentest checklist: [SECURITY_IMPLEMENTATION_PLAN.md](SECURITY_IMPLEMENTATION_PLAN.md).

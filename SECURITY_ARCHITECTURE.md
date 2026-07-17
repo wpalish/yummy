@@ -170,7 +170,7 @@ refund request ownership/admin workflow уже реализован, но реа
 | Daily/PITR/immutable/offsite backup | **GAP — P0** | managed retention/PITR and restore drill still require provider evidence |
 | SIEM/IDS/IPS/24x7 alerts | EXTERNAL | log drain + alert routing + on-call |
 | SAST/SCA | IMPLEMENTED | Bandit/Ruff/pip-audit; CodeQL recommended |
-| DAST/pentest/bug bounty | EXTERNAL | staging target + written authorization/scope |
+| DAST/load/pentest | TOOLING READY | guarded k6/Locust/ZAP/failure drills and manual checklist; authorized staging execution external |
 | Container/IaC/secret/SBOM scan | CONFIGURED | Trivy + CodeQL + CycloneDX artifact; verify first CI run |
 | ASVS Level 3 | NOT CERTIFIED | evidence + independent verification required |
 

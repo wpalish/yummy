@@ -143,7 +143,8 @@ sequenceDiagram
 | 7 | Stripe Checkout reservation/webhook/idempotency/reconciliation | done | replay/amount/race/failure tests pass |
 | 7a | ARQ expiry/reconciliation/cleanup/invoice worker + heartbeat | done | independent task/readiness tests pass |
 | 7b | Stripe Connect/live refunds + notification outbox | 3–6 | live-account and payout evidence |
-| 8 | DAST, load test, ASVS evidence review, external pentest/remediation | 7–15 | signed report; no open critical/high |
+| 8 | Guarded k6/Locust/ZAP/failover tooling and checklist | done | scripts/threshold/safety tests pass |
+| 8b | Execute authorized staging tests + external pentest/remediation | 5–12 | signed report; no open critical/high |
 
 **Remaining to defensible real-money baseline:** roughly **17–38 person-days**, plus
 external pentest and provider setup. “ASVS L3” may require more depending on final
