@@ -637,6 +637,15 @@ def export_partner_orders_csv(partner_id: str,
                              headers={"Content-Disposition": 'attachment; filename="yummy-orders.csv"'})
 
 
+@app.get("/partners/{partner_id}/daily-stats", tags=["Partner"])
+def partner_daily_stats(partner_id: str, days: int = 30,
+                        user: PublicUser | None = Depends(require_role("partner", "admin"))
+                        ) -> list[dict]:
+    """Заказы/выручка партнёра по дням — для графика в кабинете."""
+    _assert_owns(partner_id, user)
+    return store.partner_daily_stats(partner_id, days=min(max(days, 1), 90))
+
+
 def _orders_csv(orders: list) -> str:
     """CSV через stdlib csv — сам экранирует запятые/кавычки в названиях.
     Телефон покупателя НЕ выгружаем: лишние персональные данные в файле."""

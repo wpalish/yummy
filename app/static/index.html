@@ -593,6 +593,7 @@
       </div>
       <div class="cardp"><h3>Брони и выдачи</h3><div id="pOrders"></div>
         <button class="btn sec" id="pCsv" style="margin-top:.7rem">⬇ Выгрузить журнал (CSV)</button></div>
+      <div class="cardp"><h3>Аналитика по дням</h3><div id="pDaily"></div></div>
     </section>
 
     <!-- ===================== АДМИН ===================== -->
@@ -821,7 +822,7 @@ const KZ={
 "Выставляй боксы из вечерних остатков за минуту. Выдавай заказы по коду.":"Кешкі қалдықтардан бокстарды бір минутта шығар. Тапсырысты код бойынша бер.",
 "Заведение":"Мекеме","Создать бокс":"Бокс құру","Категория":"Санат","Название":"Атауы",
 "Опубликовать бокс":"Боксты жариялау","Выдать заказ по коду":"Тапсырысты код бойынша беру","Выдать":"Беру",
-"📷 Сканировать QR камерой":"📷 QR-ды камерамен сканерлеу","Мои боксы":"Менің бокстарым","Брони и выдачи":"Броньдар мен берулер",
+"📷 Сканировать QR камерой":"📷 QR-ды камерамен сканерлеу","Мои боксы":"Менің бокстарым","Брони и выдачи":"Броньдар мен берулер","Аналитика по дням":"Күндер бойынша аналитика","Данных пока нет.":"Деректер әлі жоқ.",
 "Редактировать бокс":"Боксты өңдеу","Снять с продажи?":"Сатудан алу?","Снять с продажи":"Сатудан алу","Сохранить":"Сақтау",
 "Пользователи":"Қолданушылар","Заблокировать":"Бұғаттау","Разблокировать":"Бұғаттан шығару","активен":"белсенді","заблокирован":"бұғатталған",
 "⬇ Выгрузить заказы (CSV)":"⬇ Тапсырыстарды жүктеу (CSV)","⬇ Выгрузить журнал (CSV)":"⬇ Журналды жүктеу (CSV)",
@@ -1743,6 +1744,16 @@ async function loadPartnerData(){
     <button class="linkbtn" data-act="closeBox" data-a1="${esc(b.id)}" data-a2="${esc(b.title||b.category_ru)}" title="Снять с продажи" style="color:var(--red)">✕</button>
     </div>`).join(""):'<p class="empty">Боксов пока нет.</p>';
   $("#pOrders").innerHTML=orders.length?orders.map(o=>orderRow(o)).join(""):'<p class="empty">Броней пока нет.</p>';
+  loadDailyStats(pid);
+}
+async function loadDailyStats(pid){
+  const box=$("#pDaily"); if(!box)return;
+  let rows=[]; try{rows=await get(`/partners/${pid}/daily-stats?days=30`);}catch(e){}
+  if(!rows.length){box.innerHTML='<p class="empty">Данных пока нет.</p>';return;}
+  const totalRevenue=rows.reduce((s,r)=>s+r.revenue,0);
+  const totalOrders=rows.reduce((s,r)=>s+r.orders_count,0);
+  box.innerHTML=`<div class="stat" style="margin-bottom:.6rem"><b>${money(totalRevenue)}</b><span>выручка за ${rows.length} ${plural(rows.length,["день","дня","дней"])} (${totalOrders} ${plural(totalOrders,["заказ","заказа","заказов"])})</span></div>`
+    +barChart(rows.map(r=>[r.day,r.revenue]));
 }
 function orderRow(o,admin=false){
   return `<div class="lrow"><div style="font-size:1.2rem">${o.emoji}</div>

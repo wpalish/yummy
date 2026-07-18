@@ -413,6 +413,37 @@ class Store:
             ).fetchall()
             return [self._order_from_row(c, r) for r in rows]
 
+    def partner_daily_stats(self, partner_id: str, days: int = 30) -> list[dict]:
+        """Заказы партнёра по дням за последние `days` дней (для графика в кабинете).
+        Выручка считается по paid/issued — отменённые/просроченные/возвращённые
+        деньги не приносят, но статистику по ним показываем отдельно.
+        """
+        with self._lock, self._conn() as c:
+            rows = c.execute(
+                """
+                SELECT substr(created_at,1,10) AS day,
+                       COUNT(*) AS orders_count,
+                       SUM(CASE WHEN status IN ('paid','issued') THEN price ELSE 0 END) AS revenue,
+                       SUM(CASE WHEN status='issued' THEN 1 ELSE 0 END) AS issued_count,
+                       SUM(CASE WHEN status IN ('cancelled','expired','refunded') THEN 1 ELSE 0 END) AS lost_count
+                FROM orders
+                WHERE partner_id=? AND date(created_at) >= date('now', ?)
+                GROUP BY day
+                ORDER BY day
+                """,
+                (partner_id, f"-{max(1, days) - 1} days"),
+            ).fetchall()
+            return [
+                {
+                    "day": r["day"],
+                    "orders_count": r["orders_count"],
+                    "revenue": r["revenue"] or 0,
+                    "issued_count": r["issued_count"],
+                    "lost_count": r["lost_count"],
+                }
+                for r in rows
+            ]
+
     def redeem(self, code: str) -> tuple[bool, str, Order | None]:
         """Выдать заказ по коду. Возвращает (ок, сообщение, заказ)."""
         with self._lock, self._conn() as c:

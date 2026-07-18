@@ -206,3 +206,32 @@ def test_csv_has_header_and_no_phone(env):
     assert body.splitlines()[0].startswith("code,status")
     assert "+77010000000" not in body            # телефон не выгружаем
     assert "YM-9" in body
+
+
+# --------------------------------------------------------------------------- #
+#  Аналитика по дням
+# --------------------------------------------------------------------------- #
+def test_daily_stats_only_own_partner(env):
+    c, store, users = env
+    h = _staff(users, "a@x.kz", "p1")
+    assert c.get("/partners/p1/daily-stats", headers=h).status_code == 200
+    assert c.get("/partners/p2/daily-stats", headers=h).status_code == 403
+
+
+def test_daily_stats_counts_revenue_and_losses(env):
+    c, store, users = env
+    bid = _box(store, "p1")                       # price=990, qty=5
+    o1 = store.create_order("o1", "YM-1", store.box(bid), "Али", "+7701",
+                            user_id=None, require_payment=False)
+    o2 = store.create_order("o2", "YM-2", store.box(bid), "Даня", "+7702",
+                            user_id=None, require_payment=False)
+    store.redeem(o1.code)                    # o1 -> issued
+    store.cancel_order(o2.code)              # o2 -> cancelled
+    h = _staff(users, "a@x.kz", "p1")
+    stats = c.get("/partners/p1/daily-stats", headers=h).json()
+    assert len(stats) == 1
+    today = stats[0]
+    assert today["orders_count"] == 2
+    assert today["revenue"] == 990                  # только issued, отменённый не считаем
+    assert today["issued_count"] == 1
+    assert today["lost_count"] == 1
