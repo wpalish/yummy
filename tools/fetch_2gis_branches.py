@@ -21,12 +21,13 @@ ORGS = {
 API = "https://catalog.api.2gis.com/3.0/items"
 
 
-def fetch_chain(chain: str, org_id: str, key: str, city_id: str) -> list[dict]:
+def fetch_chain(chain: str, org_id: str, key: str) -> list[dict]:
     rows = []
     page = 1
     while True:
         query = urlencode({
-            "org_id": org_id, "city_id": city_id, "page": page, "page_size": 50,
+            "org_id": org_id, "point": "71.430,51.128", "radius": 40000,
+            "page": page, "page_size": 50,
             "fields": "items.point,items.adm_div,items.org", "key": key,
         })
         request = Request(f"{API}?{query}", headers={"User-Agent": "Yummy/1.0"})
@@ -53,13 +54,12 @@ def fetch_chain(chain: str, org_id: str, key: str, city_id: str) -> list[dict]:
 
 def main() -> int:
     key = os.getenv("DGIS_API_KEY", "")
-    city_id = os.getenv("DGIS_CITY_ID", "")
-    if not key or not city_id:
-        print("Set DGIS_API_KEY and DGIS_CITY_ID (do not commit them)", file=sys.stderr)
+    if not key:
+        print("Set DGIS_API_KEY from dev.2gis.com (do not commit it)", file=sys.stderr)
         return 2
     rows = []
     for chain, org_id in ORGS.items():
-        chain_rows = fetch_chain(chain, org_id, key, city_id)
+        chain_rows = fetch_chain(chain, org_id, key)
         print(f"{chain}: {len(chain_rows)}")
         rows.extend(chain_rows)
     rows.sort(key=lambda row: (row["chain"], row["address"]))
