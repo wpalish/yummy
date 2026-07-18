@@ -591,7 +591,8 @@
           <div class="cardp"><h3>Мои боксы</h3><div id="pBoxes"></div></div>
         </div>
       </div>
-      <div class="cardp"><h3>Брони и выдачи</h3><div id="pOrders"></div></div>
+      <div class="cardp"><h3>Брони и выдачи</h3><div id="pOrders"></div>
+        <button class="btn sec" id="pCsv" style="margin-top:.7rem">⬇ Выгрузить журнал (CSV)</button></div>
     </section>
 
     <!-- ===================== АДМИН ===================== -->
@@ -600,6 +601,11 @@
       <p class="sub">Контроль заказов, возвраты, ключевые метрики пилота.</p>
       <div class="stats" id="aStats"></div>
       <div class="charts" id="aCharts"></div>
+      <div class="cardp"><h3>Пользователи</h3>
+        <p class="sub" style="margin:.2rem 0 .6rem">Блокировка мгновенно рвёт все сессии аккаунта. 🚪 — разлогинить, не блокируя.</p>
+        <div id="aUsers" style="font-size:.84rem"></div>
+        <button class="btn sec" data-act="csvAll" style="margin-top:.7rem">⬇ Выгрузить заказы (CSV)</button>
+      </div>
       <div class="cardp"><h3>Кого зовут покупатели</h3>
         <p class="sub" style="margin:.2rem 0 .6rem">Заведения с карты, которым чаще всего жмут «Хочу боксы отсюда» — очередь на подключение.</p>
         <div id="aVenueInterest" style="font-size:.84rem"></div></div>
@@ -726,6 +732,12 @@ const ACT = {
   showReviews:     el => showReviews(el.dataset.pid, el.dataset.name),
   openVenue:       el => openVenue(el.dataset.a1),
   callVenue:       el => callVenue(el.dataset.a1),
+  editBox:         el => editBoxForm(el.dataset.a1),
+  closeBox:        el => closeBoxConfirm(el.dataset.a1, el.dataset.a2),
+  blockUser:       el => toggleUserBlock(el.dataset.a1, el.dataset.a2==="1"),
+  revokeUser:      el => revokeUserSessions(el.dataset.a1),
+  csvAll:          () => downloadCsv("/admin/orders.csv","yummy-orders.csv"),
+  csvPartner:      el => downloadCsv(`/partners/${el.dataset.a1}/orders.csv`,"yummy-orders.csv"),
   mapShop:         el => shopFromMap(el.dataset.name),
   cancelOrder:     el => cancelOrder(el.dataset.a1),
   userRefund:      el => userRefund(el.dataset.a1),
@@ -810,6 +822,9 @@ const KZ={
 "Заведение":"Мекеме","Создать бокс":"Бокс құру","Категория":"Санат","Название":"Атауы",
 "Опубликовать бокс":"Боксты жариялау","Выдать заказ по коду":"Тапсырысты код бойынша беру","Выдать":"Беру",
 "📷 Сканировать QR камерой":"📷 QR-ды камерамен сканерлеу","Мои боксы":"Менің бокстарым","Брони и выдачи":"Броньдар мен берулер",
+"Редактировать бокс":"Боксты өңдеу","Снять с продажи?":"Сатудан алу?","Снять с продажи":"Сатудан алу","Сохранить":"Сақтау",
+"Пользователи":"Қолданушылар","Заблокировать":"Бұғаттау","Разблокировать":"Бұғаттан шығару","активен":"белсенді","заблокирован":"бұғатталған",
+"⬇ Выгрузить заказы (CSV)":"⬇ Тапсырыстарды жүктеу (CSV)","⬇ Выгрузить журнал (CSV)":"⬇ Журналды жүктеу (CSV)",
 "💾 Сохранить как шаблон":"💾 Үлгі ретінде сақтау","Мои шаблоны":"Менің үлгілерім","Шаблон сохранён 💾":"Үлгі сақталды 💾",
 "Опубликовать":"Жариялау","Бокс опубликован из шаблона ✓":"Бокс үлгіден жарияланды ✓","Шаблон удалён":"Үлгі жойылды","Удалить шаблон?":"Үлгіні жою керек пе?",
 "Пока нет. Заполни форму и нажми «Сохранить как шаблон» — потом публикуй одной кнопкой.":"Әзірге жоқ. Форманы толтырып «Үлгі ретінде сақтау» бас — кейін бір батырмамен жарияла.",
@@ -838,6 +853,9 @@ const KZ={
 "Заведениям":"Мекемелерге","✉️ Оставить заявку":"✉️ Өтінім қалдыру","Сначала посмотрю боксы":"Алдымен бокстарды қараймын",
 "Приглашение в Yummy":"Yummy-ге шақыру","Принять приглашение":"Шақыруды қабылдау","Позже":"Кейінірек",
 "Пригласить заведение или персонал":"Мекеме немесе қызметкер шақыру","Создать ссылку-приглашение":"Шақыру сілтемесін жасау","Копировать":"Көшіру",
+"Пользователи":"Пайдаланушылар","Заблокировать":"Бұғаттау","Разблокировать":"Бұғаттан шығару","активен":"белсенді","заблокирован":"бұғатталған",
+"⬇ Выгрузить заказы (CSV)":"⬇ Тапсырыстарды жүктеу (CSV)","⬇ Выгрузить журнал (CSV)":"⬇ Журналды жүктеу (CSV)",
+"Редактировать бокс":"Боксты өңдеу","Сохранить":"Сақтау","Снять с продажи?":"Сатудан алу?","Снять с продажи":"Сатудан алу",
 "Данные (коды заказов, избранное, фильтры) хранятся только в вашем браузере — localStorage. Cookies не используем.":"Деректер (тапсырыс кодтары, таңдаулылар, сүзгілер) тек сіздің браузеріңізде сақталады — localStorage. Cookies қолданбаймыз.",
 "Понятно":"Түсінікті",
 "Боксы в Астане":"Астанадағы бокстар","Свежее, дешевле и без списаний.":"Жаңа, арзан және шығынсыз.",
@@ -1702,6 +1720,7 @@ async function loadPartner(){
 function curPartner(){return $("#pSelect").value;}
 async function loadPartnerData(){
   const pid=curPartner();
+  {const cb=$("#pCsv"); if(cb)cb.onclick=()=>downloadCsv(`/partners/${pid}/orders.csv`,"yummy-orders.csv");}
   let boxes=[],orders=[];
   try{boxes=await get(`/partners/${pid}/boxes`);}catch(e){}
   try{orders=await get(`/partners/${pid}/orders`);}catch(e){}
@@ -1719,7 +1738,10 @@ async function loadPartnerData(){
   ].map(([v,l])=>`<div class="stat"><b>${v}</b><span>${l}</span></div>`).join("");
   $("#pBoxes").innerHTML=boxes.length?boxes.map(b=>`<div class="lrow"><div style="font-size:1.2rem">${b.emoji}</div>
     <div class="g"><b>${esc(b.title||b.category_ru)}</b><div style="font-size:.76rem;color:var(--txt2)">${money(b.price)} · ${win(b.pickup_from,b.pickup_to)}</div></div>
-    <span class="tag ${b.qty_left>0?"t-issued":"t-expired"}">${b.qty_left}/${b.qty_total}</span></div>`).join(""):'<p class="empty">Боксов пока нет.</p>';
+    <span class="tag ${b.qty_left>0?"t-issued":"t-expired"}">${b.qty_left}/${b.qty_total}</span>
+    <button class="linkbtn" data-act="editBox" data-a1="${esc(b.id)}" title="Редактировать">✏️</button>
+    <button class="linkbtn" data-act="closeBox" data-a1="${esc(b.id)}" data-a2="${esc(b.title||b.category_ru)}" title="Снять с продажи" style="color:var(--red)">✕</button>
+    </div>`).join(""):'<p class="empty">Боксов пока нет.</p>';
   $("#pOrders").innerHTML=orders.length?orders.map(o=>orderRow(o)).join(""):'<p class="empty">Броней пока нет.</p>';
 }
 function orderRow(o,admin=false){
@@ -1860,6 +1882,95 @@ async function loadInvites(){
     b.disabled=false;b.textContent="Создать ссылку-приглашение";
   };
 }
+/* ============ КАБИНЕТ ПАРТНЁРА: правка и снятие бокса ============ */
+window.editBoxForm=async id=>{
+  let b; try{ b=await get("/boxes/"+id); }catch(e){ toast(e.message,true); return; }
+  const dt=v=>{try{const d=new Date(v);return new Date(d.getTime()-d.getTimezoneOffset()*60000).toISOString().slice(0,16);}catch(e){return "";}};
+  showModal(`<div class="mc">
+    <h3>Редактировать бокс</h3>
+    <label>Название <input id="ebTitle" value="${esc(b.title||"")}" /></label>
+    <label>Что внутри <textarea id="ebDesc" rows="2">${esc(b.description||"")}</textarea></label>
+    <div class="frow">
+      <label>Цена, ₸ <input id="ebPrice" type="number" min="100" value="${b.price}" /></label>
+      <label>Ценность, ₸ <input id="ebValue" type="number" min="100" value="${b.value_est}" /></label>
+    </div>
+    <div class="frow">
+      <label>Всего боксов <input id="ebQty" type="number" min="1" max="50" value="${b.qty_total}" /></label>
+      <label>Осталось <input value="${b.qty_left}" disabled /></label>
+    </div>
+    <div class="frow">
+      <label>Выдача с <input id="ebFrom" type="datetime-local" value="${dt(b.pickup_from)}" /></label>
+      <label>до <input id="ebTo" type="datetime-local" value="${dt(b.pickup_to)}" /></label>
+    </div>
+    <button class="btn" id="ebSave" style="margin-top:.7rem">Сохранить</button>
+    <button class="btn sec" data-act="closeModal" style="margin-top:.5rem">Отмена</button>
+  </div>`);
+  $("#ebSave").onclick=async()=>{
+    const btn=$("#ebSave"); btn.disabled=true; btn.textContent="Сохраняем…";
+    const iso=v=>v?new Date(v).toISOString():undefined;
+    try{
+      await api("PATCH","/boxes/"+id,{title:$("#ebTitle").value.trim(),
+        description:$("#ebDesc").value.trim(),price:+$("#ebPrice").value,
+        value_est:+$("#ebValue").value,qty_total:+$("#ebQty").value,
+        pickup_from:iso($("#ebFrom").value),pickup_to:iso($("#ebTo").value)});
+      closeModal(); toast("Бокс обновлён ✓"); loadPartnerData();
+    }catch(e){ toast(e.message,true); btn.disabled=false; btn.textContent="Сохранить"; }
+  };
+};
+window.closeBoxConfirm=(id,title)=>{
+  showModal(`<div class="mc">
+    <h3>Снять с продажи?</h3>
+    <p style="font-size:.86rem;color:var(--txt2);margin:.3rem 0 .9rem">«${esc(title||"Бокс")}» исчезнет из витрины. Уже оплаченные заказы останутся — их нужно выдать.</p>
+    <button class="btn" id="cbYes" style="background:var(--red);color:#fff">Снять с продажи</button>
+    <button class="btn sec" data-act="closeModal" style="margin-top:.5rem">Отмена</button>
+  </div>`);
+  $("#cbYes").onclick=async()=>{
+    try{ await del("/boxes/"+id); closeModal(); toast("Бокс снят с продажи"); loadPartnerData(); }
+    catch(e){ toast(e.message,true); }
+  };
+};
+
+/* CSV качаем через fetch с Bearer-токеном: обычная ссылка его не отправит → 401 */
+window.downloadCsv=async(url,filename)=>{
+  const a=account();
+  try{
+    const base=(typeof API_BASE!=="undefined"?API_BASE:"");
+    const r=await fetch(base+url,{headers:a&&a.token?{"Authorization":"Bearer "+a.token}:{}});
+    if(!r.ok)throw new Error(r.status===401||r.status===403?"Нет доступа":"Не удалось выгрузить");
+    const blob=await r.blob(), link=document.createElement("a");
+    link.href=URL.createObjectURL(blob); link.download=filename;
+    document.body.appendChild(link); link.click(); link.remove();
+    URL.revokeObjectURL(link.href); toast("Файл скачан ⬇");
+  }catch(e){ toast(e.message,true); }
+};
+
+/* ============ АДМИН: пользователи, блокировка, сессии ============ */
+const ROLE_BADGE={admin:"админ",partner:"заведение",customer:"покупатель"};
+async function loadUsers(){
+  const el=$("#aUsers"); if(!el)return;
+  let rows=[];
+  try{ rows=await get("/admin/users?limit=100"); }catch(e){ el.innerHTML='<p class="sub">Не удалось загрузить.</p>'; return; }
+  if(!rows.length){ el.innerHTML='<p class="sub">Пользователей пока нет.</p>'; return; }
+  el.innerHTML=rows.map(u=>`
+    <div class="lrow">
+      <div class="g"><b>${esc(u.email)}</b>
+        <div style="font-size:.76rem;color:var(--txt2)">${ROLE_BADGE[u.role]||esc(u.role)}${u.partner_role?" · "+esc(u.partner_role):""}${u.brand_name?" · "+esc(u.brand_name):""}</div>
+      </div>
+      <span class="tag ${u.is_active?"t-issued":"t-expired"}">${u.is_active?"активен":"заблокирован"}</span>
+      <button class="linkbtn" data-act="revokeUser" data-a1="${esc(u.id)}" title="Разлогинить со всех устройств">🚪</button>
+      <button class="linkbtn" data-act="blockUser" data-a1="${esc(u.id)}" data-a2="${u.is_active?"0":"1"}" style="color:${u.is_active?"var(--red)":"var(--green)"}">${u.is_active?"Заблокировать":"Разблокировать"}</button>
+    </div>`).join("");
+}
+window.toggleUserBlock=async(id,active)=>{
+  try{ await post(`/admin/users/${id}/block?active=${active?"true":"false"}`,{});
+    toast(active?"Разблокирован":"Заблокирован — сессии разорваны"); loadUsers();
+  }catch(e){ toast(e.message,true); }
+};
+window.revokeUserSessions=async id=>{
+  try{ await post(`/admin/users/${id}/revoke-sessions`,{}); toast("Разлогинен со всех устройств"); }
+  catch(e){ toast(e.message,true); }
+};
+
 /* «Кого зовут» — спрос на заведения с карты (очередь на подключение) */
 async function loadVenueInterest(){
   const el=$("#aVenueInterest"); if(!el)return;
@@ -1880,7 +1991,7 @@ async function loadVenueInterest(){
 }
 async function loadAdmin(){
   let s={},orders=[];
-  loadInvites(); loadVenueInterest();
+  loadInvites(); loadVenueInterest(); loadUsers();
   try{s=await get("/admin/stats");}catch(e){}
   try{orders=await get("/admin/orders");}catch(e){}
   $("#aStats").innerHTML=[

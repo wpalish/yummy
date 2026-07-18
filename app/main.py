@@ -5,6 +5,8 @@
 """
 from __future__ import annotations
 
+import csv
+import io
 import logging
 import os
 import time
@@ -56,6 +58,7 @@ from .models import (
     OrderResult,
     Partner,
     RedeemInput,
+    BoxUpdate,
     Review,
     ReviewCreate,
     VenueInterest,
@@ -165,7 +168,7 @@ app.add_middleware(TrustedHostMiddleware, allowed_hosts=_ALLOWED_HOSTS)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=_CORS,
-    allow_methods=["GET", "POST"],
+    allow_methods=["GET", "POST", "PATCH", "DELETE"],   # правка/снятие боксов
     allow_headers=["Authorization", "Content-Type"],
     expose_headers=["X-Request-Id"],
 )
@@ -414,11 +417,67 @@ def list_partners() -> list[Partner]:
     return store.partners()
 
 
-@app.post("/boxes", response_model=Box, status_code=201, tags=["Partner"],
-          dependencies=[Depends(require_role("partner", "admin"))])
-def create_box(payload: BoxCreate, bg: BackgroundTasks) -> Box:
+def _assert_owns(partner_id: str, user: PublicUser | None) -> None:
+    """Партнёр работает ТОЛЬКО со своим заведением; админ — с любым.
+    Раньше роль проверялась, а владение нет: партнёр мог править чужие боксы."""
+    if user is None or user.role == "admin":
+        return                       # админ (или демо-режим без ENFORCE)
+    if user.partner_id != partner_id:
+        raise HTTPException(403, "Это заведение вам не принадлежит")
+
+
+def _assert_can_edit(user: PublicUser | None) -> None:
+    """Кассир только выдаёт заказы; менять витрину — владелец/менеджер."""
+    if user is None or user.role == "admin":
+        return
+    if user.partner_role not in {"owner", "manager"}:
+        raise HTTPException(403, "Недостаточно прав: нужен владелец или менеджер")
+
+
+@app.patch("/boxes/{box_id}", response_model=Box, tags=["Partner"])
+def update_box(box_id: str, payload: BoxUpdate,
+               user: PublicUser | None = Depends(require_role("partner", "admin"))) -> Box:
+    """Редактировать бокс: цена, состав, окно выдачи, остаток."""
+    owner = store.box_owner(box_id)
+    if not owner:
+        raise HTTPException(404, "Бокс не найден")
+    _assert_owns(owner, user)
+    _assert_can_edit(user)
+    data = payload.model_dump(exclude_none=True)
+    if not data:
+        raise HTTPException(422, "Нечего менять")
+    price = data.get("price")
+    value = data.get("value_est")
+    cur = store.box(box_id)
+    if (value if value is not None else cur.value_est) < (price if price is not None else cur.price):
+        raise HTTPException(400, "Ценность содержимого должна быть не ниже цены бокса")
+    box = store.update_box(box_id, **data)
+    if not box:
+        raise HTTPException(404, "Бокс не найден")
+    return box
+
+
+@app.delete("/boxes/{box_id}", tags=["Partner"])
+def close_box(box_id: str,
+              user: PublicUser | None = Depends(require_role("partner", "admin"))) -> dict:
+    """Снять бокс с продажи. Уже оплаченные заказы остаются — их надо выдать."""
+    owner = store.box_owner(box_id)
+    if not owner:
+        raise HTTPException(404, "Бокс не найден")
+    _assert_owns(owner, user)
+    _assert_can_edit(user)
+    if not store.close_box(box_id):
+        raise HTTPException(409, "Бокс уже снят с продажи")
+    return {"ok": True, "message": "Бокс снят с продажи"}
+
+
+@app.post("/boxes", response_model=Box, status_code=201, tags=["Partner"])
+def create_box(payload: BoxCreate, bg: BackgroundTasks,
+               user: PublicUser | None = Depends(require_role("partner", "admin"))) -> Box:
     """Партнёр публикует бокс. Подписчикам Telegram-бота уходит уведомление
     в фоне (best-effort): без TELEGRAM_BOT_TOKEN рассылка тихо пропускается."""
+    _assert_owns(payload.partner_id, user)   # нельзя публиковать от чужого имени
+    _assert_can_edit(user)
     if payload.value_est < payload.price:
         raise HTTPException(400, "Ценность содержимого должна быть не ниже цены бокса")
     # Нет верифицированного мерчанта → платный бокс публиковать нельзя (иначе
@@ -521,6 +580,74 @@ def add_venue_interest(payload: VenueInterestInput) -> dict:
 def venue_interest(limit: int = 50) -> list[VenueInterest]:
     """Кого зовут покупатели — очередь на подключение."""
     return [VenueInterest(**r) for r in store.venue_interest_top(min(limit, 200))]
+
+
+@app.get("/admin/users", tags=["Admin"], dependencies=[Depends(require_role("admin"))])
+def list_users(limit: int = 200) -> list[dict]:
+    """Пользователи: покупатели, персонал заведений, админы."""
+    from .accounts import accounts as users_db
+    return [dict(r) for r in users_db.list_users(min(limit, 500))]
+
+
+@app.post("/admin/users/{user_id}/block", tags=["Admin"])
+def block_user(user_id: str, req: HttpRequest, active: bool = False,
+               admin: PublicUser | None = Depends(require_role("admin"))) -> dict:
+    """Заблокировать/разблокировать аккаунт. Блокировка рвёт все сессии сразу."""
+    from .accounts import accounts as users_db
+    if admin and admin.id == user_id:
+        raise HTTPException(409, "Нельзя заблокировать самого себя")
+    if not users_db.set_active(user_id, active):
+        raise HTTPException(404, "Пользователь не найден")
+    log.info("audit: user-%s id=%s by=%s ip=%s rid=%s",
+             "unblock" if active else "block", user_id,
+             (admin.id if admin else "demo"), req.client.host if req.client else "?",
+             getattr(req.state, "request_id", "-"))
+    return {"ok": True, "is_active": active}
+
+
+@app.post("/admin/users/{user_id}/revoke-sessions", tags=["Admin"])
+def revoke_user_sessions(user_id: str, req: HttpRequest,
+                         admin: PublicUser | None = Depends(require_role("admin"))) -> dict:
+    """Разлогинить со всех устройств, не блокируя аккаунт."""
+    from .accounts import accounts as users_db
+    if not users_db.revoke_sessions(user_id):
+        raise HTTPException(404, "Пользователь не найден")
+    log.info("audit: revoke-sessions id=%s by=%s ip=%s rid=%s", user_id,
+             (admin.id if admin else "demo"), req.client.host if req.client else "?",
+             getattr(req.state, "request_id", "-"))
+    return {"ok": True}
+
+
+@app.get("/admin/orders.csv", tags=["Admin"], dependencies=[Depends(require_role("admin"))])
+def export_orders_csv() -> PlainTextResponse:
+    """Выгрузка заказов в CSV (бухгалтерия/сверка)."""
+    return PlainTextResponse(_orders_csv(store.orders()),
+                             media_type="text/csv; charset=utf-8",
+                             headers={"Content-Disposition": 'attachment; filename="yummy-orders.csv"'})
+
+
+@app.get("/partners/{partner_id}/orders.csv", tags=["Partner"])
+def export_partner_orders_csv(partner_id: str,
+                              user: PublicUser | None = Depends(require_role("partner", "admin"))
+                              ) -> PlainTextResponse:
+    """Партнёр выгружает свои заказы (журнал выдач) в CSV."""
+    _assert_owns(partner_id, user)
+    return PlainTextResponse(_orders_csv(store.partner_orders(partner_id)),
+                             media_type="text/csv; charset=utf-8",
+                             headers={"Content-Disposition": 'attachment; filename="yummy-orders.csv"'})
+
+
+def _orders_csv(orders: list) -> str:
+    """CSV через stdlib csv — сам экранирует запятые/кавычки в названиях.
+    Телефон покупателя НЕ выгружаем: лишние персональные данные в файле."""
+    buf = io.StringIO()
+    w = csv.writer(buf)
+    w.writerow(["code", "status", "payment_status", "partner", "category", "price",
+                "pickup_from", "pickup_to", "created_at"])
+    for o in orders:
+        w.writerow([o.code, o.status, getattr(o, "payment_status", ""), o.partner_name,
+                    o.category, o.price, o.pickup_from, o.pickup_to, o.created_at])
+    return buf.getvalue()
 
 
 @app.post("/admin/staff-invitations", response_model=StaffInvitationResult,

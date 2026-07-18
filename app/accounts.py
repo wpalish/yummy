@@ -266,6 +266,35 @@ class Accounts:
         with self._lock, self._conn() as c:
             c.execute("UPDATE refresh_tokens SET revoked=1 WHERE user_id=?", (user_id,))
 
+    # ---- админ: список, блокировка, отзыв сессий ------------------------- #
+    def list_users(self, limit: int = 200) -> list[sqlite3.Row]:
+        with self._lock, self._conn() as c:
+            return c.execute(
+                "SELECT id,email,role,brand_name,partner_id,partner_role,is_active,created_at"
+                " FROM users ORDER BY created_at DESC LIMIT ?", (limit,)).fetchall()
+
+    def set_active(self, user_id: str, active: bool) -> bool:
+        """Блокировка/разблокировка. При блокировке рвём все сессии: поднимаем
+        token_ver (старые access-токены становятся невалидными) и гасим refresh."""
+        with self._lock, self._conn() as c:
+            cur = c.execute("UPDATE users SET is_active=? WHERE id=?",
+                            (1 if active else 0, user_id))
+            if not getattr(cur, "rowcount", 0):
+                return False
+            if not active:
+                c.execute("UPDATE users SET token_ver=COALESCE(token_ver,0)+1 WHERE id=?",
+                          (user_id,))
+                c.execute("UPDATE refresh_tokens SET revoked=1 WHERE user_id=?", (user_id,))
+        return True
+
+    def revoke_sessions(self, user_id: str) -> bool:
+        """Разлогинить со всех устройств, не блокируя аккаунт."""
+        with self._lock, self._conn() as c:
+            cur = c.execute("UPDATE users SET token_ver=COALESCE(token_ver,0)+1 WHERE id=?",
+                            (user_id,))
+            c.execute("UPDATE refresh_tokens SET revoked=1 WHERE user_id=?", (user_id,))
+            return bool(getattr(cur, "rowcount", 0))
+
     def create(self, email: str, pw_hash: str, role: str,
                brand_name: str | None, address: str | None,
                partner_id: str | None = None, partner_role: str | None = None) -> str:
@@ -524,6 +553,8 @@ def current_user(authorization: str | None = Header(default=None)) -> PublicUser
     if payload.get("ver", 0) != _row_token_ver(row):
         # пароль менялся после выпуска токена — все старые сессии отозваны
         raise HTTPException(401, "Сессия недействительна, войдите заново")
+    if not row["is_active"]:            # заблокирован админом — токен бесполезен
+        raise HTTPException(403, "Аккаунт отключён")
     return _public(row)
 
 

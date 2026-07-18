@@ -53,6 +53,18 @@ class BoxCreate(BaseModel):
     description: str = ""
 
 
+class BoxUpdate(BaseModel):
+    """Правка бокса партнёром. Все поля необязательны — меняем что прислали."""
+
+    title: str | None = None
+    description: str | None = None
+    price: int | None = Field(None, ge=100)
+    value_est: int | None = Field(None, ge=100)
+    qty_total: int | None = Field(None, ge=1, le=50)
+    pickup_from: str | None = None
+    pickup_to: str | None = None
+
+
 class VenueInterestInput(BaseModel):
     """Покупатель просит боксы у заведения из карты (venues.json)."""
 

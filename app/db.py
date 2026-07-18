@@ -238,6 +238,49 @@ class Store:
             boxes = [b for b in boxes if b.district == district]
         return boxes
 
+    def update_box(self, box_id: str, *, title: str | None = None,
+                   description: str | None = None, price: int | None = None,
+                   value_est: int | None = None, qty_total: int | None = None,
+                   pickup_from: str | None = None, pickup_to: str | None = None,
+                   ) -> Box | None:
+        """Правка бокса партнёром. qty_left двигается на ту же дельту, что и
+        qty_total (нельзя «отобрать» уже забронированные) и не уходит ниже 0."""
+        with self._lock, self._conn() as c:
+            r = c.execute("SELECT * FROM boxes WHERE id=?", (box_id,)).fetchone()
+            if not r:
+                return None
+            new_total = r["qty_total"] if qty_total is None else max(1, qty_total)
+            booked = r["qty_total"] - r["qty_left"]          # уже забронировано
+            new_left = max(0, new_total - booked)
+            c.execute(
+                """UPDATE boxes SET title=?, description=?, price=?, value_est=?,
+                       qty_total=?, qty_left=?, pickup_from=?, pickup_to=? WHERE id=?""",
+                (r["title"] if title is None else title,
+                 r["description"] if description is None else description,
+                 r["price"] if price is None else price,
+                 r["value_est"] if value_est is None else value_est,
+                 new_total, new_left,
+                 r["pickup_from"] if pickup_from is None else pickup_from,
+                 r["pickup_to"] if pickup_to is None else pickup_to, box_id),
+            )
+            row = c.execute("SELECT * FROM boxes WHERE id=?", (box_id,)).fetchone()
+            return self._box_from_row(c, row)
+
+    def close_box(self, box_id: str) -> bool:
+        """Снять бокс с продажи. Уже оплаченные заказы остаются в силе —
+        их надо выдать, поэтому заказы не трогаем."""
+        with self._lock, self._conn() as c:
+            cur = c.execute(
+                "UPDATE boxes SET status='closed', qty_left=0 WHERE id=? AND status='active'",
+                (box_id,))
+            return bool(getattr(cur, "rowcount", 0))
+
+    def box_owner(self, box_id: str) -> str | None:
+        """partner_id владельца бокса — для проверки прав перед правкой."""
+        with self._lock, self._conn() as c:
+            r = c.execute("SELECT partner_id FROM boxes WHERE id=?", (box_id,)).fetchone()
+        return r["partner_id"] if r else None
+
     def partner_boxes(self, partner_id: str) -> list[Box]:
         with self._lock, self._conn() as c:
             rows = c.execute(
