@@ -111,6 +111,12 @@ class Store:
                     order_id TEXT UNIQUE REFERENCES orders(id),
                     gross_minor INTEGER, rate_bps INTEGER, commission_minor INTEGER,
                     status TEXT DEFAULT 'accrued', created_at TEXT, reversed_at TEXT);
+                -- «Кого зовут»: сколько раз покупатели просили боксы у заведения
+                -- из карты (venues.json). Только счётчик, без персональных данных.
+                CREATE TABLE IF NOT EXISTS venue_interest(
+                    venue_id TEXT PRIMARY KEY, name TEXT, address TEXT,
+                    district TEXT, votes INTEGER DEFAULT 0, updated_at TEXT);
+                CREATE INDEX IF NOT EXISTS ix_venue_interest ON venue_interest(votes);
                 CREATE INDEX IF NOT EXISTS ix_boxes_partner  ON boxes(partner_id);
                 CREATE INDEX IF NOT EXISTS ix_boxes_status   ON boxes(status, qty_left);
                 CREATE INDEX IF NOT EXISTS ix_orders_partner ON orders(partner_id, created_at);
@@ -143,6 +149,30 @@ class Store:
         with self._lock, self._conn() as c:
             r = self._partner_row(c, pid)
         return Partner(**dict(r)) if r else None
+
+    # ---- «Кого зовут»: спрос на заведения из карты ------------------------- #
+    def add_venue_interest(self, venue_id: str, name: str,
+                           address: str = "", district: str = "") -> int:
+        """+1 к спросу на заведение. Возвращает новый счётчик."""
+        now = datetime.now(timezone.utc).isoformat()
+        with self._lock, self._conn() as c:
+            c.execute(
+                """INSERT INTO venue_interest(venue_id,name,address,district,votes,updated_at)
+                   VALUES(?,?,?,?,1,?)
+                   ON CONFLICT(venue_id) DO UPDATE SET
+                       votes=venue_interest.votes+1, updated_at=excluded.updated_at""",
+                (venue_id, name, address, district, now),
+            )
+            r = c.execute("SELECT votes FROM venue_interest WHERE venue_id=?",
+                          (venue_id,)).fetchone()
+        return int(r["votes"]) if r else 1
+
+    def venue_interest_top(self, limit: int = 50) -> list[dict]:
+        with self._lock, self._conn() as c:
+            rows = c.execute(
+                "SELECT venue_id,name,address,district,votes,updated_at FROM venue_interest"
+                " ORDER BY votes DESC, updated_at DESC LIMIT ?", (limit,)).fetchall()
+        return [dict(r) for r in rows]
 
     def create_partner_for_owner(self, *, name: str, address: str,
                                  district: str = "Есильский р-н") -> str:

@@ -58,6 +58,8 @@ from .models import (
     RedeemInput,
     Review,
     ReviewCreate,
+    VenueInterest,
+    VenueInterestInput,
 )
 from .qr import qr_svg
 
@@ -502,6 +504,23 @@ def accept_invite(data: InviteAcceptInput, req: HttpRequest) -> AuthResult:
              req.client.host if req.client else "?", getattr(req.state, "request_id", "-"))
     return AuthResult(access_token=create_token(uid, "partner", ver=_row_token_ver(u)),
                       refresh_token=users_db.issue_refresh(uid), user=_public(u))
+
+
+@app.post("/venues/interest", tags=["Store"],
+          dependencies=[Depends(rate_limit_orders)])
+def add_venue_interest(payload: VenueInterestInput) -> dict:
+    """«Хочу боксы отсюда» — спрос на заведение из карты. Персональных данных
+    не пишем: только счётчик по заведению (кого подключать в первую очередь)."""
+    votes = store.add_venue_interest(payload.venue_id, payload.name.strip(),
+                                     payload.address.strip(), payload.district.strip())
+    return {"ok": True, "votes": votes}
+
+
+@app.get("/admin/venue-interest", response_model=list[VenueInterest], tags=["Admin"],
+         dependencies=[Depends(require_role("admin"))])
+def venue_interest(limit: int = 50) -> list[VenueInterest]:
+    """Кого зовут покупатели — очередь на подключение."""
+    return [VenueInterest(**r) for r in store.venue_interest_top(min(limit, 200))]
 
 
 @app.post("/admin/staff-invitations", response_model=StaffInvitationResult,

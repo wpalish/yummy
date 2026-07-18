@@ -600,6 +600,9 @@
       <p class="sub">Контроль заказов, возвраты, ключевые метрики пилота.</p>
       <div class="stats" id="aStats"></div>
       <div class="charts" id="aCharts"></div>
+      <div class="cardp"><h3>Кого зовут покупатели</h3>
+        <p class="sub" style="margin:.2rem 0 .6rem">Заведения с карты, которым чаще всего жмут «Хочу боксы отсюда» — очередь на подключение.</p>
+        <div id="aVenueInterest" style="font-size:.84rem"></div></div>
       <div class="cardp"><h3>Пригласить заведение или персонал</h3>
         <p class="sub" style="margin:.2rem 0 .6rem">Партнёром становятся только по этой ссылке — покупатели этот путь не видят. Ссылка одноразовая и живёт 7 дней.</p>
         <div class="frow">
@@ -1501,16 +1504,22 @@ window.openVenue=id=>{
     </div>
     <a href="https://2gis.kz/astana/firm/${v.id}" target="_blank" rel="noopener" style="display:inline-block;margin:.6rem 0 .2rem;font-size:.78rem;font-weight:700">🗺 Открыть в 2ГИС →</a>
     <div class="rules" style="margin-top:.7rem"><b>Заведение ещё не в Yummy.</b> Это кофейня из карты Астаны, которую мы хотим подключить. Как только она начнёт продавать вечерние излишки — здесь появятся боксы со скидкой.</div>
-    <button class="btn" style="margin-top:.7rem" data-act="callVenue" data-a1="${esc(v.chain)}">📣 Хочу боксы отсюда</button>
+    <button class="btn" style="margin-top:.7rem" data-act="callVenue" data-a1="${esc(v.id)}">📣 Хочу боксы отсюда</button>
     <button class="btn sec" data-act="closeModal" style="margin-top:.5rem">Закрыть</button>
   </div>`);
 };
-/* «Позвать заведение» — честный интерес вместо фейковой брони */
-window.callVenue=name=>{
+/* «Позвать заведение» — честный интерес вместо фейковой брони.
+   Голос уходит на бэкенд (счётчик спроса, без персональных данных) и копится
+   локально, чтобы не голосовать дважды. Бэкенд недоступен → тихо остаётся локальным. */
+window.callVenue=async id=>{
+  const v=(ALL_VENUES||[]).find(x=>x.id===id); if(!v)return;
   const key="ym_called", called=JSON.parse(localStorage.getItem(key)||"[]");
-  if(!called.includes(name)){called.push(name);localStorage.setItem(key,JSON.stringify(called));}
   closeModal();
-  toast(`Спасибо! Передадим ${name}, что их ждут в Yummy 💛`);
+  if(called.includes(id)){toast(`Мы уже знаем — ${v.chain} в очереди на подключение 💛`);return;}
+  called.push(id); localStorage.setItem(key,JSON.stringify(called));
+  try{ await post("/venues/interest",{venue_id:v.id,name:v.chain,address:v.addr,district:v.district}); }
+  catch(e){ /* офлайн/статик — голос всё равно засчитан локально */ }
+  toast(`Спасибо! Передадим ${v.chain}, что их ждут в Yummy 💛`);
 };
 /* отзывы (демо) */
 window.showReviews=async(partnerId,name)=>{
@@ -1851,9 +1860,27 @@ async function loadInvites(){
     b.disabled=false;b.textContent="Создать ссылку-приглашение";
   };
 }
+/* «Кого зовут» — спрос на заведения с карты (очередь на подключение) */
+async function loadVenueInterest(){
+  const el=$("#aVenueInterest"); if(!el)return;
+  let rows=[];
+  try{ rows=await get("/admin/venue-interest?limit=20"); }catch(e){ el.innerHTML='<p class="sub">Не удалось загрузить.</p>'; return; }
+  if(!rows.length){ el.innerHTML='<p class="sub">Пока никто не голосовал. Кнопка «Хочу боксы отсюда» — в карточке заведения на вкладке «Рядом».</p>'; return; }
+  const max=rows[0].votes||1;
+  el.innerHTML=rows.map((r,i)=>`
+    <div class="lrow">
+      <div style="font-size:1rem;width:1.6rem;text-align:center;font-weight:800;color:var(--txt2)">${i+1}</div>
+      <div class="g"><b>${esc(r.name)}</b>
+        <div style="font-size:.76rem;color:var(--txt2)">${esc(r.address||"")}${r.district?" · "+esc(r.district):""}</div>
+        <div style="height:5px;border-radius:99px;background:var(--border);margin-top:.3rem;overflow:hidden">
+          <div style="height:100%;width:${Math.round(r.votes/max*100)}%;background:var(--brown)"></div></div>
+      </div>
+      <span class="pill" style="white-space:nowrap">${r.votes} ${plural(r.votes,["голос","голоса","голосов"])}</span>
+    </div>`).join("");
+}
 async function loadAdmin(){
   let s={},orders=[];
-  loadInvites();
+  loadInvites(); loadVenueInterest();
   try{s=await get("/admin/stats");}catch(e){}
   try{orders=await get("/admin/orders");}catch(e){}
   $("#aStats").innerHTML=[

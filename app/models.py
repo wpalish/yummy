@@ -53,6 +53,24 @@ class BoxCreate(BaseModel):
     description: str = ""
 
 
+class VenueInterestInput(BaseModel):
+    """Покупатель просит боксы у заведения из карты (venues.json)."""
+
+    venue_id: str = Field(..., min_length=1, max_length=64)
+    name: str = Field(..., min_length=1, max_length=120)
+    address: str = Field("", max_length=200)
+    district: str = Field("", max_length=80)
+
+
+class VenueInterest(BaseModel):
+    venue_id: str
+    name: str
+    address: str = ""
+    district: str = ""
+    votes: int = 0
+    updated_at: str = ""
+
+
 class PaymentAccountInput(BaseModel):
     """Админ подключает мерчант-аккаунт партнёра (деньги идут напрямую ему)."""
 
