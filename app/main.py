@@ -400,11 +400,13 @@ def create_order(payload: OrderCreate, bg: BackgroundTasks,
 
 
 @app.post("/orders/confirm-payment", response_model=OrderResult, tags=["Store"],
-          dependencies=[Depends(rate_limit_orders)])
+          dependencies=[Depends(rate_limit_orders),
+                        Depends(require_role("admin"))])
 def confirm_payment(payload: RedeemInput) -> dict:
     """Подтвердить оплату заказа (pending → paid), выдать QR, начислить комиссию.
-    В ПРОДЕ этот переход делает ТОЛЬКО подписанный Kaspi-webhook — сейчас сам
-    эндпоинт открыт как заглушка для теста, пока нет мерчант-интеграции Kaspi."""
+    ТОЛЬКО админ: раньше заглушка была открыта — покупатель мог сам перевести
+    свой pending-заказ в «оплачен» и получить QR бесплатно. В проде этот переход
+    будет делать подписанный Kaspi-webhook, до него — админ вручную."""
     order = store.confirm_payment(payload.code)
     if not order:
         raise HTTPException(409, "Заказ не найден или уже оплачен")

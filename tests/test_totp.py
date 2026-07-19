@@ -90,3 +90,20 @@ def test_enable_rejects_wrong_code(env):
     assert c.post("/auth/totp/enable", headers=h,
                   json={"secret": s["secret"], "code": "000001"}).status_code == 400
     assert users.totp_secret(uid) is None              # не включилась
+
+
+def test_admin_requires_2fa_enrolled(env, monkeypatch):
+    """Обязательная 2FA: админ без TOTP не проходит в админ-эндпоинты,
+    но /auth/totp/* доступны — включить её он может всегда."""
+    monkeypatch.delenv("YUMMY_ADMIN_2FA_OPTIONAL", raising=False)
+    c, users = env
+    uid = users.create("noweak@x.kz", "x", "admin", None, None)
+    h = {"Authorization": f"Bearer {create_token(uid, 'admin')}"}
+    r = c.get("/admin/users", headers=h)
+    assert r.status_code == 403 and "2FA" in r.json()["detail"]
+    assert c.post("/auth/totp/setup", headers=h).status_code == 200  # путь к включению открыт
+    # включил — доступ появился
+    s = c.post("/auth/totp/setup", headers=h).json()
+    c.post("/auth/totp/enable", headers=h,
+           json={"secret": s["secret"], "code": totp.code_at(s["secret"])})
+    assert c.get("/admin/users", headers=h).status_code == 200

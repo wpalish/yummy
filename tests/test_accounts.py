@@ -253,7 +253,11 @@ def test_refresh_rotation(tmp_path, monkeypatch):
     r2 = c.post("/auth/refresh", json={"refresh_token": r["refresh_token"]})
     assert r2.status_code == 200
     assert c.get("/auth/me", headers={"Authorization": f"Bearer {r2.json()['access_token']}"}).status_code == 200
-    # старый refresh уже отозван ротацией
+    # ротация с grace-окном (гонка вкладок): старый жив 30с, потом сгорает
+    import app.accounts as accounts_mod
+    with accounts_mod.accounts._conn() as conn:
+        conn.execute("UPDATE refresh_tokens SET expires_at=0 WHERE token_hash=?",
+                     (accounts_mod.accounts._rt_hash(r["refresh_token"]),))
     assert c.post("/auth/refresh", json={"refresh_token": r["refresh_token"]}).status_code == 401
 
 

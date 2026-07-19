@@ -15,3 +15,6 @@ os.environ["ANTHROPIC_API_KEY"] = ""
 # Auth теперь fail-closed (включён по умолчанию). Базовые тесты работают в
 # открытом режиме; тесты авторизации включают её сами (monkeypatch _ENFORCE=True).
 os.environ["YUMMY_ENFORCE_AUTH"] = "0"
+# Обязательная 2FA админа: в тестах люк открыт (иначе каждому тест-админу нужен
+# TOTP); сам механизм проверяется явно в test_totp (delenv люка).
+os.environ["YUMMY_ADMIN_2FA_OPTIONAL"] = "1"

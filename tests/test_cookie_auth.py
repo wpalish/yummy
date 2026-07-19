@@ -38,7 +38,11 @@ def test_refresh_via_cookie_without_body_token(env):
     r = c.post("/auth/refresh", json={"refresh_token": ""},
                cookies={"ym_refresh": login["refresh_token"]})
     assert r.status_code == 200 and r.json()["access_token"]
-    # ротация: старый токен из cookie сгорел
+    # ротация с grace-окном: в первые 30с старый токен ещё жив (гонка вкладок),
+    # после — труп (проверяем, подкрутив expires_at в прошлое)
+    with users._conn() as conn:
+        conn.execute("UPDATE refresh_tokens SET expires_at=0 WHERE expires_at < ?",
+                     (__import__("time").time() + 60,))
     assert c.post("/auth/refresh", json={"refresh_token": ""},
                   cookies={"ym_refresh": login["refresh_token"]}).status_code == 401
 

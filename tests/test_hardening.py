@@ -170,3 +170,54 @@ def test_admin_sweep_endpoint(env):
                       partner_id="p1", partner_role="owner")
     ph = {"Authorization": f"Bearer {create_token(pu, 'partner')}"}
     assert c.post("/admin/sweep", headers=ph).status_code == 403
+
+
+# --------------------------------------------------------------------------- #
+#  Второй круг: заглушка оплаты закрыта, jail затухает, grace-ротация
+# --------------------------------------------------------------------------- #
+def test_confirm_payment_admin_only(env):
+    """Раньше покупатель мог сам перевести pending→paid и получить QR бесплатно."""
+    c, store, users = env
+    assert c.post("/orders/confirm-payment", json={"code": "YM-X"}).status_code == 401
+    pu = users.create("p@x.kz", "x", "partner", None, None,
+                      partner_id="p1", partner_role="owner")
+    ph = {"Authorization": f"Bearer {create_token(pu, 'partner')}"}
+    assert c.post("/orders/confirm-payment", json={"code": "YM-X"},
+                  headers=ph).status_code == 403
+    uid = users.create("boss2@x.kz", "x", "admin", None, None)
+    ah = {"Authorization": f"Bearer {create_token(uid, 'admin')}"}
+    # админу можно (заказа нет → 409, но НЕ 401/403)
+    assert c.post("/orders/confirm-payment", json={"code": "YM-X"},
+                  headers=ah).status_code == 409
+
+
+def test_jail_counter_decays_after_lock(env, monkeypatch):
+    """Отсидевшая блокировка обнуляет счётчик: 1 неудача раз в 10 минут больше
+    НЕ держит чужой аккаунт закрытым вечно (DoS по известному email)."""
+    import app.accounts as accounts_mod
+    c, store, users = env
+    email = "victim@x.kz"
+    for _ in range(5):
+        users.jail_fail(email, 5, 600)
+    with pytest.raises(Exception):
+        accounts_mod._jail_check(email)          # заблокирован
+    # блокировка «отсидела»: сдвигаем срок в прошлое
+    with users._conn() as conn:
+        conn.execute("UPDATE auth_jail SET locked_until=1 WHERE email=?", (email,))
+    accounts_mod._jail_check(email)              # не бросает — и счётчик обнулён
+    assert users.jail_get(email) is None
+    users.jail_fail(email, 5, 600)               # одна свежая неудача
+    assert users.jail_get(email)["fails"] == 1   # НЕ мгновенный релок
+
+
+def test_rotate_refresh_grace_window(env):
+    """Гонка вкладок: использованный refresh доживает 30с, потом умирает."""
+    c, store, users = env
+    uid = users.create("g@x.kz", "x", "customer", None, None)
+    raw = users.issue_refresh(uid)
+    assert users.rotate_refresh(raw) == uid       # первая вкладка
+    assert users.rotate_refresh(raw) == uid       # вторая, в grace-окне — жив
+    with users._conn() as conn:                   # окно прошло
+        conn.execute("UPDATE refresh_tokens SET expires_at=0 WHERE token_hash=?",
+                     (users._rt_hash(raw),))
+    assert users.rotate_refresh(raw) is None

@@ -83,8 +83,16 @@ _jail: dict = {}   # legacy-имя: тесты зовут _jail.clear() — со
 
 def _jail_check(email: str) -> None:
     r = accounts.jail_get(email)
-    if r and r["locked_until"] > time.time():
+    if not r:
+        return
+    now = time.time()
+    if r["locked_until"] > now:
         raise HTTPException(429, "Аккаунт временно заблокирован после неудачных попыток. Подождите 10 минут")
+    if r["locked_until"] and r["locked_until"] <= now:
+        # блокировка отсидела срок → счётчик обнуляется. Раньше fails копились
+        # вечно: 1 неудача раз в 10 мин держала ЧУЖОЙ аккаунт закрытым бесконечно
+        # (дешёвый DoS по известному email).
+        accounts.jail_reset(email)
 
 
 def _jail_fail(email: str) -> None:
@@ -293,14 +301,22 @@ class Accounts:
                       (self._rt_hash(raw), user_id, int(time.time()) + _REFRESH_TTL))
         return raw
 
+    _ROTATE_GRACE = 30  # сек: две вкладки шлют один refresh почти одновременно
+
     def rotate_refresh(self, raw: str) -> str | None:
-        """Валиден → отзываем использованный и выдаём новый; иначе None."""
+        """Валиден → «поджигаем» использованный (доживает grace-окно) и выдаём
+        новый. Строгая ротация (revoked сразу) разлогинивала вторую вкладку:
+        обе шлют одну cookie, первая ротирует — вторая приходит с трупом.
+        Теперь старый токен живёт ещё 30 сек — гонка вкладок не рвёт сессию,
+        а украденный токен всё равно умирает почти сразу."""
         h = self._rt_hash(raw)
+        now = time.time()
         with self._lock, self._conn() as c:
             row = c.execute("SELECT * FROM refresh_tokens WHERE token_hash=?", (h,)).fetchone()
-            if not row or row["revoked"] or row["expires_at"] < time.time():
+            if not row or row["revoked"] or row["expires_at"] < now:
                 return None
-            c.execute("UPDATE refresh_tokens SET revoked=1 WHERE token_hash=?", (h,))
+            c.execute("UPDATE refresh_tokens SET expires_at=? WHERE token_hash=?",
+                      (min(row["expires_at"], now + self._ROTATE_GRACE), h))
         return row["user_id"]
 
     def revoke_all_refresh(self, user_id: str) -> None:
@@ -924,13 +940,22 @@ _ADMIN_EMAILS = {e.strip().lower() for e in os.getenv("YUMMY_ADMIN_EMAILS", "").
 
 
 def require_role(*roles: str):
-    """Dependency-фабрика: требует валидный JWT нужной роли (когда включено)."""
+    """Dependency-фабрика: требует валидный JWT нужной роли (когда включено).
+    Для админа дополнительно ОБЯЗАТЕЛЬНА включённая 2FA: украденный пароль без
+    телефона не открывает админку. Эндпоинты /auth/totp/* идут через
+    current_user, поэтому включить 2FA свежий админ может всегда.
+    Спасательный люк (потерян телефон): YUMMY_ADMIN_2FA_OPTIONAL=1."""
     def _dep(authorization: str | None = Header(default=None)) -> PublicUser | None:
         if not _ENFORCE:
             return None  # демо-режим: доступ открыт (как раньше)
         user = current_user(authorization)  # 401, если токена нет/невалиден
         if roles and user.role not in roles:
             raise HTTPException(403, "Недостаточно прав")
+        if (user.role == "admin"
+                and os.getenv("YUMMY_ADMIN_2FA_OPTIONAL", "") != "1"
+                and accounts.totp_secret(user.id) is None):
+            raise HTTPException(403, "Для админа обязательна 2FA: включите её "
+                                     "(Админ → Двухфакторная защита) и войдите заново")
         return user
     return _dep
 
