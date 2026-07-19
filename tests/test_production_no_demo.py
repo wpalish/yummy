@@ -106,10 +106,24 @@ def test_no_demo_seed_in_prod(monkeypatch, tmp_path):
         assert c.get("/partners").json() == []       # пустой каталог, не 6 кофеен
 
 
-def test_demo_seed_on_outside_prod(monkeypatch, tmp_path):
+def test_demo_seed_off_by_default(monkeypatch, tmp_path):
+    """Fail-closed: без флага защита ВКЛЮЧЕНА → демо НЕ сеется.
+    (Раньше было наоборот — забытый флаг превращал прод в демо.)"""
     monkeypatch.delenv("YUMMY_ENFORCE_AUTH", raising=False)
+    monkeypatch.delenv("YUMMY_DEMO_SEED", raising=False)
     import app.accounts as accounts_mod
     importlib.reload(accounts_mod)
     import app.main as main_mod
     importlib.reload(main_mod)
-    assert main_mod._DEMO_SEED is True              # локально демо остаётся
+    assert main_mod._DEMO_SEED is False
+
+
+def test_demo_seed_on_explicit_optout(monkeypatch, tmp_path):
+    """Локальное демо живо, но только при явном YUMMY_ENFORCE_AUTH=0."""
+    monkeypatch.setenv("YUMMY_ENFORCE_AUTH", "0")
+    monkeypatch.delenv("YUMMY_DEMO_SEED", raising=False)
+    import app.accounts as accounts_mod
+    importlib.reload(accounts_mod)
+    import app.main as main_mod
+    importlib.reload(main_mod)
+    assert main_mod._DEMO_SEED is True

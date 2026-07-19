@@ -3,8 +3,16 @@
   "configurations": [
     {
       "name": "yummy",
-      "runtimeExecutable": ".venv/bin/python",
-      "runtimeArgs": ["-m", "uvicorn", "app.main:app", "--port", "8021"],
+      "runtimeExecutable": "env",
+      "runtimeArgs": [
+        "YUMMY_ENFORCE_AUTH=0",
+        ".venv/bin/python",
+        "-m",
+        "uvicorn",
+        "app.main:app",
+        "--port",
+        "8021"
+      ],
       "port": 8021
     }
   ]

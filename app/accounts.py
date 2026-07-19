@@ -39,11 +39,15 @@ _SECRET = os.getenv("YUMMY_SECRET_KEY", _DEFAULT_SECRET)
 
 
 def assert_prod_config() -> None:
-    """Fail-fast на старте: прод-режим с dev-секретом = любые токены подделываемы."""
-    if os.getenv("YUMMY_ENFORCE_AUTH", "").lower() in {"1", "true", "yes"} and _SECRET == _DEFAULT_SECRET:
+    """Fail-fast на старте: прод-режим с dev-секретом = любые токены подделываемы.
+    Enforce теперь включён по умолчанию (fail-closed), поэтому без явного
+    YUMMY_ENFORCE_AUTH=0 обязателен настоящий YUMMY_SECRET_KEY."""
+    enforced = os.getenv("YUMMY_ENFORCE_AUTH", "1").lower() not in {"0", "false", "no"}
+    if enforced and _SECRET == _DEFAULT_SECRET:
         raise RuntimeError(
-            "YUMMY_ENFORCE_AUTH=1 требует настоящий YUMMY_SECRET_KEY "
-            "(python -c 'import secrets;print(secrets.token_hex(32))'; см. .env.example)"
+            "Auth включён (по умолчанию), а YUMMY_SECRET_KEY не задан — токены "
+            "подделываемы. Задайте секрет (python -c 'import secrets;"
+            "print(secrets.token_hex(32))') или явно YUMMY_ENFORCE_AUTH=0 для локального демо."
         )
 # Роли персонала внутри заведения (кто что может в партнёрке)
 _STAFF_ROLES = ("owner", "manager", "cashier")
@@ -635,10 +639,15 @@ def change_password(data: ChangePasswordInput,
 
 # --------------------------------------------------------------------------- #
 #  Ролевой доступ (из API-Security-Checklist: «все эндпоинты за аутентификацией»)
-#  Включается флагом YUMMY_ENFORCE_AUTH=1 — так прод защищён, а демо (без флага)
-#  продолжает работать без токенов.
+#  FAIL-CLOSED: защита ВКЛЮЧЕНА по умолчанию. Открытый демо-режим — только
+#  явным YUMMY_ENFORCE_AUTH=0 (локальная разработка/тесты). Раньше было
+#  наоборот (fail-open): забытый флаг на новом окружении открывал админку миру.
 # --------------------------------------------------------------------------- #
-_ENFORCE = os.getenv("YUMMY_ENFORCE_AUTH", "").lower() in {"1", "true", "yes"}
+def _enforce_from_env() -> bool:
+    return os.getenv("YUMMY_ENFORCE_AUTH", "1").lower() not in {"0", "false", "no"}
+
+
+_ENFORCE = _enforce_from_env()
 
 # Владельцы: email из этого списка при регистрации получают роль admin.
 _ADMIN_EMAILS = {e.strip().lower() for e in os.getenv("YUMMY_ADMIN_EMAILS", "").split(",") if e.strip()}

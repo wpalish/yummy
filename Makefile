@@ -6,8 +6,8 @@ PY := .venv/bin/python
 help:            ## список команд
 	@grep -E '^[a-z]+:.*##' $(MAKEFILE_LIST) | awk -F':.*## ' '{printf "  make %-8s %s\n", $$1, $$2}'
 
-dev:             ## запустить бэкенд на :8021
-	$(PY) -m uvicorn app.main:app --reload --port 8021
+dev:             ## запустить бэкенд на :8021 (открытый демо-режим)
+	YUMMY_ENFORCE_AUTH=0 $(PY) -m uvicorn app.main:app --reload --port 8021
 
 test:            ## прогнать все тесты
 	rm -f spasibox.db && $(PY) -m pytest -q

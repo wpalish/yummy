@@ -12,3 +12,6 @@ import os
 
 os.environ["TELEGRAM_BOT_TOKEN"] = ""
 os.environ["ANTHROPIC_API_KEY"] = ""
+# Auth теперь fail-closed (включён по умолчанию). Базовые тесты работают в
+# открытом режиме; тесты авторизации включают её сами (monkeypatch _ENFORCE=True).
+os.environ["YUMMY_ENFORCE_AUTH"] = "0"
