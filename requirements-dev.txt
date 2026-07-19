@@ -7,3 +7,5 @@
 # Проект намеренно на компактном stdlib-стиле; массовый reformat не делаем.
 ruff>=0.15
 black>=25.0
+playwright>=1.40
+pytest-playwright>=0.4
