@@ -24,7 +24,7 @@ DOCS = ROOT / "docs"
 API_BLOCK = '''async function api(m,u,b,_retry,_net){const h=b?{"Content-Type":"application/json"}:{};
   const a=account(); if(a&&a.token)h["Authorization"]="Bearer "+a.token;
   let r;
-  try{ r=await fetch(u,{method:m,headers:h,body:b?JSON.stringify(b):undefined}); }
+  try{ r=await fetch(u,{method:m,headers:h,credentials:"include",body:b?JSON.stringify(b):undefined}); }
   catch(err){                                      // сеть упала / сервер спит
     if(m==="GET"&&(_net||0)<3){ netBanner(true);   // GET безопасно ретраить
       await new Promise(s=>setTimeout(s,4000));
@@ -34,9 +34,10 @@ API_BLOCK = '''async function api(m,u,b,_retry,_net){const h=b?{"Content-Type":"
     throw new Error("Нет связи с сервером — попробуйте ещё раз через минуту");
   }
   netBanner(false);
-  if(r.status===401&&!_retry&&a&&a.refresh&&!u.startsWith("/auth/")){
-    try{const rr=await fetch("/auth/refresh",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({refresh_token:a.refresh})});
-      if(rr.ok){const j=await rr.json();a.token=j.access_token;a.refresh=j.refresh_token;setAccount(a);return api(m,u,b,true);}}catch(e){}
+  if(r.status===401&&!_retry&&a&&a.server&&!u.startsWith("/auth/")){
+    // refresh уходит из httpOnly-cookie (credentials); тела с токеном больше нет
+    try{const rr=await fetch("/auth/refresh",{method:"POST",credentials:"include",headers:{"Content-Type":"application/json"},body:JSON.stringify({refresh_token:""})});
+      if(rr.ok){const j=await rr.json();SESSION.token=j.access_token;return api(m,u,b,true);}}catch(e){}
   }
   if(!r.ok){let d;try{d=await r.json();}catch(e){} throw new Error((d&&d.detail)||("Ошибка "+r.status));} return r.status===204?null:r.json();}
 const get=u=>api("GET",u), post=(u,b)=>api("POST",u,b), del=u=>api("DELETE",u);'''

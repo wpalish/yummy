@@ -20,6 +20,7 @@ from fastapi import BackgroundTasks, Depends, FastAPI, HTTPException
 from fastapi import Request as HttpRequest
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import HTMLResponse, JSONResponse, PlainTextResponse
+from fastapi import Response as HttpResponse
 from fastapi.staticfiles import StaticFiles
 from starlette.middleware.trustedhost import TrustedHostMiddleware
 
@@ -194,6 +195,7 @@ app.add_middleware(
     allow_origins=_CORS,
     allow_methods=["GET", "POST", "PATCH", "DELETE"],   # правка/снятие боксов
     allow_headers=["Authorization", "Content-Type"],
+    allow_credentials=True,          # httpOnly refresh-cookie (origin'ы явные, не "*")
     expose_headers=["X-Request-Id"],
 )
 
@@ -577,10 +579,12 @@ def invite_preview(token: str) -> InvitePreview:
 
 @app.post("/auth/accept-invite", response_model=AuthResult, status_code=201,
           tags=["Accounts"])
-def accept_invite(data: InviteAcceptInput, req: HttpRequest) -> AuthResult:
+def accept_invite(data: InviteAcceptInput, req: HttpRequest,
+                  response: HttpResponse) -> AuthResult:
     """Единственный путь стать партнёром/персоналом — одноразовый инвайт админа."""
     from .accounts import accounts as users_db
-    from .accounts import _public, _row_token_ver, create_token, hash_password
+    from .accounts import (_public, _row_token_ver, _set_refresh_cookie,
+                           create_token, hash_password)
     row = users_db.claim_invitation(data.token)          # атомарно гасит
     if not row:
         raise HTTPException(404, "Приглашение недействительно или истекло")
@@ -598,8 +602,10 @@ def accept_invite(data: InviteAcceptInput, req: HttpRequest) -> AuthResult:
     log.info("audit: accept-invite id=%s partner_role=%s partner=%s ip=%s rid=%s",
              uid, row["partner_role"], partner_id,
              _iph(req), getattr(req.state, "request_id", "-"))
+    new_refresh = users_db.issue_refresh(uid)
+    _set_refresh_cookie(response, new_refresh)
     return AuthResult(access_token=create_token(uid, "partner", ver=_row_token_ver(u)),
-                      refresh_token=users_db.issue_refresh(uid), user=_public(u))
+                      refresh_token=new_refresh, user=_public(u))
 
 
 @app.post("/venues/interest", tags=["Store"],

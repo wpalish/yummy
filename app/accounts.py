@@ -29,7 +29,7 @@ from collections import deque
 
 from . import database
 
-from fastapi import APIRouter, Depends, Header, HTTPException
+from fastapi import APIRouter, Depends, Header, HTTPException, Response
 from fastapi import Request as HttpRequest
 from pydantic import BaseModel, field_validator
 
@@ -629,7 +629,7 @@ def _ip(req: HttpRequest) -> str:
 
 @router.post("/auth/register", response_model=AuthResult, status_code=201,
              dependencies=[Depends(auth_rate_limit)])
-def register(data: RegisterInput, request: HttpRequest) -> AuthResult:
+def register(data: RegisterInput, request: HttpRequest, response: Response) -> AuthResult:
     if accounts.by_email(data.email):
         audit.info("register DENIED (email занят) email=%s ip=%s", data.email, _ip(request))
         raise HTTPException(409, "Email уже зарегистрирован")
@@ -649,7 +649,7 @@ def register(data: RegisterInput, request: HttpRequest) -> AuthResult:
 
 
 @router.post("/auth/login", response_model=AuthResult, dependencies=[Depends(auth_rate_limit)])
-def login(data: LoginInput, request: HttpRequest) -> AuthResult:
+def login(data: LoginInput, request: HttpRequest, response: Response) -> AuthResult:
     email = data.email.strip().lower()
     _jail_check(email)
     row = accounts.by_email(email)
@@ -673,24 +673,45 @@ def login(data: LoginInput, request: HttpRequest) -> AuthResult:
             raise HTTPException(401, "Неверный код аутентификатора")
     _jail_reset(email)
     audit.info("login OK id=%s 2fa=%s ip=%s", row["id"], bool(secret), _ip(request))
+    new_refresh = accounts.issue_refresh(row["id"])
+    _set_refresh_cookie(response, new_refresh)
     return AuthResult(access_token=create_token(row["id"], row["role"], ver=_row_token_ver(row)),
-                      refresh_token=accounts.issue_refresh(row["id"]), user=_public(row))
+                      refresh_token=new_refresh, user=_public(row))
 
 
 class RefreshInput(BaseModel):
-    refresh_token: str
+    refresh_token: str = ""      # пусто → берём из httpOnly-cookie (браузерный флоу)
+
+
+# httpOnly-cookie для refresh-токена: JS его не видит вообще → XSS не уносит
+# долгоживущую сессию (остаток пункта №5 аудита). SameSite=None+Secure — фронт
+# на Pages, API на Render (кросс-сайт). Body-вариант оставлен для API-клиентов.
+_COOKIE = "ym_refresh"
+
+
+def _set_refresh_cookie(response, token: str) -> None:
+    response.set_cookie(_COOKIE, token, httponly=True, secure=True,
+                        samesite="none", path="/auth", max_age=_REFRESH_TTL)
+
+
+def _clear_refresh_cookie(response) -> None:
+    response.delete_cookie(_COOKIE, path="/auth")
 
 
 @router.post("/auth/refresh", response_model=AuthResult, dependencies=[Depends(auth_rate_limit)])
-def refresh(data: RefreshInput, request: HttpRequest) -> AuthResult:
-    """Обновить короткий access-токен. Refresh ротируется: старый сгорает."""
-    uid = accounts.rotate_refresh(data.refresh_token)
+def refresh(data: RefreshInput, request: HttpRequest, response: Response) -> AuthResult:
+    """Обновить короткий access-токен. Refresh ротируется: старый сгорает.
+    Токен — из тела или (браузер) из httpOnly-cookie."""
+    raw = data.refresh_token or request.cookies.get(_COOKIE, "")
+    uid = accounts.rotate_refresh(raw)
     row = accounts.by_id(uid) if uid else None
     if not row or not row["is_active"]:
         audit.warning("refresh FAIL ip=%s", _ip(request))
         raise HTTPException(401, "Refresh-токен недействителен, войдите заново")
+    new_refresh = accounts.issue_refresh(row["id"])
+    _set_refresh_cookie(response, new_refresh)
     return AuthResult(access_token=create_token(row["id"], row["role"], ver=_row_token_ver(row)),
-                      refresh_token=accounts.issue_refresh(row["id"]), user=_public(row))
+                      refresh_token=new_refresh, user=_public(row))
 
 
 # /auth/logout-all — ниже, после определения current_user
@@ -741,11 +762,12 @@ def me(user: PublicUser = Depends(current_user)) -> PublicUser:
 
 
 @router.post("/auth/logout-all")
-def logout_all(request: HttpRequest, user: PublicUser = Depends(current_user)) -> dict:
+def logout_all(request: HttpRequest, response: Response, user: PublicUser = Depends(current_user)) -> dict:
     """Выйти со всех устройств: отзывает все access- и refresh-токены."""
     with accounts._lock, accounts._conn() as c:
         c.execute("UPDATE users SET token_ver=COALESCE(token_ver,0)+1 WHERE id=?", (user.id,))
     accounts.revoke_all_refresh(user.id)
+    _clear_refresh_cookie(response)
     audit.info("logout-all id=%s ip=%s", user.id, _ip(request))
     return {"status": "ok"}
 
