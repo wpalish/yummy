@@ -26,7 +26,7 @@
 <link rel="manifest" href="/static/manifest.json" />
 <script type="application/ld+json">{"@context":"https://schema.org","@type":"WebSite","name":"Yummy","url":"https://wpalish.github.io/yummy/","description":"Сюрприз-боксы из кофеен и пекарен Астаны со скидкой до 70%","inLanguage":"ru"}</script>
 <link rel="icon" type="image/png" href="/static/img/favicon.png" />
-<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha384-sHL9NAb7lN7rfvG5lfHpm643Xkcjzp4jFvuavGOndn6pjVqS6ny56CAt3nsEVT4H" crossorigin="anonymous" />
 <style>
   :root{
     /* дизайн-система из Lovable-макета: тёплый крем + чернильные пилюли, Sora/Manrope */
@@ -646,6 +646,9 @@
         <div id="aPayments" style="font-size:.84rem"></div></div>
       <div class="cardp"><h3>Все заказы</h3><div id="aOrders"></div>
         <button class="btn sec hidden" id="aMoreOrders" style="margin-top:.6rem">Показать ещё</button></div>
+      <div class="cardp"><h3>Двухфакторная защита (2FA)</h3>
+        <p class="sub" style="margin:.2rem 0 .6rem">TOTP-код из Google Authenticator / 1Password при каждом входе. Обязательна для админа: украденный пароль без телефона бесполезен.</p>
+        <div id="aTotp"></div></div>
       <div class="cardp"><h3>Аудит-журнал</h3>
         <p class="sub" style="margin:.2rem 0 .6rem">Входы, блокировки, возвраты, платёжные действия. Хранится в БД 90 дней, IP — хешем.</p>
         <div id="aAudit" style="font-size:.74rem;font-family:ui-monospace,monospace;max-height:280px;overflow-y:auto"></div></div>
@@ -708,7 +711,7 @@
   <div id="modal" class="hidden"></div>
   <div id="toast"></div>
 
-<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha384-cxOPjt7s7Iz04uaHJceBmS+qpjv2JkIHNVcuOrM+YHwZOmJGBXI00mdUXEq65HTH" crossorigin="anonymous"></script>
 <script nonce="__CSP_NONCE__">
 const $=s=>document.querySelector(s);
 
@@ -756,6 +759,8 @@ const ACT = {
   staffRole:       el => staffSetRole(el.dataset.a1, el.dataset.a2),
   staffActive:     el => staffSetActive(el.dataset.a1, el.dataset.a2==="1"),
   suspendPay:      el => suspendPay(el.dataset.a1),
+  totpOn:          () => totpOn(),
+  totpOff:         () => totpOff(),
   rotatePay:       el => rotatePay(el.dataset.a1),
   makeInvoice:     el => makeInvoice(el.dataset.a1),
   invoicePaid:     el => invoicePaid(el.dataset.a1),
@@ -846,7 +851,7 @@ const KZ={
 "Заведение":"Мекеме","Создать бокс":"Бокс құру","Категория":"Санат","Название":"Атауы",
 "Опубликовать бокс":"Боксты жариялау","Выдать заказ по коду":"Тапсырысты код бойынша беру","Выдать":"Беру",
 "📷 Сканировать QR камерой":"📷 QR-ды камерамен сканерлеу","Мои боксы":"Менің бокстарым","Брони и выдачи":"Броньдар мен берулер","Аналитика по дням":"Күндер бойынша аналитика","Данных пока нет.":"Деректер әлі жоқ.",
-"Персонал":"Қызметкерлер","Приостановить":"Тоқтата тұру","Забыли пароль?":"Құпиясөзді ұмыттыңыз ба?","Сброс пароля":"Құпиясөзді қалпына келтіру","Отправить ссылку":"Сілтеме жіберу","Новый пароль":"Жаңа құпиясөз","Сменить пароль":"Құпиясөзді ауыстыру","Аудит-журнал":"Аудит журналы","Показать ещё":"Тағы көрсету","Ротация":"Ротация","Аннулировать":"Жою","Оплачен":"Төленді","открыт":"ашық","оплачен":"төленген","аннулирован":"жойылған","Счета за комиссию":"Комиссия шоттары","Выставить счёт":"Шот ұсыну","Email сотрудника":"Қызметкердің email-і","Роль":"Рөлі","Кассир":"Кассир","Менеджер":"Менеджер","Пригласить в заведение":"Мекемеге шақыру","Пока только вы.":"Әзірге тек сіз.","Отключить":"Өшіру","Вернуть":"Қайтару","↑ в менеджеры":"↑ менеджерге","↓ в кассиры":"↓ кассирге","активен":"белсенді","отключён":"өшірілген",
+"Персонал":"Қызметкерлер","Приостановить":"Тоқтата тұру","Забыли пароль?":"Құпиясөзді ұмыттыңыз ба?","Сброс пароля":"Құпиясөзді қалпына келтіру","Отправить ссылку":"Сілтеме жіберу","Новый пароль":"Жаңа құпиясөз","Сменить пароль":"Құпиясөзді ауыстыру","Аудит-журнал":"Аудит журналы","Двухфакторная защита (2FA)":"Екі факторлы қорғаныс (2FA)","Включить 2FA":"2FA қосу","Выключить":"Өшіру","Подтвердить и включить":"Растап қосу","Ставка комиссии":"Комиссия мөлшерлемесі","Подключить Kaspi-мерчант":"Kaspi-мерчант қосу","Выполнить ротацию":"Ротация жасау","Показать ещё":"Тағы көрсету","Ротация":"Ротация","Аннулировать":"Жою","Оплачен":"Төленді","открыт":"ашық","оплачен":"төленген","аннулирован":"жойылған","Счета за комиссию":"Комиссия шоттары","Выставить счёт":"Шот ұсыну","Email сотрудника":"Қызметкердің email-і","Роль":"Рөлі","Кассир":"Кассир","Менеджер":"Менеджер","Пригласить в заведение":"Мекемеге шақыру","Пока только вы.":"Әзірге тек сіз.","Отключить":"Өшіру","Вернуть":"Қайтару","↑ в менеджеры":"↑ менеджерге","↓ в кассиры":"↓ кассирге","активен":"белсенді","отключён":"өшірілген",
 "Редактировать бокс":"Боксты өңдеу","Снять с продажи?":"Сатудан алу?","Снять с продажи":"Сатудан алу","Сохранить":"Сақтау",
 "Пользователи":"Қолданушылар","Заблокировать":"Бұғаттау","Разблокировать":"Бұғаттан шығару","активен":"белсенді","заблокирован":"бұғатталған",
 "⬇ Выгрузить заказы (CSV)":"⬇ Тапсырыстарды жүктеу (CSV)","⬇ Выгрузить журнал (CSV)":"⬇ Журналды жүктеу (CSV)",
@@ -1209,6 +1214,28 @@ function loginForm(){
         setAccount({role:"buyer",name:email.split("@")[0],email,server:false,createdAt:Date.now()});
         hideOnboarding(); toast("Демо-вход (без сервера). Настоящий вход — после деплоя бэкенда");
         switchView("store"); return;
+      }
+      if(e.message==="totp_required"&&!$("#lgTotp")){
+        // 2FA включена: дорисовываем поле кода и повторяем вход с ним
+        btn.insertAdjacentHTML("beforebegin",
+          `<label>Код из приложения-аутентификатора
+             <input id="lgTotp" inputmode="numeric" autocomplete="one-time-code" maxlength="6" placeholder="123456" /></label>`);
+        const orig=$("#lgBtn").onclick;
+        $("#lgBtn").onclick=async()=>{
+          const code=$("#lgTotp").value.trim();
+          if(code.length!==6){toast("Введите 6-значный код",true);return;}
+          const b2=$("#lgBtn"); b2.disabled=true; b2.textContent="Проверяем…";
+          try{
+            const res=await post("/auth/login",{email,password:pass,totp:code});
+            const u=res.user, roleMap={customer:"buyer",partner:"partner",admin:"admin"};
+            setAccount({role:roleMap[u.role]||"buyer",name:u.brand_name||email.split("@")[0],email,
+              token:res.access_token,refresh:res.refresh_token||"",server:true,createdAt:Date.now(),
+              partner_role:u.partner_role||null,partner_id:u.partner_id||null});
+            hideOnboarding(); toast("С возвращением!");
+            switchView(u.role==="partner"?"partner":u.role==="admin"?"admin":"store");
+          }catch(err){toast(err.message,true);b2.disabled=false;b2.textContent="Войти";}
+        };
+        $("#lgTotp").focus(); btn.disabled=false; btn.textContent="Войти"; return;
       }
       $("#le_pass").textContent=e.message;  // реальный бэкенд: «Неверный email или пароль» и т.п.
       btn.disabled=false; btn.textContent="Войти";
@@ -2120,6 +2147,44 @@ window.revokeUserSessions=async id=>{
   catch(e){ toast(e.message,true); }
 };
 
+/* 2FA (TOTP): включение с QR, выключение по коду */
+async function loadTotp(){
+  const el=$("#aTotp"); if(!el)return;
+  let st={enabled:false};
+  try{ st=await get("/auth/totp/status"); }catch(e){ el.innerHTML='<p class="sub">Требуется вход.</p>'; return; }
+  el.innerHTML=st.enabled
+    ?'<span class="tag t-issued">2FA включена</span> <button class="linkbtn" data-act="totpOff">Выключить…</button>'
+    :'<span class="tag t-expired">2FA выключена</span> <button class="btn sec" data-act="totpOn" style="width:auto;padding:.4rem .9rem;margin-left:.5rem">Включить 2FA</button>';
+}
+window.totpOn=async()=>{
+  let s; try{ s=await post("/auth/totp/setup",{}); }catch(e){ toast(e.message,true); return; }
+  showModal(`<div class="mc"><h3>Включение 2FA</h3>
+    <p class="sub">1. Отсканируйте QR в Google Authenticator / 1Password.<br>2. Введите код из приложения.</p>
+    <div style="background:#fff;padding:.6rem;border-radius:12px;max-width:220px;margin:.4rem auto">${s.qr_svg}</div>
+    <p style="font-size:.72rem;color:var(--txt2);word-break:break-all">Секрет вручную: <code>${esc(s.secret)}</code></p>
+    <label>Код <input id="teCode" inputmode="numeric" maxlength="6" placeholder="123456" autocomplete="off" /><span class="ferr" id="teErr"></span></label>
+    <button class="btn" id="teSave" style="margin-top:.5rem">Подтвердить и включить</button>
+    <button class="btn sec" data-act="closeModal" style="margin-top:.5rem">Отмена</button></div>`);
+  $("#teSave").onclick=async()=>{
+    const b=$("#teSave"); b.disabled=true;
+    try{ await post("/auth/totp/enable",{secret:s.secret,code:$("#teCode").value.trim()});
+      closeModal(); toast("2FA включена 🔐"); loadTotp(); }
+    catch(e){ $("#teErr").textContent=e.message; b.disabled=false; }
+  };
+};
+window.totpOff=()=>{
+  showModal(`<div class="mc"><h3>Выключить 2FA</h3>
+    <label>Текущий код из приложения <input id="tdCode" inputmode="numeric" maxlength="6" autocomplete="off" /><span class="ferr" id="tdErr"></span></label>
+    <button class="btn" id="tdSave" style="margin-top:.5rem;background:var(--red)">Выключить</button>
+    <button class="btn sec" data-act="closeModal" style="margin-top:.5rem">Отмена</button></div>`);
+  $("#tdSave").onclick=async()=>{
+    const b=$("#tdSave"); b.disabled=true;
+    try{ await post("/auth/totp/disable",{code:$("#tdCode").value.trim()});
+      closeModal(); toast("2FA выключена"); loadTotp(); }
+    catch(e){ $("#tdErr").textContent=e.message; b.disabled=false; }
+  };
+};
+
 /* Аудит-журнал: персистентный (БД, 90 дней), IP — хешем */
 async function loadAudit(){
   const el=$("#aAudit"); if(!el)return;
@@ -2151,7 +2216,7 @@ async function loadVenueInterest(){
 }
 async function loadAdmin(){
   let s={},orders=[];
-  loadInvites(); loadVenueInterest(); loadUsers(); loadAudit();
+  loadInvites(); loadVenueInterest(); loadUsers(); loadAudit(); loadTotp();
   try{s=await get("/admin/stats");}catch(e){}
   try{orders=await get("/admin/orders?limit=100");}catch(e){}
   window.__ordOffset=orders.length;
@@ -2233,24 +2298,63 @@ function renderInvoices(invs,ps){
 }
 window.suspendPay=async id=>{if(!confirm("Приостановить приём платежей? Партнёр не сможет продавать платные боксы."))return;
   try{await post(`/partners/${id}/payment-account/suspend`,{});toast("Платежи приостановлены");renderPayments();}catch(e){toast(e.message,true);}};
-window.rotatePay=async id=>{
-  const ref=prompt("Новый merchant reference (пусто — сменить только webhook-id):","");
-  if(ref===null)return;
-  try{await post(`/partners/${id}/payment-account/rotate`,ref?{provider:"kaspi",merchant_reference:ref}:undefined);
-    toast("Ротация выполнена 🔄");renderPayments();}catch(e){toast(e.message,true);}};
+window.rotatePay=id=>{
+  showModal(`<div class="mc"><h3>Ротация платёжного аккаунта</h3>
+    <p class="sub" style="margin:.2rem 0 .6rem">Webhook-id сменится в любом случае. Реквизит — только если заполнить поле.</p>
+    <label>Новый merchant reference (необязательно)
+      <input id="rtRef" autocomplete="off" placeholder="пусто — только webhook-id" maxlength="120" /></label>
+    <button class="btn" id="rtSave" style="margin-top:.6rem">Выполнить ротацию</button>
+    <button class="btn sec" data-act="closeModal" style="margin-top:.5rem">Отмена</button></div>`);
+  $("#rtSave").onclick=async()=>{
+    const ref=$("#rtRef").value.trim();
+    const b=$("#rtSave"); b.disabled=true;
+    try{await post(`/partners/${id}/payment-account/rotate`,ref?{provider:"kaspi",merchant_reference:ref}:undefined);
+      closeModal();toast("Ротация выполнена 🔄");renderPayments();}
+    catch(e){toast(e.message,true);b.disabled=false;}
+  };
+};
 window.makeInvoice=async id=>{if(!confirm("Выставить счёт на всю накопленную комиссию?"))return;
   try{const inv=await post(`/partners/${id}/commission-invoice`,{});
     toast(`Счёт на ${money(Math.floor(inv.total_minor/100))} выставлен`);renderPayments();}catch(e){toast(e.message,true);}};
 window.invoicePaid=async id=>{try{await post(`/admin/commission-invoices/${id}/paid`,{});toast("Счёт закрыт ✓");renderPayments();}catch(e){toast(e.message,true);}};
 window.invoiceVoid=async id=>{if(!confirm("Аннулировать счёт? Строки вернутся в пул и попадут в следующий."))return;
   try{await post(`/admin/commission-invoices/${id}/void`,{});toast("Счёт аннулирован");renderPayments();}catch(e){toast(e.message,true);}};
-window.connectPay=async id=>{const ref=prompt("Kaspi merchant reference (или ИИН/точка):");if(!ref)return;
-  try{await post(`/partners/${id}/payment-account`,{provider:"kaspi",merchant_reference:ref});toast("Мерчант подключён");renderPayments();}catch(e){toast(e.message,true);}};
+/* Модалки вместо prompt(): валидация, автозаполнение, нормальный вид на мобиле */
+window.connectPay=id=>{
+  showModal(`<div class="mc"><h3>Подключить Kaspi-мерчант</h3>
+    <label>Merchant reference / ИИН точки
+      <input id="cpRef" autocomplete="off" placeholder="KZ-XXXX или ИИН" minlength="2" maxlength="120" />
+      <span class="ferr" id="cpErr"></span></label>
+    <button class="btn" id="cpSave" style="margin-top:.6rem">Подключить</button>
+    <button class="btn sec" data-act="closeModal" style="margin-top:.5rem">Отмена</button></div>`);
+  $("#cpRef").focus();
+  $("#cpSave").onclick=async()=>{
+    const ref=$("#cpRef").value.trim();
+    if(ref.length<2){$("#cpErr").textContent="Минимум 2 символа";return;}
+    const b=$("#cpSave"); b.disabled=true;
+    try{await post(`/partners/${id}/payment-account`,{provider:"kaspi",merchant_reference:ref});
+      closeModal();toast("Мерчант подключён 🔒");renderPayments();}
+    catch(e){$("#cpErr").textContent=e.message;b.disabled=false;}
+  };
+};
 window.activatePay=async id=>{if(!confirm("Активировать приём платежей? Партнёр сможет продавать платные боксы."))return;
   try{await post(`/partners/${id}/payment-account/activate`,{});toast("Приём платежей активен ✓");renderPayments();}catch(e){toast(e.message,true);}};
-window.setRate=async id=>{const pct=prompt("Комиссия, % (напр. 10):","10");if(pct===null)return;
-  const bps=Math.round(parseFloat(pct)*100);if(!(bps>=0&&bps<=5000)){toast("0–50%",true);return;}
-  try{await post(`/partners/${id}/commission-rule`,{rate_bps:bps});toast("Ставка обновлена");renderPayments();}catch(e){toast(e.message,true);}};
+window.setRate=id=>{
+  showModal(`<div class="mc"><h3>Ставка комиссии</h3>
+    <label>Комиссия, % (0–50)
+      <input id="crPct" type="number" min="0" max="50" step="0.5" value="10" />
+      <span class="ferr" id="crErr"></span></label>
+    <button class="btn" id="crSave" style="margin-top:.6rem">Сохранить</button>
+    <button class="btn sec" data-act="closeModal" style="margin-top:.5rem">Отмена</button></div>`);
+  $("#crSave").onclick=async()=>{
+    const bps=Math.round(parseFloat($("#crPct").value)*100);
+    if(!(bps>=0&&bps<=5000)){$("#crErr").textContent="Допустимо 0–50%";return;}
+    const b=$("#crSave"); b.disabled=true;
+    try{await post(`/partners/${id}/commission-rule`,{rate_bps:bps});
+      closeModal();toast("Ставка обновлена");renderPayments();}
+    catch(e){$("#crErr").textContent=e.message;b.disabled=false;}
+  };
+};
 window.refund=async id=>{try{await post("/admin/refund/"+id);toast("Возврат оформлен");loadAdmin();}catch(e){toast(e.message,true);}};
 
 /* ---- документы (демо-версии) ---- */

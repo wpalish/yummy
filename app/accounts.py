@@ -49,6 +49,13 @@ def assert_prod_config() -> None:
             "подделываемы. Задайте секрет (python -c 'import secrets;"
             "print(secrets.token_hex(32))') или явно YUMMY_ENFORCE_AUTH=0 для локального демо."
         )
+    if enforced and not os.getenv("YUMMY_CRED_KEY"):
+        # без отдельного ключа credvault деривирует его из YUMMY_SECRET_KEY —
+        # утечка одного секрета раскрывала бы и JWT, и merchant-реквизиты
+        raise RuntimeError(
+            "Прод-режим требует отдельный YUMMY_CRED_KEY для шифрования "
+            "реквизитов (python -c 'import secrets;print(secrets.token_hex(32))')."
+        )
 # Роли персонала внутри заведения (кто что может в партнёрке)
 _STAFF_ROLES = ("owner", "manager", "cashier")
 
@@ -196,7 +203,8 @@ class Accounts:
             # доливать явно, иначе UPDATE ниже падает UndefinedColumn.
             if database.POSTGRES:
                 for col, ddl in (("token_ver", "INTEGER DEFAULT 0"),
-                                 ("partner_id", "TEXT"), ("partner_role", "TEXT")):
+                                 ("partner_id", "TEXT"), ("partner_role", "TEXT"),
+                                 ("totp_secret", "TEXT")):
                     c.execute(f"ALTER TABLE users ADD COLUMN IF NOT EXISTS {col} {ddl}")
             else:
                 cols = {r[1] for r in c.execute("PRAGMA table_info(users)").fetchall()}
@@ -206,6 +214,8 @@ class Accounts:
                     c.execute("ALTER TABLE users ADD COLUMN partner_id TEXT")
                 if "partner_role" not in cols:
                     c.execute("ALTER TABLE users ADD COLUMN partner_role TEXT")
+                if "totp_secret" not in cols:
+                    c.execute("ALTER TABLE users ADD COLUMN totp_secret TEXT")
             # существующие партнёры — владельцы своего заведения
             c.execute("UPDATE users SET partner_role='owner' "
                       "WHERE role='partner' AND partner_role IS NULL")
@@ -385,6 +395,25 @@ class Accounts:
         with self._lock, self._conn() as c:
             c.execute("DELETE FROM auth_jail WHERE email=?", (email.lower(),))
 
+    # ---- TOTP-2FA (секрет в БД шифруется credvault, как merchant_reference) ---- #
+    def set_totp(self, user_id: str, secret_b32: str | None) -> bool:
+        from . import credvault
+        enc = credvault.encrypt(secret_b32) if secret_b32 else None
+        with self._lock, self._conn() as c:
+            cur = c.execute("UPDATE users SET totp_secret=? WHERE id=?", (enc, user_id))
+            return bool(getattr(cur, "rowcount", 0))
+
+    def totp_secret(self, user_id: str) -> str | None:
+        from . import credvault
+        with self._lock, self._conn() as c:
+            r = c.execute("SELECT totp_secret FROM users WHERE id=?", (user_id,)).fetchone()
+        if not r or not r["totp_secret"]:
+            return None
+        try:
+            return credvault.decrypt(r["totp_secret"])
+        except ValueError:
+            return None                     # сменили ключ без ротации — 2FA слетает, не 500
+
     # ---- сброс пароля (one-time токен; письмо шлёт mailer, если настроен) ---- #
     def issue_reset_token(self, email: str, ttl: int = 3600) -> str | None:
         """Выдать одноразовый токен сброса. Нет такого аккаунта → None (наружу
@@ -514,6 +543,7 @@ class RegisterInput(BaseModel):
 class LoginInput(BaseModel):
     email: str
     password: str
+    totp: str | None = None      # код из приложения-аутентификатора (если 2FA включена)
 
 
 class PublicUser(BaseModel):
@@ -630,8 +660,19 @@ def login(data: LoginInput, request: HttpRequest) -> AuthResult:
         raise HTTPException(401, "Неверный email или пароль")
     if not row["is_active"]:
         raise HTTPException(403, "Аккаунт отключён")
+    # 2FA: у кого включён TOTP — пароль недостаточен. Неверный код кормит jail,
+    # чтобы перебор 6-значных кодов упирался в тот же замок, что и пароли.
+    secret = accounts.totp_secret(row["id"])
+    if secret:
+        from . import totp as totp_mod
+        if not data.totp:
+            raise HTTPException(401, "totp_required")
+        if not totp_mod.verify(secret, data.totp):
+            _jail_fail(email)
+            audit.warning("login FAIL (2FA) id=%s ip=%s", row["id"], _ip(request))
+            raise HTTPException(401, "Неверный код аутентификатора")
     _jail_reset(email)
-    audit.info("login OK id=%s ip=%s", row["id"], _ip(request))
+    audit.info("login OK id=%s 2fa=%s ip=%s", row["id"], bool(secret), _ip(request))
     return AuthResult(access_token=create_token(row["id"], row["role"], ver=_row_token_ver(row)),
                       refresh_token=accounts.issue_refresh(row["id"]), user=_public(row))
 
@@ -766,6 +807,61 @@ def reset_password(data: ResetInput, request: HttpRequest) -> dict:
         raise HTTPException(400, "Ссылка недействительна или устарела — запросите новую")
     audit.info("reset OK ip=%s", _ip(request))
     return {"status": "ok"}
+
+
+class TotpEnableInput(BaseModel):
+    secret: str
+    code: str
+
+
+class TotpCodeInput(BaseModel):
+    code: str
+
+
+@router.post("/auth/totp/setup", dependencies=[Depends(auth_rate_limit)])
+def totp_setup(user: PublicUser = Depends(current_user)) -> dict:
+    """Шаг 1: выдать секрет и otpauth-ссылку (QR сканирует Google Authenticator
+    и т.п.). Секрет ещё НЕ активен — активация после проверки кода (enable)."""
+    from . import totp as totp_mod
+    from .qr import qr_svg
+    secret = totp_mod.new_secret()
+    row = accounts.by_id(user.id)
+    url = totp_mod.otpauth_url(secret, row["email"])
+    return {"secret": secret, "otpauth": url, "qr_svg": qr_svg(url)}
+
+
+@router.post("/auth/totp/enable", dependencies=[Depends(auth_rate_limit)])
+def totp_enable(data: TotpEnableInput, request: HttpRequest,
+                user: PublicUser = Depends(current_user)) -> dict:
+    """Шаг 2: пользователь ввёл код из приложения — секрет доказанно засканирован,
+    включаем 2FA (секрет в БД шифруется)."""
+    from . import totp as totp_mod
+    if not totp_mod.verify(data.secret, data.code):
+        raise HTTPException(400, "Код не подошёл — проверьте время на телефоне и попробуйте ещё раз")
+    accounts.set_totp(user.id, data.secret)
+    audit.info("totp ENABLED id=%s ip=%s", user.id, _ip(request))
+    return {"status": "ok", "enabled": True}
+
+
+@router.post("/auth/totp/disable", dependencies=[Depends(auth_rate_limit)])
+def totp_disable(data: TotpCodeInput, request: HttpRequest,
+                 user: PublicUser = Depends(current_user)) -> dict:
+    """Выключение — только с валидным текущим кодом (украденный access-токен
+    без телефона 2FA снять не может)."""
+    from . import totp as totp_mod
+    secret = accounts.totp_secret(user.id)
+    if not secret:
+        return {"status": "ok", "enabled": False}
+    if not totp_mod.verify(secret, data.code):
+        raise HTTPException(400, "Неверный код")
+    accounts.set_totp(user.id, None)
+    audit.info("totp DISABLED id=%s ip=%s", user.id, _ip(request))
+    return {"status": "ok", "enabled": False}
+
+
+@router.get("/auth/totp/status")
+def totp_status(user: PublicUser = Depends(current_user)) -> dict:
+    return {"enabled": accounts.totp_secret(user.id) is not None}
 
 
 @router.post("/auth/change-password", dependencies=[Depends(auth_rate_limit)])

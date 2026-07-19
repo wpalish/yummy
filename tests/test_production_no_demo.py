@@ -94,6 +94,7 @@ def test_disabled_mode_blocks_publishing_without_merchant(monkeypatch, tmp_path)
 def test_no_demo_seed_in_prod(monkeypatch, tmp_path):
     monkeypatch.setenv("YUMMY_ENFORCE_AUTH", "1")
     monkeypatch.setenv("YUMMY_SECRET_KEY", "x" * 40)
+    monkeypatch.setenv("YUMMY_CRED_KEY", "y" * 40)
     monkeypatch.delenv("YUMMY_DEMO_SEED", raising=False)
     import app.accounts as accounts_mod
     importlib.reload(accounts_mod)

@@ -37,9 +37,12 @@ def _master_keys() -> list[bytes]:
         v = os.getenv(env, "")
         if v:
             keys.append(hashlib.sha256(v.encode()).digest())
-    if not keys:  # фолбэк: выводим из общего секрета приложения
-        base = os.getenv("YUMMY_SECRET_KEY", "dev-secret-not-for-prod")
-        keys.append(hashlib.sha256(("cred:" + base).encode()).digest())
+    # Деривация из общего секрета — всегда в хвосте списка: как ЕДИНСТВЕННЫЙ
+    # ключ она допустима только в деве (прод требует YUMMY_CRED_KEY —
+    # assert_prod_config), а как fallback даёт расшифровку легаси-записей,
+    # созданных до введения отдельного ключа.
+    base = os.getenv("YUMMY_SECRET_KEY", "dev-secret-not-for-prod")
+    keys.append(hashlib.sha256(("cred:" + base).encode()).digest())
     return keys
 
 

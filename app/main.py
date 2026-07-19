@@ -308,7 +308,10 @@ def index() -> HTMLResponse:
             .replace("__CSP_NONCE__", nonce)
             .replace("__TG_CHANNEL__", os.getenv("YUMMY_TG_CHANNEL", ""))
             .replace("__PAYMENT_MODE__", _PAYMENT_MODE))
-    return HTMLResponse(html, headers={"Content-Security-Policy": _csp(nonce)})
+    # no-cache: HTML ревалидируется при каждом заходе — после деплоя браузеры
+    # не держат неделю старый инлайн-JS (ассеты-то без хешей в именах)
+    return HTMLResponse(html, headers={"Content-Security-Policy": _csp(nonce),
+                                       "Cache-Control": "no-cache"})
 
 
 @app.get("/health", tags=["Dev"])

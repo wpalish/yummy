@@ -228,7 +228,10 @@ def test_prod_config_fail_fast(monkeypatch):
     with pytest.raises(RuntimeError, match="YUMMY_SECRET_KEY"):
         A.assert_prod_config()
     monkeypatch.setattr(A, "_SECRET", "real-secret-0123456789abcdef")
-    A.assert_prod_config()  # с настоящим секретом — ок
+    with pytest.raises(RuntimeError, match="YUMMY_CRED_KEY"):
+        A.assert_prod_config()          # без отдельного ключа шифрования — тоже отказ
+    monkeypatch.setenv("YUMMY_CRED_KEY", "cred-key-0123456789abcdef")
+    A.assert_prod_config()  # с настоящими секретами — ок
 
 
 # ---- Sentinel-пак: refresh-ротация, logout-all, privacy --------------------- #
