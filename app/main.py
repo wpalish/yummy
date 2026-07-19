@@ -33,6 +33,7 @@ from .accounts import (
     PublicUser,
     StaffInvitationCreate,
     StaffInvitationResult,
+    StaffRoleUpdate,
     _ENFORCE,
     assert_prod_config,
     current_user,
@@ -434,6 +435,16 @@ def _assert_can_edit(user: PublicUser | None) -> None:
         raise HTTPException(403, "Недостаточно прав: нужен владелец или менеджер")
 
 
+def _assert_owner(partner_id: str, user: PublicUser | None) -> None:
+    """Персонал заведения (нанять/сменить роль/отключить) — только владелец
+    своего заведения; админ — любого. Менеджер/кассир персонал не трогают."""
+    _assert_owns(partner_id, user)
+    if user is None or user.role == "admin":
+        return
+    if user.partner_role != "owner":
+        raise HTTPException(403, "Управлять персоналом может только владелец")
+
+
 @app.patch("/boxes/{box_id}", response_model=Box, tags=["Partner"])
 def update_box(box_id: str, payload: BoxUpdate,
                user: PublicUser | None = Depends(require_role("partner", "admin"))) -> Box:
@@ -644,6 +655,83 @@ def partner_daily_stats(partner_id: str, days: int = 30,
     """Заказы/выручка партнёра по дням — для графика в кабинете."""
     _assert_owns(partner_id, user)
     return store.partner_daily_stats(partner_id, days=min(max(days, 1), 90))
+
+
+# --------------------------------------------------------------------------- #
+#  Управление персоналом заведения (владелец — из кабинета партнёра)
+# --------------------------------------------------------------------------- #
+@app.get("/partners/{partner_id}/staff", tags=["Partner"])
+def partner_staff(partner_id: str,
+                  user: PublicUser | None = Depends(require_role("partner", "admin"))
+                  ) -> list[dict]:
+    """Список персонала заведения — видит владелец (или админ)."""
+    _assert_owner(partner_id, user)
+    from .accounts import accounts as users_db
+    return [dict(r) for r in users_db.partner_staff(partner_id)]
+
+
+@app.post("/partners/{partner_id}/staff-invitations", response_model=StaffInvitationResult,
+          status_code=201, tags=["Partner"])
+def create_partner_staff_invitation(
+        partner_id: str, payload: StaffInvitationCreate, req: HttpRequest,
+        user: PublicUser | None = Depends(require_role("partner", "admin"))
+        ) -> StaffInvitationResult:
+    """Владелец нанимает менеджера/кассира В СВОЁ заведение. Роль owner здесь
+    недоступна — нового владельца заводит только админ (/admin/staff-invitations)."""
+    _assert_owner(partner_id, user)
+    if payload.partner_role not in {"manager", "cashier"}:
+        raise HTTPException(422, "Владелец приглашает только менеджера или кассира")
+    from .accounts import accounts as users_db
+    if users_db.by_email(payload.email):
+        raise HTTPException(409, "Email уже зарегистрирован")
+    raw = users_db.issue_staff_invitation(
+        email=payload.email, partner_id=partner_id, partner_role=payload.partner_role,
+        invited_by=(user.id if user else "demo"))
+    base = os.getenv("YUMMY_PUBLIC_URL", "https://wpalish.github.io/yummy/").rstrip("/")
+    log.info("audit: staff-invite(owner) role=%s partner=%s by=%s ip=%s rid=%s",
+             payload.partner_role, partner_id, (user.id if user else "demo"),
+             req.client.host if req.client else "?", getattr(req.state, "request_id", "-"))
+    return StaffInvitationResult(invite_url=f"{base}/?invite={raw}")
+
+
+@app.patch("/partners/{partner_id}/staff/{uid}", tags=["Partner"])
+def update_partner_staff_role(partner_id: str, uid: str, payload: StaffRoleUpdate,
+                              req: HttpRequest,
+                              user: PublicUser | None = Depends(require_role("partner", "admin"))
+                              ) -> dict:
+    """Владелец меняет роль сотрудника (менеджер↔кассир) внутри заведения."""
+    _assert_owner(partner_id, user)
+    if user and uid == user.id:
+        raise HTTPException(409, "Нельзя менять собственную роль")
+    from .accounts import accounts as users_db
+    if not users_db.set_partner_role(uid, partner_id, payload.partner_role):
+        raise HTTPException(404, "Сотрудник не найден или роль неизменяема")
+    log.info("audit: staff-role partner=%s uid=%s -> %s by=%s rid=%s", partner_id, uid,
+             payload.partner_role, (user.id if user else "demo"),
+             getattr(req.state, "request_id", "-"))
+    return {"id": uid, "partner_role": payload.partner_role}
+
+
+@app.post("/partners/{partner_id}/staff/{uid}/active", tags=["Partner"])
+def set_partner_staff_active(partner_id: str, uid: str, req: HttpRequest,
+                             active: bool = False,
+                             user: PublicUser | None = Depends(require_role("partner", "admin"))
+                             ) -> dict:
+    """Отключить/вернуть сотрудника. Отключение рвёт все его сессии (как у админ-блока),
+    но действует ТОЛЬКО на персонал своего заведения и не на самого владельца."""
+    _assert_owner(partner_id, user)
+    if user and uid == user.id:
+        raise HTTPException(409, "Нельзя отключить самого себя")
+    from .accounts import accounts as users_db
+    target = users_db.by_id(uid)
+    if not target or target["partner_id"] != partner_id:
+        raise HTTPException(404, "Сотрудник не найден в этом заведении")
+    if target["partner_role"] == "owner":
+        raise HTTPException(403, "Владельца отключить нельзя")
+    users_db.set_active(uid, active)
+    log.info("audit: staff-active partner=%s uid=%s active=%s by=%s rid=%s", partner_id, uid,
+             active, (user.id if user else "demo"), getattr(req.state, "request_id", "-"))
+    return {"id": uid, "is_active": active}
 
 
 def _orders_csv(orders: list) -> str:

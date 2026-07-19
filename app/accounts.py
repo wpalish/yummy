@@ -295,6 +295,29 @@ class Accounts:
             c.execute("UPDATE refresh_tokens SET revoked=1 WHERE user_id=?", (user_id,))
             return bool(getattr(cur, "rowcount", 0))
 
+    def partner_staff(self, partner_id: str) -> list[sqlite3.Row]:
+        """Персонал заведения — для кабинета владельца (владелец сверху, потом
+        менеджеры, потом кассиры; внутри группы — по дате)."""
+        with self._lock, self._conn() as c:
+            return c.execute(
+                "SELECT id,email,role,partner_id,partner_role,is_active,created_at"
+                " FROM users WHERE partner_id=? ORDER BY"
+                " CASE partner_role WHEN 'owner' THEN 0 WHEN 'manager' THEN 1"
+                " ELSE 2 END, created_at", (partner_id,)).fetchall()
+
+    def set_partner_role(self, user_id: str, partner_id: str, new_role: str) -> bool:
+        """Сменить роль сотрудника ВНУТРИ его заведения (manager<->cashier).
+        Владельцем через этот путь не делаем и чужой персонал не трогаем —
+        WHERE привязывает и к заведению, и к нессотрудничьей роли."""
+        if new_role not in {"manager", "cashier"}:
+            return False
+        with self._lock, self._conn() as c:
+            cur = c.execute(
+                "UPDATE users SET partner_role=? WHERE id=? AND partner_id=?"
+                " AND partner_role IN ('manager','cashier')",
+                (new_role, user_id, partner_id))
+            return bool(getattr(cur, "rowcount", 0))
+
     def create(self, email: str, pw_hash: str, role: str,
                brand_name: str | None, address: str | None,
                partner_id: str | None = None, partner_role: str | None = None) -> str:
@@ -411,6 +434,12 @@ class StaffInvitationCreate(BaseModel):
         if not _EMAIL_RE.match(v.strip()):
             raise ValueError("некорректный email")
         return v.strip().lower()
+
+
+class StaffRoleUpdate(BaseModel):
+    """Владелец меняет роль сотрудника внутри заведения (не в owner)."""
+
+    partner_role: Literal["manager", "cashier"]
 
 
 class StaffInvitationResult(BaseModel):

@@ -50,6 +50,12 @@ def _admin(users, email: str = "boss@yummy.kz") -> dict:
     return {"Authorization": f"Bearer {create_token(uid, 'admin')}"}
 
 
+def _mk_staff(users, email: str, partner_id: str, partner_role: str = "cashier") -> str:
+    """Создать сотрудника и вернуть его id (для управления персоналом)."""
+    return users.create(email, "x", "partner", None, None,
+                        partner_id=partner_id, partner_role=partner_role)
+
+
 def _box(store, pid: str = "p1") -> str:
     return store.create_box("b_" + pid, BoxCreate(
         partner_id=pid, category="bakery", title="Бокс", price=990, value_est=2600,
@@ -235,3 +241,77 @@ def test_daily_stats_counts_revenue_and_losses(env):
     assert today["revenue"] == 990                  # только issued, отменённый не считаем
     assert today["issued_count"] == 1
     assert today["lost_count"] == 1
+
+
+# --------------------------------------------------------------------------- #
+#  Управление персоналом заведения (владелец из кабинета)
+# --------------------------------------------------------------------------- #
+def test_owner_lists_own_staff(env):
+    c, store, users = env
+    _mk_staff(users, "kassa@x.kz", "p1", "cashier")
+    _mk_staff(users, "foreign@x.kz", "p2", "cashier")   # чужое заведение
+    owner = _staff(users, "owner@x.kz", "p1", "owner")
+    rows = c.get("/partners/p1/staff", headers=owner).json()
+    emails = {r["email"] for r in rows}
+    assert "kassa@x.kz" in emails and "owner@x.kz" in emails
+    assert "foreign@x.kz" not in emails                 # только свой персонал
+
+
+def test_cashier_cannot_manage_staff(env):
+    c, store, users = env
+    h = _staff(users, "kassa@x.kz", "p1", "cashier")
+    assert c.get("/partners/p1/staff", headers=h).status_code == 403
+
+
+def test_owner_cannot_touch_foreign_staff(env):
+    c, store, users = env
+    owner = _staff(users, "owner@x.kz", "p1", "owner")
+    assert c.get("/partners/p2/staff", headers=owner).status_code == 403
+
+
+def test_owner_invites_only_manager_or_cashier(env):
+    c, store, users = env
+    owner = _staff(users, "owner@x.kz", "p1", "owner")
+    ok = c.post("/partners/p1/staff-invitations", headers=owner,
+                json={"email": "new@x.kz", "partner_role": "cashier"})
+    assert ok.status_code == 201 and "invite" in ok.json()["invite_url"]
+    bad = c.post("/partners/p1/staff-invitations", headers=owner,
+                 json={"email": "boss2@x.kz", "partner_role": "owner"})
+    assert bad.status_code == 422                        # владельца зовёт только админ
+
+
+def test_owner_changes_staff_role(env):
+    c, store, users = env
+    uid = _mk_staff(users, "kassa@x.kz", "p1", "cashier")
+    owner = _staff(users, "owner@x.kz", "p1", "owner")
+    r = c.patch(f"/partners/p1/staff/{uid}", headers=owner,
+                json={"partner_role": "manager"})
+    assert r.status_code == 200
+    assert users.by_id(uid)["partner_role"] == "manager"
+
+
+def test_owner_cannot_change_foreign_staff_role(env):
+    c, store, users = env
+    uid = _mk_staff(users, "kassa@x.kz", "p2", "cashier")   # чужой сотрудник
+    owner = _staff(users, "owner@x.kz", "p1", "owner")
+    r = c.patch(f"/partners/p1/staff/{uid}", headers=owner,
+                json={"partner_role": "manager"})
+    assert r.status_code == 404                          # не в этом заведении
+
+
+def test_owner_deactivates_staff_kills_sessions(env):
+    c, store, users = env
+    uid = _mk_staff(users, "kassa@x.kz", "p1", "cashier")
+    vh = {"Authorization": f"Bearer {create_token(uid, 'partner')}"}
+    assert c.get("/auth/me", headers=vh).status_code == 200
+    owner = _staff(users, "owner@x.kz", "p1", "owner")
+    assert c.post(f"/partners/p1/staff/{uid}/active", headers=owner).status_code == 200
+    assert c.get("/auth/me", headers=vh).status_code in (401, 403)   # разлогинен
+    assert users.by_id(uid)["is_active"] == 0
+
+
+def test_owner_cannot_deactivate_self(env):
+    c, store, users = env
+    uid = _mk_staff(users, "owner@x.kz", "p1", "owner")
+    h = {"Authorization": f"Bearer {create_token(uid, 'partner')}"}
+    assert c.post(f"/partners/p1/staff/{uid}/active", headers=h).status_code == 409

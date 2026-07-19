@@ -594,6 +594,17 @@
       <div class="cardp"><h3>Брони и выдачи</h3><div id="pOrders"></div>
         <button class="btn sec" id="pCsv" style="margin-top:.7rem">⬇ Выгрузить журнал (CSV)</button></div>
       <div class="cardp"><h3>Аналитика по дням</h3><div id="pDaily"></div></div>
+      <div class="cardp hidden" id="pStaffCard"><h3>Персонал</h3>
+        <div id="pStaff"></div>
+        <div class="frow" style="margin-top:.7rem;align-items:flex-end">
+          <label style="flex:2">Email сотрудника <input id="stEmail" type="email" placeholder="kassir@mail.kz" /></label>
+          <label style="flex:1">Роль
+            <select id="stRole"><option value="cashier">Кассир</option><option value="manager">Менеджер</option></select>
+          </label>
+        </div>
+        <button class="btn" id="stInvite" style="margin-top:.5rem">Пригласить в заведение</button>
+        <div id="stResult" style="margin-top:.5rem;font-size:.82rem"></div>
+      </div>
     </section>
 
     <!-- ===================== АДМИН ===================== -->
@@ -737,6 +748,8 @@ const ACT = {
   closeBox:        el => closeBoxConfirm(el.dataset.a1, el.dataset.a2),
   blockUser:       el => toggleUserBlock(el.dataset.a1, el.dataset.a2==="1"),
   revokeUser:      el => revokeUserSessions(el.dataset.a1),
+  staffRole:       el => staffSetRole(el.dataset.a1, el.dataset.a2),
+  staffActive:     el => staffSetActive(el.dataset.a1, el.dataset.a2==="1"),
   csvAll:          () => downloadCsv("/admin/orders.csv","yummy-orders.csv"),
   csvPartner:      el => downloadCsv(`/partners/${el.dataset.a1}/orders.csv`,"yummy-orders.csv"),
   mapShop:         el => shopFromMap(el.dataset.name),
@@ -823,6 +836,7 @@ const KZ={
 "Заведение":"Мекеме","Создать бокс":"Бокс құру","Категория":"Санат","Название":"Атауы",
 "Опубликовать бокс":"Боксты жариялау","Выдать заказ по коду":"Тапсырысты код бойынша беру","Выдать":"Беру",
 "📷 Сканировать QR камерой":"📷 QR-ды камерамен сканерлеу","Мои боксы":"Менің бокстарым","Брони и выдачи":"Броньдар мен берулер","Аналитика по дням":"Күндер бойынша аналитика","Данных пока нет.":"Деректер әлі жоқ.",
+"Персонал":"Қызметкерлер","Email сотрудника":"Қызметкердің email-і","Роль":"Рөлі","Кассир":"Кассир","Менеджер":"Менеджер","Пригласить в заведение":"Мекемеге шақыру","Пока только вы.":"Әзірге тек сіз.","Отключить":"Өшіру","Вернуть":"Қайтару","↑ в менеджеры":"↑ менеджерге","↓ в кассиры":"↓ кассирге","активен":"белсенді","отключён":"өшірілген",
 "Редактировать бокс":"Боксты өңдеу","Снять с продажи?":"Сатудан алу?","Снять с продажи":"Сатудан алу","Сохранить":"Сақтау",
 "Пользователи":"Қолданушылар","Заблокировать":"Бұғаттау","Разблокировать":"Бұғаттан шығару","активен":"белсенді","заблокирован":"бұғатталған",
 "⬇ Выгрузить заказы (CSV)":"⬇ Тапсырыстарды жүктеу (CSV)","⬇ Выгрузить журнал (CSV)":"⬇ Журналды жүктеу (CSV)",
@@ -1745,6 +1759,7 @@ async function loadPartnerData(){
     </div>`).join(""):'<p class="empty">Боксов пока нет.</p>';
   $("#pOrders").innerHTML=orders.length?orders.map(o=>orderRow(o)).join(""):'<p class="empty">Броней пока нет.</p>';
   loadDailyStats(pid);
+  loadStaff(pid);
 }
 async function loadDailyStats(pid){
   const box=$("#pDaily"); if(!box)return;
@@ -1755,6 +1770,55 @@ async function loadDailyStats(pid){
   box.innerHTML=`<div class="stat" style="margin-bottom:.6rem"><b>${money(totalRevenue)}</b><span>выручка за ${rows.length} ${plural(rows.length,["день","дня","дней"])} (${totalOrders} ${plural(totalOrders,["заказ","заказа","заказов"])})</span></div>`
     +barChart(rows.map(r=>[r.day,r.revenue]));
 }
+/* ============ КАБИНЕТ ПАРТНЁРА: персонал (только владелец) ============ */
+/* STAFF_ROLE_RU объявлена ниже (в блоке приглашений) — переиспользуем её. */
+async function loadStaff(pid){
+  const card=$("#pStaffCard"); if(!card)return;
+  let rows;
+  try{ rows=await get(`/partners/${pid}/staff`); }
+  catch(e){ card.classList.add("hidden"); return; }   // не владелец → карточки нет
+  card.classList.remove("hidden");
+  window.__staffPid=pid;
+  const list=$("#pStaff");
+  list.innerHTML=rows.map(u=>{
+    const owner=u.partner_role==="owner";
+    const next=u.partner_role==="manager"?"cashier":"manager";
+    return `<div class="lrow">
+      <div class="g"><b>${esc(u.email)}</b>
+        <div style="font-size:.76rem;color:var(--txt2)">${STAFF_ROLE_RU[u.partner_role]||esc(u.partner_role||"")}</div></div>
+      <span class="tag ${u.is_active?"t-issued":"t-expired"}">${u.is_active?"активен":"отключён"}</span>
+      ${owner?"":`<button class="linkbtn" data-act="staffRole" data-a1="${esc(u.id)}" data-a2="${next}" title="Сделать ${STAFF_ROLE_RU[next]}">${u.partner_role==="manager"?"↓ в кассиры":"↑ в менеджеры"}</button>
+      <button class="linkbtn" data-act="staffActive" data-a1="${esc(u.id)}" data-a2="${u.is_active?"0":"1"}" style="color:${u.is_active?"var(--red)":"var(--green)"}">${u.is_active?"Отключить":"Вернуть"}</button>`}
+    </div>`;
+  }).join("")||'<p class="empty">Пока только вы.</p>';
+  const btn=$("#stInvite");
+  btn.onclick=async()=>{
+    const email=$("#stEmail").value.trim(), role=$("#stRole").value;
+    if(!email){toast("Укажите email",true);return;}
+    btn.disabled=true;btn.textContent="Создаём…";
+    try{
+      const r=await post(`/partners/${pid}/staff-invitations`,{email,partner_role:role});
+      $("#stResult").innerHTML=`<b style="color:var(--green)">Ссылка готова</b> — отправьте сотруднику (одноразовая, 7 дней):
+        <div style="display:flex;gap:.4rem;margin-top:.35rem">
+          <input id="stUrl" readonly value="${esc(r.invite_url)}" style="flex:1;font-size:.78rem" />
+          <button class="btn sec" id="stCopy" style="width:auto;padding:.4rem .8rem">Копировать</button>
+        </div>`;
+      $("#stCopy").onclick=async()=>{try{await navigator.clipboard.writeText(r.invite_url);toast("Скопировано 🔗");}catch(e){$("#stUrl").select();}};
+      $("#stEmail").value="";
+    }catch(e){toast(e.message,true);}
+    btn.disabled=false;btn.textContent="Пригласить в заведение";
+  };
+}
+window.staffSetRole=async(id,role)=>{
+  try{ await api("PATCH",`/partners/${window.__staffPid}/staff/${id}`,{partner_role:role});
+    toast("Роль обновлена"); loadStaff(window.__staffPid);
+  }catch(e){ toast(e.message,true); }
+};
+window.staffSetActive=async(id,active)=>{
+  try{ await post(`/partners/${window.__staffPid}/staff/${id}/active?active=${active?"true":"false"}`,{});
+    toast(active?"Сотрудник возвращён":"Сотрудник отключён — сессии разорваны"); loadStaff(window.__staffPid);
+  }catch(e){ toast(e.message,true); }
+};
 function orderRow(o,admin=false){
   return `<div class="lrow"><div style="font-size:1.2rem">${o.emoji}</div>
     <div class="g"><b>${esc(o.code)}</b> · ${esc(o.user_name)} <span style="color:var(--txt2)">${esc(o.user_phone)}</span>
