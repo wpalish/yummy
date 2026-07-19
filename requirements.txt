@@ -1,5 +1,5 @@
 fastapi>=0.110
-uvicorn[standard]>=0.27
+uvicorn[standard]>=0.51.0
 pydantic>=2.6
 segno>=1.6
 python-multipart>=0.0.9
