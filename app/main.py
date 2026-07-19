@@ -795,6 +795,79 @@ def activate_payment_account(partner_id: str, req: HttpRequest) -> dict:
     return get_payment_account(partner_id)
 
 
+@app.get("/admin/payment-accounts", tags=["Admin"],
+         dependencies=[Depends(require_role("admin"))])
+def list_payment_accounts() -> list[dict]:
+    """Все платёжные аккаунты + долг по комиссии. Реквизит только маской."""
+    out = []
+    for a in store.payment_accounts():
+        out.append({**a, **store.commission_summary(a["partner_id"]),
+                    "rate_bps": store.active_commission_bps(a["partner_id"])})
+    return out
+
+
+@app.post("/partners/{partner_id}/payment-account/suspend", tags=["Admin"],
+          dependencies=[Depends(require_role("admin"))])
+def suspend_payment_account(partner_id: str, req: HttpRequest) -> dict:
+    """Приостановить приём платежей (долг/нарушение). Публикация платных
+    боксов блокируется, пока админ не активирует заново."""
+    if not store.payment_account(partner_id):
+        raise HTTPException(404, "Платёжный аккаунт не найден")
+    store.suspend_payment_account(partner_id)
+    log.info("audit: payment-account suspended partner=%s rid=%s",
+             partner_id, getattr(req.state, "request_id", "-"))
+    return get_payment_account(partner_id)
+
+
+@app.post("/partners/{partner_id}/payment-account/rotate", tags=["Admin"],
+          dependencies=[Depends(require_role("admin"))])
+def rotate_payment_account(partner_id: str, req: HttpRequest,
+                           payload: PaymentAccountInput | None = None) -> dict:
+    """Ротация: новый public_id (webhook-URL); если в теле передан
+    merchant_reference — перезаписываем и реквизит (перевыпуск в банке),
+    он шифруется актуальным ключом."""
+    if not store.rotate_payment_public_id(partner_id):
+        raise HTTPException(404, "Платёжный аккаунт не найден")
+    if payload and payload.merchant_reference:
+        store.rotate_merchant_reference(partner_id, payload.merchant_reference)
+    log.info("audit: payment-account rotated partner=%s rid=%s",
+             partner_id, getattr(req.state, "request_id", "-"))
+    return get_payment_account(partner_id)
+
+
+@app.post("/partners/{partner_id}/commission-invoice", status_code=201, tags=["Admin"],
+          dependencies=[Depends(require_role("admin"))])
+def create_commission_invoice(partner_id: str, req: HttpRequest) -> dict:
+    """Выставить счёт партнёру за накопленную комиссию (все accrued без счёта)."""
+    inv = store.create_commission_invoice(_new("inv"), partner_id)
+    if not inv:
+        raise HTTPException(409, "Нечего выставлять: нет неоплаченной комиссии")
+    log.info("audit: invoice created id=%s partner=%s total=%s rid=%s",
+             inv["id"], partner_id, inv["total_minor"], getattr(req.state, "request_id", "-"))
+    return inv
+
+
+@app.get("/admin/commission-invoices", tags=["Admin"],
+         dependencies=[Depends(require_role("admin"))])
+def list_commission_invoices(partner_id: str | None = None) -> list[dict]:
+    return store.commission_invoices(partner_id)
+
+
+@app.post("/admin/commission-invoices/{iid}/{action}", tags=["Admin"],
+          dependencies=[Depends(require_role("admin"))])
+def set_invoice_status(iid: str, action: str, req: HttpRequest) -> dict:
+    """paid — партнёр оплатил счёт; void — аннулировать (строки вернутся
+    в пул и попадут в следующий счёт)."""
+    if action not in {"paid", "void"}:
+        raise HTTPException(422, "Действие: paid или void")
+    inv = store.set_invoice_status(iid, action)
+    if not inv:
+        raise HTTPException(404, "Счёт не найден или уже закрыт")
+    log.info("audit: invoice %s id=%s rid=%s", action, iid,
+             getattr(req.state, "request_id", "-"))
+    return inv
+
+
 @app.post("/partners/{partner_id}/commission-rule", status_code=201, tags=["Admin"],
           dependencies=[Depends(require_role("admin"))])
 def set_commission_rule(partner_id: str, payload: CommissionRuleInput) -> dict:

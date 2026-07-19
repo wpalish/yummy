@@ -15,7 +15,7 @@ from contextlib import contextmanager
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
-from . import database
+from . import credvault, database
 from .models import Box, Order, Partner, Review
 
 _DB = Path(os.getenv("YUMMY_DB_PATH", str(Path(__file__).parent.parent / "spasibox.db")))
@@ -111,6 +111,12 @@ class Store:
                     order_id TEXT UNIQUE REFERENCES orders(id),
                     gross_minor INTEGER, rate_bps INTEGER, commission_minor INTEGER,
                     status TEXT DEFAULT 'accrued', created_at TEXT, reversed_at TEXT);
+                -- Счёт партнёру за период: агрегат accrued-строк ledger.
+                CREATE TABLE IF NOT EXISTS commission_invoices(
+                    id TEXT PRIMARY KEY, partner_id TEXT REFERENCES partners(id),
+                    total_minor INTEGER, entries_count INTEGER,
+                    period_from TEXT, period_to TEXT,
+                    status TEXT DEFAULT 'open', created_at TEXT, paid_at TEXT);
                 -- «Кого зовут»: сколько раз покупатели просили боксы у заведения
                 -- из карты (venues.json). Только счётчик, без персональных данных.
                 CREATE TABLE IF NOT EXISTS venue_interest(
@@ -125,14 +131,18 @@ class Store:
                 CREATE INDEX IF NOT EXISTS ix_reviews_partner ON reviews(partner_id, status, created_at);
                 """
             )
-            # миграция существующих SQLite-БД (на PG схема создаётся сразу полной,
-            # PRAGMA там нет — пропускаем).
-            if not database.POSTGRES:
+            # миграция существующих SQLite-БД (на PG — ADD COLUMN IF NOT EXISTS).
+            if database.POSTGRES:
+                c.execute("ALTER TABLE commission_ledger ADD COLUMN IF NOT EXISTS invoice_id TEXT")
+            else:
                 cols = {r[1] for r in c.execute("PRAGMA table_info(orders)").fetchall()}
                 if "payment_status" not in cols:
                     c.execute("ALTER TABLE orders ADD COLUMN payment_status TEXT DEFAULT 'not_required'")
                 if "user_id" not in cols:
                     c.execute("ALTER TABLE orders ADD COLUMN user_id TEXT")
+                lcols = {r[1] for r in c.execute("PRAGMA table_info(commission_ledger)").fetchall()}
+                if "invoice_id" not in lcols:
+                    c.execute("ALTER TABLE commission_ledger ADD COLUMN invoice_id TEXT")
 
     # ------------------------------------------------------------------ #
     #  Партнёры
@@ -679,6 +689,8 @@ class Store:
 
     def upsert_payment_account(self, aid: str, partner_id: str, public_id: str,
                                merchant_reference: str, provider: str = "kaspi") -> dict:
+        # merchant_reference — чувствительный реквизит: в БД только шифртекст
+        enc_ref = credvault.encrypt(merchant_reference)
         with self._lock, self._conn() as c:
             c.execute("""INSERT INTO partner_payment_accounts(id,partner_id,public_id,
                          provider,merchant_reference,status,created_at)
@@ -686,14 +698,42 @@ class Store:
                          ON CONFLICT(partner_id) DO UPDATE SET
                            merchant_reference=excluded.merchant_reference,
                            provider=excluded.provider""",
-                      (aid, partner_id, public_id, provider, merchant_reference, _now_iso()))
+                      (aid, partner_id, public_id, provider, enc_ref, _now_iso()))
         return self.payment_account(partner_id)
 
     def payment_account(self, partner_id: str) -> dict | None:
         with self._lock, self._conn() as c:
             r = c.execute("SELECT * FROM partner_payment_accounts WHERE partner_id=?",
                           (partner_id,)).fetchone()
-        return dict(r) if r else None
+        if not r:
+            return None
+        d = dict(r)
+        # расшифровка на лету; легаси-плейнтекст проходит как есть
+        try:
+            d["merchant_reference"] = credvault.decrypt(d.get("merchant_reference") or "")
+        except ValueError:
+            d["merchant_reference"] = ""      # ключ сменился без ротации — не 500
+        return d
+
+    def payment_accounts(self) -> list[dict]:
+        """Все платёжные аккаунты для админки — реквизит сразу маскируем,
+        полный номер из этого метода не выходит вообще."""
+        with self._lock, self._conn() as c:
+            rows = c.execute(
+                """SELECT a.*, p.name AS partner_name FROM partner_payment_accounts a
+                   LEFT JOIN partners p ON p.id=a.partner_id
+                   ORDER BY a.created_at DESC""").fetchall()
+        out = []
+        for r in rows:
+            d = dict(r)
+            try:
+                ref = credvault.decrypt(d.pop("merchant_reference") or "")
+            except ValueError:
+                ref = ""
+            d["merchant_masked"] = ("…" + ref[-4:]) if ref else ""
+            d["encrypted"] = credvault.is_encrypted(r["merchant_reference"] or "")
+            out.append(d)
+        return out
 
     def set_payment_account_status(self, partner_id: str, status: str,
                                    payments_enabled: bool) -> dict | None:
@@ -764,3 +804,86 @@ class Store:
         by = {r["status"]: {"count": r["n"], "minor": r["s"]} for r in rows}
         owed = by.get("accrued", {}).get("minor", 0)
         return {"owed_minor": owed, "owed_tenge": owed // 100, "by_status": by}
+
+    def suspend_payment_account(self, partner_id: str) -> dict | None:
+        """Приостановить приём платежей (нарушение/долг). Платные боксы
+        публиковать нельзя, пока админ не активирует заново."""
+        return self.set_payment_account_status(partner_id, "suspended",
+                                               payments_enabled=False)
+
+    def rotate_payment_public_id(self, partner_id: str) -> dict | None:
+        """Сменить public_id (несекретный id для webhook-URL). Нужен при утечке
+        URL: старые webhook-и перестают матчиться."""
+        with self._lock, self._conn() as c:
+            cur = c.execute("UPDATE partner_payment_accounts SET public_id=? WHERE partner_id=?",
+                            (uuid.uuid4().hex, partner_id))
+            if not getattr(cur, "rowcount", 0):
+                return None
+        return self.payment_account(partner_id)
+
+    def rotate_merchant_reference(self, partner_id: str, new_reference: str) -> dict | None:
+        """Смена реквизита мерчанта (перевыпуск в банке). Пишется уже новым
+        ключом шифрования — заодно это и ротация ключа для этой записи."""
+        if not self.payment_account(partner_id):
+            return None
+        with self._lock, self._conn() as c:
+            c.execute("UPDATE partner_payment_accounts SET merchant_reference=? WHERE partner_id=?",
+                      (credvault.encrypt(new_reference), partner_id))
+        return self.payment_account(partner_id)
+
+    # ---- счета за комиссию (commission_invoices) --------------------------- #
+    def create_commission_invoice(self, iid: str, partner_id: str) -> dict | None:
+        """Выставить счёт: собрать все accrued-строки ledger без счёта, привязать
+        их к счёту и зафиксировать сумму. Нечего выставлять → None.
+        Строки счёта замораживаются: сторно после выставления счёт не меняет
+        (спорные заказы решаются void-ом счёта, не тихой правкой суммы)."""
+        with self._lock, self._conn() as c:
+            rows = c.execute(
+                """SELECT id, commission_minor, created_at FROM commission_ledger
+                   WHERE partner_id=? AND status='accrued' AND invoice_id IS NULL
+                   ORDER BY created_at""", (partner_id,)).fetchall()
+            if not rows:
+                return None
+            total = sum(r["commission_minor"] for r in rows)
+            c.execute(
+                """INSERT INTO commission_invoices(id,partner_id,total_minor,entries_count,
+                   period_from,period_to,status,created_at)
+                   VALUES(?,?,?,?,?,?,'open',?)""",
+                (iid, partner_id, total, len(rows),
+                 rows[0]["created_at"], rows[-1]["created_at"], _now_iso()))
+            ids = [r["id"] for r in rows]
+            c.executemany("UPDATE commission_ledger SET invoice_id=? WHERE id=?",
+                          [(iid, x) for x in ids])
+        return self.commission_invoice(iid)
+
+    def commission_invoice(self, iid: str) -> dict | None:
+        with self._lock, self._conn() as c:
+            r = c.execute("SELECT * FROM commission_invoices WHERE id=?", (iid,)).fetchone()
+        return dict(r) if r else None
+
+    def commission_invoices(self, partner_id: str | None = None) -> list[dict]:
+        with self._lock, self._conn() as c:
+            if partner_id:
+                rows = c.execute(
+                    "SELECT * FROM commission_invoices WHERE partner_id=? ORDER BY created_at DESC",
+                    (partner_id,)).fetchall()
+            else:
+                rows = c.execute(
+                    "SELECT * FROM commission_invoices ORDER BY created_at DESC").fetchall()
+        return [dict(r) for r in rows]
+
+    def set_invoice_status(self, iid: str, status: str) -> dict | None:
+        """paid — партнёр оплатил; void — счёт аннулирован (строки возвращаются
+        в пул невыставленных и попадут в следующий счёт)."""
+        if status not in {"paid", "void"}:
+            return None
+        with self._lock, self._conn() as c:
+            cur = c.execute(
+                "UPDATE commission_invoices SET status=?, paid_at=? WHERE id=? AND status='open'",
+                (status, _now_iso() if status == "paid" else None, iid))
+            if not getattr(cur, "rowcount", 0):
+                return None
+            if status == "void":
+                c.execute("UPDATE commission_ledger SET invoice_id=NULL WHERE invoice_id=?",
+                          (iid,))
+        return self.commission_invoice(iid)

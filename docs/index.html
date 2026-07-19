@@ -751,6 +751,11 @@ const ACT = {
   revokeUser:      el => revokeUserSessions(el.dataset.a1),
   staffRole:       el => staffSetRole(el.dataset.a1, el.dataset.a2),
   staffActive:     el => staffSetActive(el.dataset.a1, el.dataset.a2==="1"),
+  suspendPay:      el => suspendPay(el.dataset.a1),
+  rotatePay:       el => rotatePay(el.dataset.a1),
+  makeInvoice:     el => makeInvoice(el.dataset.a1),
+  invoicePaid:     el => invoicePaid(el.dataset.a1),
+  invoiceVoid:     el => invoiceVoid(el.dataset.a1),
   csvAll:          () => downloadCsv("/admin/orders.csv","yummy-orders.csv"),
   csvPartner:      el => downloadCsv(`/partners/${el.dataset.a1}/orders.csv`,"yummy-orders.csv"),
   mapShop:         el => shopFromMap(el.dataset.name),
@@ -837,7 +842,7 @@ const KZ={
 "Заведение":"Мекеме","Создать бокс":"Бокс құру","Категория":"Санат","Название":"Атауы",
 "Опубликовать бокс":"Боксты жариялау","Выдать заказ по коду":"Тапсырысты код бойынша беру","Выдать":"Беру",
 "📷 Сканировать QR камерой":"📷 QR-ды камерамен сканерлеу","Мои боксы":"Менің бокстарым","Брони и выдачи":"Броньдар мен берулер","Аналитика по дням":"Күндер бойынша аналитика","Данных пока нет.":"Деректер әлі жоқ.",
-"Персонал":"Қызметкерлер","Email сотрудника":"Қызметкердің email-і","Роль":"Рөлі","Кассир":"Кассир","Менеджер":"Менеджер","Пригласить в заведение":"Мекемеге шақыру","Пока только вы.":"Әзірге тек сіз.","Отключить":"Өшіру","Вернуть":"Қайтару","↑ в менеджеры":"↑ менеджерге","↓ в кассиры":"↓ кассирге","активен":"белсенді","отключён":"өшірілген",
+"Персонал":"Қызметкерлер","Приостановить":"Тоқтата тұру","Ротация":"Ротация","Аннулировать":"Жою","Оплачен":"Төленді","открыт":"ашық","оплачен":"төленген","аннулирован":"жойылған","Счета за комиссию":"Комиссия шоттары","Выставить счёт":"Шот ұсыну","Email сотрудника":"Қызметкердің email-і","Роль":"Рөлі","Кассир":"Кассир","Менеджер":"Менеджер","Пригласить в заведение":"Мекемеге шақыру","Пока только вы.":"Әзірге тек сіз.","Отключить":"Өшіру","Вернуть":"Қайтару","↑ в менеджеры":"↑ менеджерге","↓ в кассиры":"↓ кассирге","активен":"белсенді","отключён":"өшірілген",
 "Редактировать бокс":"Боксты өңдеу","Снять с продажи?":"Сатудан алу?","Снять с продажи":"Сатудан алу","Сохранить":"Сақтау",
 "Пользователи":"Қолданушылар","Заблокировать":"Бұғаттау","Разблокировать":"Бұғаттан шығару","активен":"белсенді","заблокирован":"бұғатталған",
 "⬇ Выгрузить заказы (CSV)":"⬇ Тапсырыстарды жүктеу (CSV)","⬇ Выгрузить журнал (CSV)":"⬇ Журналды жүктеу (CSV)",
@@ -2275,30 +2280,58 @@ async function loadAdmin(){
 }
 async function renderPayments(){
   const el=$("#aPayments");if(!el)return;
-  let ps=[];try{ps=await get("/partners");}catch(e){}
-  const rows=await Promise.all(ps.map(async p=>{
-    let acc={},com={};
-    try{acc=await get(`/partners/${p.id}/payment-account`);}catch(e){}
-    try{com=await get(`/partners/${p.id}/commission`);}catch(e){}
-    return {p,acc,com};
-  }));
-  el.innerHTML=rows.map(({p,acc,com})=>{
-    const st=acc.status||"none";
+  let ps=[],accs=[],invs=[];
+  try{[ps,accs,invs]=await Promise.all([get("/partners"),
+    get("/admin/payment-accounts").catch(()=>[]),
+    get("/admin/commission-invoices").catch(()=>[])]);}catch(e){}
+  const byPid=Object.fromEntries(accs.map(a=>[a.partner_id,a]));
+  el.innerHTML=ps.map(p=>{
+    const a=byPid[p.id]||{};
+    const st=a.status||"none";
     const badge={active:'<span class="tag t-issued">активен</span>',pending:'<span class="tag t-paid">подключён</span>',
       suspended:'<span class="tag t-expired">приостановлен</span>',none:'<span class="tag t-expired">нет</span>'}[st]||st;
-    const rate=com.rate_bps!=null?(com.rate_bps/100)+"%":"—";
-    const owed=com.owed_tenge!=null?money(com.owed_tenge):"—";
+    const rate=a.rate_bps!=null?(a.rate_bps/100)+"%":"—";
+    const owed=a.owed_tenge!=null?money(a.owed_tenge):"—";
+    const ref=a.merchant_masked?`<span title="${a.encrypted?"реквизит зашифрован в БД":"легаси-плейнтекст"}">${a.encrypted?"🔒":"⚠️"} ${esc(a.merchant_masked)}</span>`:"";
     return `<div style="padding:.5rem 0;border-bottom:1px solid var(--line)">
       <div style="display:flex;align-items:center;gap:.5rem;flex-wrap:wrap">
-        <b style="flex:1;min-width:120px">${esc(p.name)}</b> ${badge}
+        <b style="flex:1;min-width:120px">${esc(p.name)}</b> ${badge} ${ref}
         <span style="color:var(--txt2)">комиссия ${rate} · долг ${owed}</span></div>
       <div style="display:flex;gap:.4rem;flex-wrap:wrap;margin-top:.35rem">
         ${st==="none"?`<button class="linkbtn" data-act="connectPay" data-a1="${p.id}">Подключить Kaspi-мерчант</button>`:""}
-        ${st==="pending"?`<button class="linkbtn" data-act="activatePay" data-a1="${p.id}">Активировать приём</button>`:""}
+        ${(st==="pending"||st==="suspended")?`<button class="linkbtn" data-act="activatePay" data-a1="${p.id}">Активировать приём</button>`:""}
+        ${st==="active"?`<button class="linkbtn" data-act="suspendPay" data-a1="${p.id}" style="color:var(--red)">Приостановить</button>`:""}
+        ${st!=="none"?`<button class="linkbtn" data-act="rotatePay" data-a1="${p.id}" title="Новый webhook-id; опционально новый реквизит">Ротация</button>`:""}
+        ${a.owed_minor>0?`<button class="linkbtn" data-act="makeInvoice" data-a1="${p.id}">Выставить счёт (${money(a.owed_tenge)})</button>`:""}
         <button class="linkbtn" data-act="setRate" data-a1="${p.id}">Ставка комиссии</button>
       </div></div>`;
-  }).join("");
+  }).join("")+renderInvoices(invs,ps);
 }
+function renderInvoices(invs,ps){
+  if(!invs.length)return "";
+  const pname=Object.fromEntries(ps.map(p=>[p.id,p.name]));
+  const st={open:'<span class="tag t-paid">открыт</span>',paid:'<span class="tag t-issued">оплачен</span>',void:'<span class="tag t-expired">аннулирован</span>'};
+  return `<h4 style="margin:.9rem 0 .3rem">Счета за комиссию</h4>`+invs.map(i=>`
+    <div class="lrow"><div class="g"><b>${esc(pname[i.partner_id]||i.partner_id)}</b>
+      <div style="font-size:.76rem;color:var(--txt2)">${money(Math.floor(i.total_minor/100))} · ${i.entries_count} зак. · ${(i.created_at||"").slice(0,10)}</div></div>
+      ${st[i.status]||esc(i.status)}
+      ${i.status==="open"?`<button class="linkbtn" data-act="invoicePaid" data-a1="${esc(i.id)}">Оплачен</button>
+      <button class="linkbtn" data-act="invoiceVoid" data-a1="${esc(i.id)}" style="color:var(--red)">Аннулировать</button>`:""}
+    </div>`).join("");
+}
+window.suspendPay=async id=>{if(!confirm("Приостановить приём платежей? Партнёр не сможет продавать платные боксы."))return;
+  try{await post(`/partners/${id}/payment-account/suspend`,{});toast("Платежи приостановлены");renderPayments();}catch(e){toast(e.message,true);}};
+window.rotatePay=async id=>{
+  const ref=prompt("Новый merchant reference (пусто — сменить только webhook-id):","");
+  if(ref===null)return;
+  try{await post(`/partners/${id}/payment-account/rotate`,ref?{provider:"kaspi",merchant_reference:ref}:undefined);
+    toast("Ротация выполнена 🔄");renderPayments();}catch(e){toast(e.message,true);}};
+window.makeInvoice=async id=>{if(!confirm("Выставить счёт на всю накопленную комиссию?"))return;
+  try{const inv=await post(`/partners/${id}/commission-invoice`,{});
+    toast(`Счёт на ${money(Math.floor(inv.total_minor/100))} выставлен`);renderPayments();}catch(e){toast(e.message,true);}};
+window.invoicePaid=async id=>{try{await post(`/admin/commission-invoices/${id}/paid`,{});toast("Счёт закрыт ✓");renderPayments();}catch(e){toast(e.message,true);}};
+window.invoiceVoid=async id=>{if(!confirm("Аннулировать счёт? Строки вернутся в пул и попадут в следующий."))return;
+  try{await post(`/admin/commission-invoices/${id}/void`,{});toast("Счёт аннулирован");renderPayments();}catch(e){toast(e.message,true);}};
 window.connectPay=async id=>{const ref=prompt("Kaspi merchant reference (или ИИН/точка):");if(!ref)return;
   try{await post(`/partners/${id}/payment-account`,{provider:"kaspi",merchant_reference:ref});toast("Мерчант подключён");renderPayments();}catch(e){toast(e.message,true);}};
 window.activatePay=async id=>{if(!confirm("Активировать приём платежей? Партнёр сможет продавать платные боксы."))return;
