@@ -410,16 +410,21 @@ class Store:
             r = c.execute("SELECT * FROM orders WHERE id=?", (order_id,)).fetchone()
             return self._order_from_row(c, r) if r else None
 
-    def orders(self) -> list[Order]:
-        with self._lock, self._conn() as c:
-            rows = c.execute("SELECT * FROM orders ORDER BY created_at DESC").fetchall()
-            return [self._order_from_row(c, r) for r in rows]
-
-    def partner_orders(self, partner_id: str) -> list[Order]:
+    def orders(self, limit: int = 200, offset: int = 0) -> list[Order]:
         with self._lock, self._conn() as c:
             rows = c.execute(
-                "SELECT * FROM orders WHERE partner_id=? ORDER BY created_at DESC",
-                (partner_id,),
+                "SELECT * FROM orders ORDER BY created_at DESC LIMIT ? OFFSET ?",
+                (limit, offset),
+            ).fetchall()
+            return [self._order_from_row(c, r) for r in rows]
+
+    def partner_orders(self, partner_id: str, limit: int = 200,
+                       offset: int = 0) -> list[Order]:
+        with self._lock, self._conn() as c:
+            rows = c.execute(
+                "SELECT * FROM orders WHERE partner_id=? ORDER BY created_at DESC"
+                " LIMIT ? OFFSET ?",
+                (partner_id, limit, offset),
             ).fetchall()
             return [self._order_from_row(c, r) for r in rows]
 

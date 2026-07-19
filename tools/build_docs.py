@@ -21,9 +21,19 @@ ROOT = pathlib.Path(__file__).resolve().parent.parent
 STATIC = ROOT / "app" / "static"
 DOCS = ROOT / "docs"
 
-API_BLOCK = '''async function api(m,u,b,_retry){const h=b?{"Content-Type":"application/json"}:{};
+API_BLOCK = '''async function api(m,u,b,_retry,_net){const h=b?{"Content-Type":"application/json"}:{};
   const a=account(); if(a&&a.token)h["Authorization"]="Bearer "+a.token;
-  const r=await fetch(u,{method:m,headers:h,body:b?JSON.stringify(b):undefined});
+  let r;
+  try{ r=await fetch(u,{method:m,headers:h,body:b?JSON.stringify(b):undefined}); }
+  catch(err){                                      // сеть упала / сервер спит
+    if(m==="GET"&&(_net||0)<3){ netBanner(true);   // GET безопасно ретраить
+      await new Promise(s=>setTimeout(s,4000));
+      return api(m,u,b,_retry,(_net||0)+1);
+    }
+    netBanner(false);
+    throw new Error("Нет связи с сервером — попробуйте ещё раз через минуту");
+  }
+  netBanner(false);
   if(r.status===401&&!_retry&&a&&a.refresh&&!u.startsWith("/auth/")){
     try{const rr=await fetch("/auth/refresh",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({refresh_token:a.refresh})});
       if(rr.ok){const j=await rr.json();a.token=j.access_token;a.refresh=j.refresh_token;setAccount(a);return api(m,u,b,true);}}catch(e){}
@@ -70,9 +80,19 @@ def main() -> int:
     dispatcher = f'''
 /* Переключатель бэкенда: пусто → демо (данные в браузере); URL → реальный сервер */
 const API_BASE = "{PAGES_API_BASE}";
-async function api(m,u,b,_retry){{const h=b?{{"Content-Type":"application/json"}}:{{}};
+async function api(m,u,b,_retry,_net){{const h=b?{{"Content-Type":"application/json"}}:{{}};
   const a=account(); if(a&&a.token)h["Authorization"]="Bearer "+a.token;
-  const r=await fetch(API_BASE+u,{{method:m,headers:h,body:b?JSON.stringify(b):undefined}});
+  let r;
+  try{{ r=await fetch(API_BASE+u,{{method:m,headers:h,body:b?JSON.stringify(b):undefined}}); }}
+  catch(err){{
+    if(m==="GET"&&(_net||0)<3){{ netBanner(true);
+      await new Promise(s=>setTimeout(s,4000));
+      return api(m,u,b,_retry,(_net||0)+1);
+    }}
+    netBanner(false);
+    throw new Error("Нет связи с сервером — попробуйте ещё раз через минуту");
+  }}
+  netBanner(false);
   if(r.status===401&&!_retry&&a&&a.refresh&&!u.startsWith("/auth/")){{
     try{{const rr=await fetch(API_BASE+"/auth/refresh",{{method:"POST",headers:{{"Content-Type":"application/json"}},body:JSON.stringify({{refresh_token:a.refresh}})}});
       if(rr.ok){{const j=await rr.json();a.token=j.access_token;a.refresh=j.refresh_token;setAccount(a);return api(m,u,b,true);}}}}catch(e){{}}

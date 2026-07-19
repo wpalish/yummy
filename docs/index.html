@@ -644,7 +644,11 @@
       <div class="cardp"><h3>Платежи и комиссия партнёров</h3>
         <p class="sub" style="margin:.2rem 0 .6rem">Деньги идут напрямую заведению (его Kaspi). Yummy ведёт учёт комиссии. Реальный Kaspi-приём подключится с мерчант-аккаунтом.</p>
         <div id="aPayments" style="font-size:.84rem"></div></div>
-      <div class="cardp"><h3>Все заказы</h3><div id="aOrders"></div></div>
+      <div class="cardp"><h3>Все заказы</h3><div id="aOrders"></div>
+        <button class="btn sec hidden" id="aMoreOrders" style="margin-top:.6rem">Показать ещё</button></div>
+      <div class="cardp"><h3>Аудит-журнал</h3>
+        <p class="sub" style="margin:.2rem 0 .6rem">Входы, блокировки, возвраты, платёжные действия. Хранится в БД 90 дней, IP — хешем.</p>
+        <div id="aAudit" style="font-size:.74rem;font-family:ui-monospace,monospace;max-height:280px;overflow-y:auto"></div></div>
     </section>
   </main>
 
@@ -729,6 +733,7 @@ const ACT = {
   partnerInfo:     () => { $("#onboard").className="onb"; onbPartner(); },
   onbGuest:        () => onbGuest(),
   loginForm:       () => loginForm(),
+  forgotPw:        () => forgotPwForm(),
   showOnboarding:  () => showOnboarding(),
   viewVenues:      () => switchView("venues"),
   guestStore:      () => { onbGuest(); switchView("store"); },
@@ -842,7 +847,7 @@ const KZ={
 "Заведение":"Мекеме","Создать бокс":"Бокс құру","Категория":"Санат","Название":"Атауы",
 "Опубликовать бокс":"Боксты жариялау","Выдать заказ по коду":"Тапсырысты код бойынша беру","Выдать":"Беру",
 "📷 Сканировать QR камерой":"📷 QR-ды камерамен сканерлеу","Мои боксы":"Менің бокстарым","Брони и выдачи":"Броньдар мен берулер","Аналитика по дням":"Күндер бойынша аналитика","Данных пока нет.":"Деректер әлі жоқ.",
-"Персонал":"Қызметкерлер","Приостановить":"Тоқтата тұру","Ротация":"Ротация","Аннулировать":"Жою","Оплачен":"Төленді","открыт":"ашық","оплачен":"төленген","аннулирован":"жойылған","Счета за комиссию":"Комиссия шоттары","Выставить счёт":"Шот ұсыну","Email сотрудника":"Қызметкердің email-і","Роль":"Рөлі","Кассир":"Кассир","Менеджер":"Менеджер","Пригласить в заведение":"Мекемеге шақыру","Пока только вы.":"Әзірге тек сіз.","Отключить":"Өшіру","Вернуть":"Қайтару","↑ в менеджеры":"↑ менеджерге","↓ в кассиры":"↓ кассирге","активен":"белсенді","отключён":"өшірілген",
+"Персонал":"Қызметкерлер","Приостановить":"Тоқтата тұру","Забыли пароль?":"Құпиясөзді ұмыттыңыз ба?","Сброс пароля":"Құпиясөзді қалпына келтіру","Отправить ссылку":"Сілтеме жіберу","Новый пароль":"Жаңа құпиясөз","Сменить пароль":"Құпиясөзді ауыстыру","Аудит-журнал":"Аудит журналы","Показать ещё":"Тағы көрсету","Ротация":"Ротация","Аннулировать":"Жою","Оплачен":"Төленді","открыт":"ашық","оплачен":"төленген","аннулирован":"жойылған","Счета за комиссию":"Комиссия шоттары","Выставить счёт":"Шот ұсыну","Email сотрудника":"Қызметкердің email-і","Роль":"Рөлі","Кассир":"Кассир","Менеджер":"Менеджер","Пригласить в заведение":"Мекемеге шақыру","Пока только вы.":"Әзірге тек сіз.","Отключить":"Өшіру","Вернуть":"Қайтару","↑ в менеджеры":"↑ менеджерге","↓ в кассиры":"↓ кассирге","активен":"белсенді","отключён":"өшірілген",
 "Редактировать бокс":"Боксты өңдеу","Снять с продажи?":"Сатудан алу?","Снять с продажи":"Сатудан алу","Сохранить":"Сақтау",
 "Пользователи":"Қолданушылар","Заблокировать":"Бұғаттау","Разблокировать":"Бұғаттан шығару","активен":"белсенді","заблокирован":"бұғатталған",
 "⬇ Выгрузить заказы (CSV)":"⬇ Тапсырыстарды жүктеу (CSV)","⬇ Выгрузить журнал (CSV)":"⬇ Журналды жүктеу (CSV)",
@@ -967,6 +972,17 @@ const hhmm=iso=>{try{return new Date(iso).toLocaleTimeString("ru-RU",{hour:"2-di
 const win=(a,b)=>`Сегодня ${hhmm(a)}–${hhmm(b)}`;
 const plural=(n,f)=>{const m10=n%10,m100=n%100;return f[(m10===1&&m100!==11)?0:(m10>=2&&m10<=4&&(m100<10||m100>=20))?1:2];};
 function toast(m,err=false){const t=$("#toast");t.textContent=m;t.className=err?"err show":"show";clearTimeout(t._t);t._t=setTimeout(()=>t.className="",2800);}
+/* Баннер «нет связи»: free-хостинг просыпается ~1 мин — молчаливые пустые блоки
+   хуже честного объяснения. api() ретраит GET сам, баннер снимается на успехе. */
+function netBanner(on){
+  let el=document.getElementById("netBanner");
+  if(on&&!el){
+    el=document.createElement("div"); el.id="netBanner";
+    el.style.cssText="position:fixed;top:0;left:0;right:0;z-index:9999;background:var(--brown,#653624);color:#fff;text-align:center;padding:.45rem .8rem;font-size:.82rem";
+    el.textContent="Сервер просыпается (бесплатный хостинг, ~1 минута)… повторяем запрос";
+    document.body.appendChild(el);
+  } else if(!on&&el) el.remove();
+}
 /* ===== CLIENT-SIDE STORE (GitHub Pages, без бэкенда) — имитирует REST API ===== */
 const CAT_RU={sweet:"Сладкий бокс",bakery:"Бокс выпечки",mixed:"Микс-бокс",snack:"Снек-бокс"};
 const CAT_EM={sweet:"🍩",bakery:"🥐",mixed:"🧺",snack:"🥪"};
@@ -1142,9 +1158,19 @@ async function _demoDelete(u){let m;
 }
 /* Переключатель бэкенда: пусто → демо (данные в браузере); URL → реальный сервер */
 const API_BASE = "https://yummy-astana.onrender.com";
-async function api(m,u,b,_retry){const h=b?{"Content-Type":"application/json"}:{};
+async function api(m,u,b,_retry,_net){const h=b?{"Content-Type":"application/json"}:{};
   const a=account(); if(a&&a.token)h["Authorization"]="Bearer "+a.token;
-  const r=await fetch(API_BASE+u,{method:m,headers:h,body:b?JSON.stringify(b):undefined});
+  let r;
+  try{ r=await fetch(API_BASE+u,{method:m,headers:h,body:b?JSON.stringify(b):undefined}); }
+  catch(err){
+    if(m==="GET"&&(_net||0)<3){ netBanner(true);
+      await new Promise(s=>setTimeout(s,4000));
+      return api(m,u,b,_retry,(_net||0)+1);
+    }
+    netBanner(false);
+    throw new Error("Нет связи с сервером — попробуйте ещё раз через минуту");
+  }
+  netBanner(false);
   if(r.status===401&&!_retry&&a&&a.refresh&&!u.startsWith("/auth/")){
     try{const rr=await fetch(API_BASE+"/auth/refresh",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({refresh_token:a.refresh})});
       if(rr.ok){const j=await rr.json();a.token=j.access_token;a.refresh=j.refresh_token;setAccount(a);return api(m,u,b,true);}}catch(e){}
@@ -1334,6 +1360,7 @@ function loginForm(){
     <label>Пароль <span class="pw"><input id="lgPass" type="password" autocomplete="current-password" />
       <button type="button" class="pw-t" id="lgToggle" aria-label="Показать пароль">👁</button></span><span class="ferr" id="le_pass"></span></label>
     <button class="btn" id="lgBtn" style="margin-top:.5rem">Войти</button>
+    <button class="guest" data-act="forgotPw" style="margin-top:.4rem">Забыли пароль?</button>
   </div>`;
   $("#lgEmail").focus();
   $("#lgToggle").onclick=()=>{const p=$("#lgPass");p.type=p.type==="password"?"text":"password";};
@@ -1364,6 +1391,48 @@ function loginForm(){
       $("#le_pass").textContent=e.message;  // реальный бэкенд: «Неверный email или пароль» и т.п.
       btn.disabled=false; btn.textContent="Войти";
     }
+  };
+}
+/* Сброс пароля: запрос ссылки и форма по ?reset=TOKEN из письма */
+function forgotPwForm(){
+  const o=$("#onboard");
+  o.innerHTML=`<div class="onb-card">
+    <button class="onb-back" data-act="loginForm">← Назад</button>
+    <h2>Сброс пароля</h2>
+    <p class="lead">Пришлём ссылку для сброса на почту аккаунта.</p>
+    <label>Email <input id="fpEmail" type="email" autocomplete="email" /></label>
+    <button class="btn" id="fpBtn" style="margin-top:.5rem">Отправить ссылку</button>
+    <div id="fpHint" style="margin-top:.6rem;font-size:.84rem;color:var(--txt2)"></div>
+  </div>`;
+  $("#fpEmail").focus();
+  $("#fpBtn").onclick=async()=>{
+    const email=$("#fpEmail").value.trim();
+    if(!_emailOk(email)){toast("Некорректный email",true);return;}
+    const b=$("#fpBtn"); b.disabled=true; b.textContent="Отправляем…";
+    try{ const r=await post("/auth/request-reset",{email}); $("#fpHint").textContent=r.hint; }
+    catch(e){ toast(e.message,true); }
+    b.disabled=false; b.textContent="Отправить ссылку";
+  };
+}
+function resetPwForm(token){
+  $("#onboard").className="onb";
+  const o=$("#onboard");
+  o.innerHTML=`<div class="onb-card">
+    <h2>Новый пароль</h2>
+    <p class="lead">Придумайте новый пароль — минимум 8 символов, буквы и цифры.</p>
+    <label>Новый пароль <input id="rpPass" type="password" autocomplete="new-password" /><span class="ferr" id="rp_err"></span></label>
+    <button class="btn" id="rpBtn" style="margin-top:.5rem">Сменить пароль</button>
+  </div>`;
+  $("#rpBtn").onclick=async()=>{
+    const pw=$("#rpPass").value, err=_pwErr(pw);
+    if(err){$("#rp_err").textContent=err;return;}
+    const b=$("#rpBtn"); b.disabled=true; b.textContent="Меняем…";
+    try{
+      await post("/auth/reset-password",{token,password:pw});
+      toast("Пароль изменён — войдите с новым паролем ✓");
+      history.replaceState(null,"",location.pathname);   // токен из URL убираем
+      loginForm();
+    }catch(e){ $("#rp_err").textContent=e.message; b.disabled=false; b.textContent="Сменить пароль"; }
   };
 }
 const _emailOk=v=>/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(v);
@@ -2229,6 +2298,17 @@ window.revokeUserSessions=async id=>{
   catch(e){ toast(e.message,true); }
 };
 
+/* Аудит-журнал: персистентный (БД, 90 дней), IP — хешем */
+async function loadAudit(){
+  const el=$("#aAudit"); if(!el)return;
+  let rows=[];
+  try{ rows=await get("/admin/audit?limit=100"); }
+  catch(e){ el.innerHTML='<p class="sub">Не удалось загрузить.</p>'; return; }
+  el.innerHTML=rows.length?rows.map(r=>
+    `<div style="padding:.15rem 0;border-bottom:1px solid var(--line)"><span style="color:var(--txt2)">${esc((r.ts||"").slice(0,19).replace("T"," "))}</span> ${esc(r.event)}</div>`
+  ).join(""):'<p class="sub">Событий пока нет.</p>';
+}
+
 /* «Кого зовут» — спрос на заведения с карты (очередь на подключение) */
 async function loadVenueInterest(){
   const el=$("#aVenueInterest"); if(!el)return;
@@ -2249,9 +2329,19 @@ async function loadVenueInterest(){
 }
 async function loadAdmin(){
   let s={},orders=[];
-  loadInvites(); loadVenueInterest(); loadUsers();
+  loadInvites(); loadVenueInterest(); loadUsers(); loadAudit();
   try{s=await get("/admin/stats");}catch(e){}
-  try{orders=await get("/admin/orders");}catch(e){}
+  try{orders=await get("/admin/orders?limit=100");}catch(e){}
+  window.__ordOffset=orders.length;
+  {const mb=$("#aMoreOrders"); if(mb){ mb.classList.toggle("hidden",orders.length<100);
+    mb.onclick=async()=>{
+      try{
+        const more=await get(`/admin/orders?limit=100&offset=${window.__ordOffset}`);
+        window.__ordOffset+=more.length;
+        $("#aOrders").insertAdjacentHTML("beforeend",more.map(o=>orderRow(o,true)).join(""));
+        if(more.length<100)mb.classList.add("hidden");
+      }catch(e){toast(e.message,true);}
+    };}}
   $("#aStats").innerHTML=[
     [money(s.gmv||0),"GMV (оборот)"],[s.orders_total||0,"заказов"],
     [(s.fill_rate||0)+"%","выкуплено (fill rate)"],[s.no_show||0,"не забрали (no-show)"],
@@ -2439,6 +2529,8 @@ loadStore().then(()=>{
   if(nav==="venues")switchView("venues"); else if(nav==="orders")gotoOrders();
   // ссылка-приглашение от админа: ?invite=<токен> — единственный путь в партнёрку
   const inv=qs.get("invite"); if(inv)acceptInviteForm(inv);
+  // ссылка сброса пароля из письма: ?reset=<токен>
+  const rst=qs.get("reset"); if(rst)resetPwForm(rst);
 });
 
 /* ============ ПРИГЛАШЕНИЕ ПЕРСОНАЛА (ссылка от админа) ============ */

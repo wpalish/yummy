@@ -76,6 +76,29 @@ logging.basicConfig(
 )
 log = logging.getLogger("yummy")
 
+
+def _iph(req: HttpRequest) -> str:
+    """IP в аудит — хешем (ПДн по закону РК); корреляция событий сохраняется."""
+    from .accounts import ip_hash
+    return ip_hash(req.client.host if req and req.client else "?")
+
+
+class _AuditToDB(logging.Handler):
+    """Строки «audit: …» дублируются в БД: stdout Render ротируется,
+    журнал безопасности обязан переживать рестарты. Сбой записи не роняет запрос."""
+
+    def emit(self, record: logging.LogRecord) -> None:
+        try:
+            msg = record.getMessage()
+            if msg.startswith("audit:"):
+                from .accounts import accounts as _acc
+                _acc.audit_write(msg)
+        except Exception:                       # noqa: BLE001
+            pass
+
+
+log.addHandler(_AuditToDB())
+
 # CORS: разрешаем только явные origin'ы из env (для деплоя, когда фронт на Pages,
 # а API на другом домене). По умолчанию — localhost. Без wildcard с credentials.
 _CORS = [o.strip() for o in os.getenv(
@@ -391,7 +414,7 @@ def delete_me(req: HttpRequest, user: PublicUser = Depends(current_user)) -> dic
     users_db.revoke_all_refresh(user.id)
     scrubbed = store.scrub_user(user.id)
     log.info("audit: delete-account id=%s orders_scrubbed=%s ip=%s",
-             user.id, scrubbed, req.client.host if req.client else "?")
+             user.id, scrubbed, _iph(req))
     return {"status": "deleted", "orders_anonymized": scrubbed}
 
 
@@ -571,7 +594,7 @@ def accept_invite(data: InviteAcceptInput, req: HttpRequest) -> AuthResult:
     u = users_db.by_id(uid)
     log.info("audit: accept-invite id=%s partner_role=%s partner=%s ip=%s rid=%s",
              uid, row["partner_role"], partner_id,
-             req.client.host if req.client else "?", getattr(req.state, "request_id", "-"))
+             _iph(req), getattr(req.state, "request_id", "-"))
     return AuthResult(access_token=create_token(uid, "partner", ver=_row_token_ver(u)),
                       refresh_token=users_db.issue_refresh(uid), user=_public(u))
 
@@ -611,7 +634,7 @@ def block_user(user_id: str, req: HttpRequest, active: bool = False,
         raise HTTPException(404, "Пользователь не найден")
     log.info("audit: user-%s id=%s by=%s ip=%s rid=%s",
              "unblock" if active else "block", user_id,
-             (admin.id if admin else "demo"), req.client.host if req.client else "?",
+             (admin.id if admin else "demo"), _iph(req),
              getattr(req.state, "request_id", "-"))
     return {"ok": True, "is_active": active}
 
@@ -624,7 +647,7 @@ def revoke_user_sessions(user_id: str, req: HttpRequest,
     if not users_db.revoke_sessions(user_id):
         raise HTTPException(404, "Пользователь не найден")
     log.info("audit: revoke-sessions id=%s by=%s ip=%s rid=%s", user_id,
-             (admin.id if admin else "demo"), req.client.host if req.client else "?",
+             (admin.id if admin else "demo"), _iph(req),
              getattr(req.state, "request_id", "-"))
     return {"ok": True}
 
@@ -632,7 +655,7 @@ def revoke_user_sessions(user_id: str, req: HttpRequest,
 @app.get("/admin/orders.csv", tags=["Admin"], dependencies=[Depends(require_role("admin"))])
 def export_orders_csv() -> PlainTextResponse:
     """Выгрузка заказов в CSV (бухгалтерия/сверка)."""
-    return PlainTextResponse(_orders_csv(store.orders()),
+    return PlainTextResponse(_orders_csv(store.orders(limit=1_000_000)),  # выгрузка — полная
                              media_type="text/csv; charset=utf-8",
                              headers={"Content-Disposition": 'attachment; filename="yummy-orders.csv"'})
 
@@ -643,7 +666,7 @@ def export_partner_orders_csv(partner_id: str,
                               ) -> PlainTextResponse:
     """Партнёр выгружает свои заказы (журнал выдач) в CSV."""
     _assert_owns(partner_id, user)
-    return PlainTextResponse(_orders_csv(store.partner_orders(partner_id)),
+    return PlainTextResponse(_orders_csv(store.partner_orders(partner_id, limit=1_000_000)),
                              media_type="text/csv; charset=utf-8",
                              headers={"Content-Disposition": 'attachment; filename="yummy-orders.csv"'})
 
@@ -690,7 +713,7 @@ def create_partner_staff_invitation(
     base = os.getenv("YUMMY_PUBLIC_URL", "https://wpalish.github.io/yummy/").rstrip("/")
     log.info("audit: staff-invite(owner) role=%s partner=%s by=%s ip=%s rid=%s",
              payload.partner_role, partner_id, (user.id if user else "demo"),
-             req.client.host if req.client else "?", getattr(req.state, "request_id", "-"))
+             _iph(req), getattr(req.state, "request_id", "-"))
     return StaffInvitationResult(invite_url=f"{base}/?invite={raw}")
 
 
@@ -769,7 +792,7 @@ def create_staff_invitation(payload: StaffInvitationCreate, req: HttpRequest,
         brand_name=payload.brand_name.strip(), address=payload.address.strip())
     base = os.getenv("YUMMY_PUBLIC_URL", "https://wpalish.github.io/yummy/").rstrip("/")
     log.info("audit: staff-invite role=%s by=%s ip=%s rid=%s", payload.partner_role,
-             (admin.id if admin else "demo"), req.client.host if req.client else "?",
+             (admin.id if admin else "demo"), _iph(req),
              getattr(req.state, "request_id", "-"))
     return StaffInvitationResult(invite_url=f"{base}/?invite={raw}")
 
@@ -925,8 +948,9 @@ def publish_template(partner_id: str, tid: str, bg: BackgroundTasks) -> Box:
 
 
 @app.get("/partners/{partner_id}/orders", response_model=list[Order], tags=["Partner"])
-def partner_orders(partner_id: str) -> list[Order]:
-    return store.partner_orders(partner_id)
+def partner_orders(partner_id: str, limit: int = 200, offset: int = 0) -> list[Order]:
+    return store.partner_orders(partner_id, limit=min(max(limit, 1), 1000),
+                                offset=max(offset, 0))
 
 
 # --------------------------------------------------------------------------- #
@@ -980,8 +1004,17 @@ def admin_stats() -> dict:
 
 @app.get("/admin/orders", response_model=list[Order], tags=["Admin"],
          dependencies=[Depends(require_role("admin"))])
-def admin_orders() -> list[Order]:
-    return store.orders()
+def admin_orders(limit: int = 200, offset: int = 0) -> list[Order]:
+    """С пагинацией: на тысячах заказов «отдать всё» таймаутит админку."""
+    return store.orders(limit=min(max(limit, 1), 1000), offset=max(offset, 0))
+
+
+@app.get("/admin/audit", tags=["Admin"], dependencies=[Depends(require_role("admin"))])
+def admin_audit(limit: int = 200, offset: int = 0) -> list[dict]:
+    """Персистентный аудит-лог (БД, retention 90 дней, IP — хешем)."""
+    from .accounts import accounts as users_db
+    users_db.audit_sweep()                      # retention по ходу просмотра
+    return [dict(r) for r in users_db.audit_recent(limit, offset)]
 
 
 # --------------------------------------------------------------------------- #
@@ -996,7 +1029,7 @@ def cancel_order(payload: RedeemInput, req: HttpRequest) -> dict:
         if o:
             store.reverse_commission(o.id)  # заказ отменён — комиссия сторнируется
     log.info("audit: cancel code=%s ok=%s ip=%s rid=%s",
-             payload.code, ok, req.client.host if req.client else "?",
+             payload.code, ok, _iph(req),
              getattr(req.state, "request_id", "-"))
     if not ok:
         raise HTTPException(409, message)
@@ -1013,7 +1046,7 @@ def refund_order(payload: RedeemInput, req: HttpRequest) -> dict:
         if o:
             store.reverse_commission(o.id)
     log.info("audit: user-refund code=%s ok=%s ip=%s rid=%s",
-             payload.code, ok, req.client.host if req.client else "?",
+             payload.code, ok, _iph(req),
              getattr(req.state, "request_id", "-"))
     if not ok:
         raise HTTPException(409, message)
@@ -1029,7 +1062,7 @@ def admin_refund(order_id: str, req: HttpRequest,
         store.reverse_commission(order_id)
     log.info("audit: refund order=%s ok=%s by=%s ip=%s rid=%s",
              order_id, ok, user.id if user else "demo",
-             req.client.host if req.client else "?",
+             _iph(req),
              getattr(req.state, "request_id", "-"))
     return {"refunded": ok}
 

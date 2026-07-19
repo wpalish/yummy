@@ -21,7 +21,7 @@ import threading
 import time
 import uuid
 from contextlib import contextmanager
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Literal
 
@@ -67,25 +67,32 @@ _auth_hits: dict[str, deque[float]] = {}
 
 # Login-jail по аккаунту (идея из xapax/security): N неудач подряд по одному
 # email → временный блок, даже с верным паролем и с другого IP.
+# Хранится В БД (auth_jail): рестарт не амнистирует, на PG общий между инстансами.
+# Ключ — email, а не IP: CGNAT-район не блокируется целиком, а перебор одного
+# аккаунта с ротацией IP всё равно ловится.
 _JAIL_FAILS, _JAIL_SECONDS = 5, 600
-_jail: dict[str, tuple[int, float]] = {}  # email -> (fails, locked_until_monotonic)
+_jail: dict = {}   # legacy-имя: тесты зовут _jail.clear() — состояние теперь в БД
 
 
 def _jail_check(email: str) -> None:
-    fails, until = _jail.get(email, (0, 0.0))
-    if until > time.monotonic():
+    r = accounts.jail_get(email)
+    if r and r["locked_until"] > time.time():
         raise HTTPException(429, "Аккаунт временно заблокирован после неудачных попыток. Подождите 10 минут")
 
 
 def _jail_fail(email: str) -> None:
-    fails, _ = _jail.get(email, (0, 0.0))
-    fails += 1
-    until = time.monotonic() + _JAIL_SECONDS if fails >= _JAIL_FAILS else 0.0
-    _jail[email] = (fails, until)
+    accounts.jail_fail(email, _JAIL_FAILS, _JAIL_SECONDS)
 
 
 def _jail_reset(email: str) -> None:
-    _jail.pop(email, None)
+    accounts.jail_reset(email)
+
+
+def ip_hash(ip: str) -> str:
+    """IP — ПДн по закону РК № 94-V. В лог пишем короткий HMAC-хеш: корреляция
+    событий сохраняется, сырой адрес — нет."""
+    import hmac as _hmac
+    return _hmac.new(_SECRET.encode(), (ip or "?").encode(), hashlib.sha256).hexdigest()[:12]
 
 
 def _purge_hits(hits_map: dict, window: float) -> None:
@@ -219,6 +226,26 @@ class Accounts:
             )
             c.execute("CREATE INDEX IF NOT EXISTS ix_invites_email "
                       "ON staff_invitations(email,used_at)")
+            # Login-jail — В БД, не в памяти: рестарт процесса не амнистирует
+            # брутфорсера, а на Postgres jail общий для всех инстансов.
+            c.execute(
+                """CREATE TABLE IF NOT EXISTS auth_jail(
+                    email TEXT PRIMARY KEY, fails INTEGER DEFAULT 0,
+                    locked_until REAL DEFAULT 0)"""
+            )
+            # Одноразовые токены сброса пароля (хеш, TTL, one-time)
+            c.execute(
+                """CREATE TABLE IF NOT EXISTS reset_tokens(
+                    token_hash TEXT PRIMARY KEY, user_id TEXT,
+                    expires_at INTEGER, used_at INTEGER)"""
+            )
+            # Персистентный аудит-лог: stdout Render ротируется, БД — нет.
+            # IP пишем ХЕШЕМ (ПДн по закону РК); retention — 90 дней.
+            c.execute(
+                """CREATE TABLE IF NOT EXISTS audit_log(
+                    id TEXT PRIMARY KEY, ts TEXT, event TEXT)"""
+            )
+            c.execute("CREATE INDEX IF NOT EXISTS ix_audit_ts ON audit_log(ts)")
 
     @contextmanager
     def _conn(self):
@@ -334,6 +361,81 @@ class Accounts:
                  datetime.now(timezone.utc).isoformat(), partner_id, partner_role),
             )
         return uid
+
+    # ---- login-jail в БД (переживает рестарт; общий между инстансами на PG) ---- #
+    def jail_get(self, email: str):
+        with self._lock, self._conn() as c:
+            return c.execute("SELECT * FROM auth_jail WHERE email=?",
+                             (email.lower(),)).fetchone()
+
+    def jail_fail(self, email: str, max_fails: int, lock_seconds: int) -> None:
+        now = time.time()
+        with self._lock, self._conn() as c:
+            c.execute(
+                """INSERT INTO auth_jail(email,fails,locked_until) VALUES(?,1,0)
+                   ON CONFLICT(email) DO UPDATE SET fails=auth_jail.fails+1""",
+                (email.lower(),))
+            r = c.execute("SELECT fails FROM auth_jail WHERE email=?",
+                          (email.lower(),)).fetchone()
+            if r and r["fails"] >= max_fails:
+                c.execute("UPDATE auth_jail SET locked_until=? WHERE email=?",
+                          (now + lock_seconds, email.lower()))
+
+    def jail_reset(self, email: str) -> None:
+        with self._lock, self._conn() as c:
+            c.execute("DELETE FROM auth_jail WHERE email=?", (email.lower(),))
+
+    # ---- сброс пароля (one-time токен; письмо шлёт mailer, если настроен) ---- #
+    def issue_reset_token(self, email: str, ttl: int = 3600) -> str | None:
+        """Выдать одноразовый токен сброса. Нет такого аккаунта → None (наружу
+        всё равно отвечаем одинаково — без перечисления email)."""
+        row = self.by_email(email)
+        if not row or not row["is_active"]:
+            return None
+        raw = secrets.token_urlsafe(32)
+        now = int(time.time())
+        with self._lock, self._conn() as c:
+            c.execute("UPDATE reset_tokens SET used_at=? WHERE user_id=? AND used_at IS NULL",
+                      (now, row["id"]))          # старые невостребованные — гасим
+            c.execute("INSERT INTO reset_tokens(token_hash,user_id,expires_at,used_at)"
+                      " VALUES(?,?,?,NULL)", (self._rt_hash(raw), row["id"], now + ttl))
+        return raw
+
+    def consume_reset_token(self, raw: str, new_password: str) -> bool:
+        """Атомарно погасить токен и сменить пароль (+ разлогин со всех устройств)."""
+        now = int(time.time())
+        with self._lock, self._conn() as c:
+            r = c.execute("SELECT * FROM reset_tokens WHERE token_hash=?",
+                          (self._rt_hash(raw),)).fetchone()
+            if not r or r["used_at"] is not None or r["expires_at"] < now:
+                return False
+            c.execute("UPDATE reset_tokens SET used_at=? WHERE token_hash=?",
+                      (now, self._rt_hash(raw)))
+            c.execute("UPDATE users SET pw_hash=?, token_ver=COALESCE(token_ver,0)+1"
+                      " WHERE id=?", (hash_password(new_password), r["user_id"]))
+            c.execute("UPDATE refresh_tokens SET revoked=1 WHERE user_id=?", (r["user_id"],))
+        return True
+
+    # ---- персистентный аудит (stdout ротируется, БД — нет; retention 90 дней) ---- #
+    _AUDIT_RETENTION_DAYS = 90
+
+    def audit_write(self, event: str) -> None:
+        with self._lock, self._conn() as c:
+            c.execute("INSERT INTO audit_log(id,ts,event) VALUES(?,?,?)",
+                      (uuid.uuid4().hex, datetime.now(timezone.utc).isoformat(), event))
+
+    def audit_recent(self, limit: int = 200, offset: int = 0):
+        with self._lock, self._conn() as c:
+            return c.execute("SELECT ts,event FROM audit_log ORDER BY ts DESC LIMIT ? OFFSET ?",
+                             (min(limit, 1000), max(offset, 0))).fetchall()
+
+    def audit_sweep(self) -> int:
+        """Удалить записи старше retention (ПДн нельзя хранить бессрочно)."""
+        cutoff = (datetime.now(timezone.utc)
+                  - timedelta(days=self._AUDIT_RETENTION_DAYS)).isoformat()
+        with self._lock, self._conn() as c:
+            cur = c.execute("DELETE FROM audit_log WHERE ts < ?", (cutoff,))
+            return getattr(cur, "rowcount", 0)
 
     # ---- приглашения персонала (доступ к партнёрке/админке только по инвайту) ---- #
     def issue_staff_invitation(self, *, email: str, partner_id: str | None,
@@ -491,7 +593,8 @@ def _public(row: sqlite3.Row) -> PublicUser:
 #  Эндпоинты
 # --------------------------------------------------------------------------- #
 def _ip(req: HttpRequest) -> str:
-    return req.client.host if req and req.client else "?"
+    """В аудит-лог IP идёт ХЕШЕМ (ПДн по закону РК; корреляция сохраняется)."""
+    return ip_hash(req.client.host if req and req.client else "?")
 
 
 @router.post("/auth/register", response_model=AuthResult, status_code=201,
@@ -616,6 +719,55 @@ class ChangePasswordInput(BaseModel):
         return RegisterInput._password_strong(v)
 
 
+class ResetRequestInput(BaseModel):
+    email: str
+
+
+class ResetInput(BaseModel):
+    token: str
+    password: str
+
+    @field_validator("password")
+    @classmethod
+    def _password_strong(cls, v: str) -> str:
+        if len(v) < 8:
+            raise ValueError("пароль должен быть не короче 8 символов")
+        if not any(ch.isdigit() for ch in v) or not any(ch.isalpha() for ch in v):
+            raise ValueError("пароль должен содержать буквы и цифры")
+        return v
+
+
+@router.post("/auth/request-reset", dependencies=[Depends(auth_rate_limit)])
+def request_reset(data: ResetRequestInput, request: HttpRequest) -> dict:
+    """Запрос сброса пароля. Ответ ОДИНАКОВЫЙ для существующего и несуществующего
+    email — без перечисления аккаунтов. Письмо уходит только если настроен SMTP;
+    иначе честный fallback «напишите в поддержку»."""
+    from . import mailer
+    raw = accounts.issue_reset_token(data.email.strip().lower())
+    if raw and mailer.is_configured():
+        base = os.getenv("YUMMY_PUBLIC_URL", "https://wpalish.github.io/yummy/").rstrip("/")
+        mailer.send(data.email.strip(), "Yummy: сброс пароля",
+                    f"Ссылка для сброса пароля (действует 1 час):\n{base}/?reset={raw}\n\n"
+                    "Если это были не вы — просто проигнорируйте письмо.")
+    audit.info("reset-request email=%s sent=%s ip=%s",
+               data.email.strip().lower(), bool(raw and mailer.is_configured()), _ip(request))
+    return {"status": "ok",
+            "mail_configured": mailer.is_configured(),
+            "hint": ("Если такой аккаунт есть — письмо со ссылкой уже в пути."
+                     if mailer.is_configured() else
+                     "Почта сервиса пока не настроена — напишите нам, восстановим вручную.")}
+
+
+@router.post("/auth/reset-password", dependencies=[Depends(auth_rate_limit)])
+def reset_password(data: ResetInput, request: HttpRequest) -> dict:
+    """Сброс по одноразовому токену: новый пароль + разлогин со всех устройств."""
+    if not accounts.consume_reset_token(data.token, data.password):
+        audit.warning("reset FAIL (битый/просроченный токен) ip=%s", _ip(request))
+        raise HTTPException(400, "Ссылка недействительна или устарела — запросите новую")
+    audit.info("reset OK ip=%s", _ip(request))
+    return {"status": "ok"}
+
+
 @router.post("/auth/change-password", dependencies=[Depends(auth_rate_limit)])
 def change_password(data: ChangePasswordInput,
                     request: HttpRequest,
@@ -663,3 +815,17 @@ def require_role(*roles: str):
             raise HTTPException(403, "Недостаточно прав")
         return user
     return _dep
+
+
+class _DBAuditHandler(logging.Handler):
+    """Аудит — в БД: stdout на Render ротируется, а «журнал безопасности,
+    который исчезает» — не журнал. Ошибка записи не роняет запрос."""
+
+    def emit(self, record: logging.LogRecord) -> None:
+        try:
+            accounts.audit_write(record.getMessage())
+        except Exception:                       # noqa: BLE001 — логирование не падает
+            pass
+
+
+audit.addHandler(_DBAuditHandler())
