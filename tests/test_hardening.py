@@ -139,3 +139,34 @@ def test_admin_audit_endpoint(env):
                       partner_id="p1", partner_role="owner")
     ph = {"Authorization": f"Bearer {create_token(pu, 'partner')}"}
     assert c.get("/admin/audit", headers=ph).status_code == 403
+
+
+# --------------------------------------------------------------------------- #
+#  Свипер: материализация no-show и служебный запуск
+# --------------------------------------------------------------------------- #
+def test_expire_overdue_materializes_no_show(env):
+    c, store, users = env
+    box = store.create_box("bx", BoxCreate(
+        partner_id="p1", category="bakery", title="Бокс", price=990, value_est=2600,
+        qty=3, pickup_from=_iso(-4), pickup_to=_iso(-1)))     # окно уже прошло
+    store.create_order("ox", "YM-EXP", box, "Али", "+7701",
+                       user_id=None, require_payment=False)
+    with store._conn() as conn:
+        assert conn.execute("SELECT status FROM orders WHERE id='ox'").fetchone()[0] == "paid"
+    assert store.expire_overdue() == 1
+    with store._conn() as conn:
+        assert conn.execute("SELECT status FROM orders WHERE id='ox'").fetchone()[0] == "expired"
+    assert store.expire_overdue() == 0            # идемпотентно
+
+
+def test_admin_sweep_endpoint(env):
+    c, store, users = env
+    uid = users.create("boss@x.kz", "x", "admin", None, None)
+    h = {"Authorization": f"Bearer {create_token(uid, 'admin')}"}
+    r = c.post("/admin/sweep", headers=h)
+    assert r.status_code == 200 and set(r.json()) == {"expired", "released_pending", "audit_purged"}
+    # не-админу нельзя
+    pu = users.create("p@x.kz", "x", "partner", None, None,
+                      partner_id="p1", partner_role="owner")
+    ph = {"Authorization": f"Bearer {create_token(pu, 'partner')}"}
+    assert c.post("/admin/sweep", headers=ph).status_code == 403

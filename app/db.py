@@ -366,6 +366,18 @@ class Store:
             r2 = c.execute("SELECT * FROM orders WHERE id=?", (r["id"],)).fetchone()
             return self._order_from_row(c, r2)
 
+    def expire_overdue(self) -> int:
+        """Материализовать no-show: paid-заказы с прошедшим окном выдачи →
+        status='expired' в БД (раньше статус считался лениво при чтении, и
+        строки навсегда оставались 'paid'). Возвращает число просроченных."""
+        now = _now_iso()
+        with self._lock, self._conn() as c:
+            cur = c.execute(
+                """UPDATE orders SET status='expired'
+                   WHERE status='paid' AND payment_status!='pending' AND pickup_to < ?""",
+                (now,))
+            return getattr(cur, "rowcount", 0)
+
     def release_expired_pending(self, ttl_min: int = 15) -> int:
         """Резерв под неоплаченный заказ живёт ttl_min минут. Просрочен →
         бокс возвращается в продажу, заказ отменяется. Возвращает число снятых."""

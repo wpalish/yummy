@@ -167,3 +167,20 @@ if __name__ == "__main__":  # утилиты: python -m app.notify [channel-test
         raise SystemExit(0 if ok else 1)
     n = pull_subscribers(s)
     print(f"новых подписчиков: {n}, всего: {len(s.tg_subscribers())}")
+
+
+def notify_new_order(order) -> bool:
+    """Сообщение о новой брони в операционный чат (партнёр/админ смотрят его).
+    YUMMY_ORDERS_CHAT_ID пуст → фича выключена, флоу заказа не страдает."""
+    chat = os.getenv("YUMMY_ORDERS_CHAT_ID", "").strip()
+    if not (chat and _token()):
+        return False
+    try:
+        _api("sendMessage", chat_id=chat, text=(
+            f"🧺 Новая бронь {order.code}\n"
+            f"{order.partner_name} · {order.category_ru} · {order.price} ₸\n"
+            f"Выдача {_hhmm(order.pickup_from)}–{_hhmm(order.pickup_to)}"))
+        return True
+    except Exception as exc:                    # noqa: BLE001 — не ломаем заказ
+        log.warning("notify_new_order: %s", exc)
+        return False

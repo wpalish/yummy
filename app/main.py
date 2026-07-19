@@ -168,6 +168,24 @@ _DEMO_SEED = (os.getenv("YUMMY_DEMO_SEED", "").lower() in {"1", "true", "yes"}
               or not _ENFORCE)
 
 
+async def _sweeper():
+    """Фоновая уборка раз в 10 минут: материализация no-show (expired),
+    снятие протухших резервов под оплату, retention аудита. Раньше всё это
+    происходило лениво при чтении — строки могли висеть «paid» вечно."""
+    import asyncio
+    from .accounts import accounts as users_db
+    while True:
+        try:
+            n1 = store.expire_overdue()
+            n2 = store.release_expired_pending()
+            users_db.audit_sweep()
+            if n1 or n2:
+                log.info("sweeper: expired=%s released_pending=%s", n1, n2)
+        except Exception as exc:                # noqa: BLE001 — свипер не умирает
+            log.warning("sweeper error: %s", exc)
+        await asyncio.sleep(600)
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     assert_prod_config()  # fail-fast: прод-режим не стартует с dev-секретом
@@ -178,7 +196,10 @@ async def lifespan(app: FastAPI):
         seed(store)
     elif not _DEMO_SEED:
         log.info("demo-seed выключен (прод): пустая БД → пустой каталог")
+    import asyncio
+    task = asyncio.create_task(_sweeper())
     yield
+    task.cancel()
 
 
 # Swagger/Redoc/OpenAPI выключаем в проде (YUMMY_ENFORCE_AUTH=1) — меньше surface
@@ -346,7 +367,7 @@ def get_box(box_id: str) -> Box:
 
 @app.post("/orders", response_model=OrderResult, status_code=201, tags=["Store"],
           dependencies=[Depends(rate_limit_orders)])
-def create_order(payload: OrderCreate,
+def create_order(payload: OrderCreate, bg: BackgroundTasks,
                  user: PublicUser | None = Depends(optional_user)) -> OrderResult:
     """Забронировать и оплатить бокс (оплата — демо; в проде Kaspi Pay/QR).
 
@@ -371,6 +392,7 @@ def create_order(payload: OrderCreate,
     )
     if order is None:
         raise HTTPException(409, "Боксы только что закончились")
+    bg.add_task(notify_mod.notify_new_order, order)   # партнёру/опс-чату, без ключа — no-op
     if order.payment_status == "pending":
         # QR не отдаём до оплаты; в проде здесь ссылка на Kaspi мерчанта партнёра
         return OrderResult(order=order, qr_svg="")
@@ -1016,6 +1038,15 @@ def admin_stats() -> dict:
 def admin_orders(limit: int = 200, offset: int = 0) -> list[Order]:
     """С пагинацией: на тысячах заказов «отдать всё» таймаутит админку."""
     return store.orders(limit=min(max(limit, 1), 1000), offset=max(offset, 0))
+
+
+@app.post("/admin/sweep", tags=["Admin"], dependencies=[Depends(require_role("admin"))])
+def admin_sweep() -> dict:
+    """Ручной запуск уборки (фоновый свипер и так ходит раз в 10 минут)."""
+    from .accounts import accounts as users_db
+    return {"expired": store.expire_overdue(),
+            "released_pending": store.release_expired_pending(),
+            "audit_purged": users_db.audit_sweep()}
 
 
 @app.get("/admin/audit", tags=["Admin"], dependencies=[Depends(require_role("admin"))])
