@@ -46,14 +46,23 @@ QR_TAG = LEAFLET_TAG + '\n<script src="https://cdn.jsdelivr.net/npm/qrcode-gener
 
 
 def extract_client_store() -> str:
-    """Достать client-store из прошлой сборки docs/index.html."""
-    old = (DOCS / "index.html").read_text(encoding="utf-8")
-    start = old.index("/* ===== CLIENT-SIDE STORE")
-    # стоп ПЕРЕД диспетчером (если он уже вставлялся в прошлой сборке) — иначе
-    # каждая пересборка дублировала бы API_BASE/api. Иначе — до STATUS_RU.
-    marker = old.find("/* Переключатель бэкенда", start)
-    end = marker if marker != -1 else old.index("const STATUS_RU=", start)
-    return old[start:end].rstrip()
+    """Client-store демо-слоя — из архивного файла (раньше тянулся из прошлой
+    сборки docs, что делало каждую сборку зависимой от предыдущей)."""
+    return (ROOT / "tools" / "client_store_demo.js").read_text(encoding="utf-8").rstrip()
+
+
+def _copy_assets() -> None:
+    for name in ("manifest.json", "sw.js", "venues.json"):
+        src = STATIC / name
+        if src.exists():
+            shutil.copy(src, DOCS / name)
+    # синхронизируем картинки (лого/favicon/боксы) — иначе docs/img/ дрейфует
+    img_src = STATIC / "img"
+    if img_src.is_dir():
+        (DOCS / "img").mkdir(exist_ok=True)
+        for f in img_src.iterdir():
+            if f.is_file():
+                shutil.copy(f, DOCS / "img" / f.name)
 
 
 def main() -> int:
@@ -73,6 +82,22 @@ def main() -> int:
     if API_BLOCK not in html:
         print("ОШИБКА: api-блок не найден в app/static/index.html", file=sys.stderr)
         return 1
+
+    if PAGES_API_BASE:
+        # №16: с живым бэкендом client-store — мёртвый код (двойная поверхность
+        # багов). Витрина ходит ТОЛЬКО в API; демо-слой не вшивается вообще.
+        # const API_BASE нужен и вне api(): downloadCsv строит абсолютный URL
+        live = (f'const API_BASE = "{PAGES_API_BASE}";\n'
+                + API_BLOCK.replace('fetch(u,', 'fetch(API_BASE+u,')
+                           .replace('fetch("/auth/refresh"', 'fetch(API_BASE+"/auth/refresh"'))
+        html = html.replace(API_BLOCK, live)
+        html = html.replace(LEAFLET_TAG, QR_TAG)
+        (DOCS / "index.html").write_text(html, encoding="utf-8")
+        _copy_assets()
+        ok = PAGES_API_BASE in html and "_demoGet" not in html
+        print(f"docs/index.html: {len(html)} байт | режим: бэкенд {PAGES_API_BASE} "
+              f"(без демо-слоя) | сборка ок: {ok}")
+        return 0 if ok else 1
 
     # client-store → внутренние _demoGet/_demoPost; поверх — диспетчер по API_BASE
     client = (client.replace("async function get(u){", "async function _demoGet(u){")
@@ -105,18 +130,7 @@ const del=(u)=>API_BASE?api("DELETE",u):_demoDelete(u);'''
     html = html.replace(LEAFLET_TAG, QR_TAG)
     (DOCS / "index.html").write_text(html, encoding="utf-8")
 
-    for name in ("manifest.json", "sw.js", "venues.json"):
-        src = STATIC / name
-        if src.exists():
-            shutil.copy(src, DOCS / name)
-
-    # синхронизируем картинки (лого/favicon/боксы) — иначе docs/img/ дрейфует
-    img_src = STATIC / "img"
-    if img_src.is_dir():
-        (DOCS / "img").mkdir(exist_ok=True)
-        for f in img_src.iterdir():
-            if f.is_file():
-                shutil.copy(f, DOCS / "img" / f.name)
+    _copy_assets()
 
     ok = "_demoGet" in html and "const API_BASE" in html
     mode = f"бэкенд {PAGES_API_BASE}" if PAGES_API_BASE else "демо (данные в браузере)"
