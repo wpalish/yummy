@@ -27,9 +27,15 @@ _last_sent: dict[str, float] = {}
 
 
 def _dedup(key: str) -> bool:
-    """True — можно слать; False — эта ошибка уже уходила недавно."""
+    """True — можно слать; False — эта ошибка уже уходила недавно.
+
+    Проверяем НАЛИЧИЕ ключа явно, а не `now - get(key, 0.0)`: time.monotonic()
+    не привязан к эпохе и на свежем процессе близок к нулю, поэтому дефолт 0.0
+    давал `now - 0 < window` и глушил первый алерт по каждому ключу первые
+    ~10 минут аптайма (т.е. сразу после каждого рестарта прода)."""
     now = time.monotonic()
-    if now - _last_sent.get(key, 0.0) < _DEDUP_WINDOW:
+    last = _last_sent.get(key)
+    if last is not None and now - last < _DEDUP_WINDOW:
         return False
     if len(_last_sent) > 512:                    # не растим карту бесконечно
         _last_sent.clear()

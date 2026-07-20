@@ -24,6 +24,13 @@ def test_dedup_first_allows_then_blocks_same_key():
     assert errmon._dedup("ValueError:/y") is True      # другой ключ — свежий
 
 
+def test_dedup_allows_on_fresh_process(monkeypatch):
+    """Регресс: на свежем процессе time.monotonic() близок к нулю — первый
+    алерт по ключу НЕ должен глушиться (иначе прод немой первые 10 мин аптайма)."""
+    monkeypatch.setattr(errmon.time, "monotonic", lambda: 3.0)   # аптайм 3 сек
+    assert errmon._dedup("ValueError:/fresh") is True
+
+
 def test_report_sends_once_per_key(monkeypatch):
     calls = []
     monkeypatch.setattr(errmon, "_sentry_send", lambda e, p: calls.append(p) or True)
