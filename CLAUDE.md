@@ -29,16 +29,22 @@ https://yummy-astana.onrender.com · репо github.com/wpalish/yummy
 | `app/ai.py` | Claude API через httpx (описания боксов, модерация) — фолбэк без ключа |
 | `app/notify.py` | Telegram-рассылка новых боксов (getUpdates-поллинг) |
 | `app/seed.py` | демо-данные (6 партнёров, 7 боксов) |
-| `app/static/index.html` | весь фронт (магазин/партнёр/админ) + KZ-локаль |
+| `app/static/src/shell.html` | HTML+CSS-каркас + плейсхолдер `@@JS_BUNDLE@@` |
+| `app/static/src/js/*.js` | JS-модули фронта (склеиваются в порядке имён) |
+| `app/static/index.html` | ГЕНЕРИРУЕМЫЙ (`make index`) — не править руками |
+| `tools/build_index.py` | сборка index.html из src/ (все модули в 1 `<script>`) |
 | `docs/index.html` | сборка для GitHub Pages (client-store демо ИЛИ живой бэкенд) |
 | `tools/build_docs.py` | `make docs` → генерит docs/ из app/static |
 | `data/leads/` | 162 реальных лида кофеен Астаны (для продаж, НЕ публикуются) |
 
 ## Критичные инварианты
 
-1. **docs/index.html — генерируемый.** Не править руками; менять `app/static/index.html`
-   и делать `YUMMY_PAGES_API_BASE=https://yummy-astana.onrender.com make docs`.
-   Без env — витрина сбрасывается в демо-режим (localStorage).
+1. **index.html И docs/index.html — генерируемые.** Фронт правится в
+   `app/static/src/` (shell.html + js/*.js), потом `make index`. Для Pages —
+   `YUMMY_PAGES_API_BASE=https://yummy-astana.onrender.com make docs` (сам
+   пересоберёт index). Все js-модули склеиваются в ОДИН inline `<script>` —
+   top-level const/let общие между «модулями», порядок = имена файлов.
+   test_index_build стережёт, что коммит index.html совпадает со сборкой.
 2. **Владение по коду заказа** (redeem/cancel/refund) — как в /redeem, а не по ID из тела.
 3. **Отзыв только по issued-заказу** через `user_orders()`, не по сырому ID.
 4. **AI/Telegram деградируют без ключа** — фича не ломается, отдаёт фолбэк.

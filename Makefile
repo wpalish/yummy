@@ -1,18 +1,21 @@
 # Yummy — весь проект одной командой (DX-паттерн из wasp)
 PY := .venv/bin/python
 
-.PHONY: dev test docs zip seed clean help
+.PHONY: dev test docs index zip seed clean help
 
 help:            ## список команд
 	@grep -E '^[a-z]+:.*##' $(MAKEFILE_LIST) | awk -F':.*## ' '{printf "  make %-8s %s\n", $$1, $$2}'
 
-dev:             ## запустить бэкенд на :8021 (открытый демо-режим)
+index:           ## пересобрать app/static/index.html из src/ (модули фронта)
+	$(PY) tools/build_index.py
+
+dev: index       ## запустить бэкенд на :8021 (открытый демо-режим)
 	YUMMY_ENFORCE_AUTH=0 $(PY) -m uvicorn app.main:app --reload --port 8021
 
 test:            ## прогнать все тесты
 	rm -f spasibox.db && $(PY) -m pytest -q
 
-docs:            ## пересобрать статическую версию для GitHub Pages
+docs: index      ## пересобрать статическую версию для GitHub Pages
 	$(PY) tools/build_docs.py
 
 seed:            ## пересоздать демо-данные
