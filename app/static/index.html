@@ -1577,9 +1577,16 @@ function shopFromMap(name){
   setTimeout(()=>$("#boxes").scrollIntoView({behavior:"smooth"}),150);
 }
 
-/* ============ ЗАВЕДЕНИЯ (137 точек Zebra/Espresso Day из 2GIS) ============ */
+/* ============ ЗАВЕДЕНИЯ (178 точек 6 сетей из 2GIS) ============ */
 let ALL_VENUES=null, curChain="all", curVDist="all", vmapObj=null, vmapMode=false;
-const CHAIN_META={"Espresso Day":{cls:"esp",ic:"☕"},"Zebra Coffee":{cls:"zeb",ic:"🦓"}};
+const CHAIN_META={
+  "Espresso Day":{cls:"esp",ic:"☕",color:"#6F4E37"},
+  "Zebra Coffee":{cls:"zeb",ic:"🦓",color:"#2b2b2b"},
+  "Costa Coffee":{cls:"cos",ic:"🫘",color:"#8B1A1A"},
+  "Drinkit":{cls:"drk",ic:"🥤",color:"#00A19A"},
+  "Master Coffee":{cls:"mas",ic:"👑",color:"#B8860B"},
+  "Discovery Coffee":{cls:"dis",ic:"🧭",color:"#1F6F54"},
+};
 async function fetchVenues(){
   if(ALL_VENUES)return ALL_VENUES;
   for(const u of ["/static/venues.json","venues.json"]){
@@ -1649,7 +1656,7 @@ function renderVMap(){
   setTimeout(()=>vmapObj.invalidateSize(),80);
   if(vmapObj._mk)vmapObj._mk.forEach(m=>m.remove());
   vmapObj._mk=vs.map(v=>{
-    const color=v.chain==="Zebra Coffee"?"#2b2b2b":"#6F4E37";
+    const color=(CHAIN_META[v.chain]&&CHAIN_META[v.chain].color)||"#6F4E37";
     const mk=L.circleMarker([v.lat,v.lon],{radius:6,fillColor:color,color:"#fff",weight:1.5,fillOpacity:.9}).addTo(vmapObj);
     mk.bindPopup(`<b>${esc(v.chain)}</b><br>${esc(v.addr)}<br>${esc(v.district)}${v.rating?" · ⭐ "+v.rating:""}<br><button data-act="openVenue" data-a1="${v.id}" style="margin-top:6px;width:100%;background:oklch(22% .03 45);border:0;padding:7px;border-radius:999px;font-weight:700;color:oklch(97% .018 82);cursor:pointer">Подробнее</button>`);
     return mk;
