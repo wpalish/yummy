@@ -234,7 +234,12 @@ async def security_headers(request: HttpRequest, call_next):
         resp.headers["X-Request-Id"] = rid
         return resp
 
-    response = await call_next(request)
+    try:
+        response = await call_next(request)
+    except Exception as exc:                     # noqa: BLE001 — необработанный 500
+        from . import errmon
+        errmon.report(exc, request.url.path)     # Sentry/TG, no-op без конфига
+        raise                                    # стандартный 500-ответ остаётся
     for k, v in _SEC_HEADERS.items():
         response.headers.setdefault(k, v)
     response.headers["X-Request-Id"] = rid
