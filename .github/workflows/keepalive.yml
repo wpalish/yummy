@@ -1,0 +1,18 @@
+# Free-инстанс Render засыпает от простоя → первый покупатель ждёт 50+ секунд.
+# Пингуем /health каждые 10 минут в часы работы витрины (вечер Астаны, UTC+5:
+# 10:00–20:00 UTC = 15:00–01:00 Астаны). Ночью пусть спит — лимиты Actions не резиновые.
+name: keepalive
+
+on:
+  schedule:
+    - cron: "*/10 10-19 * * *"
+  workflow_dispatch:
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Ping /health
+        run: |
+          curl -fsS --max-time 60 https://yummy-astana.onrender.com/health || {
+            echo "::warning::backend не ответил (спал или упал)"; exit 0; }

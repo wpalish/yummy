@@ -4,9 +4,6 @@ __pycache__/
 .pytest_cache/
 *.db
 .DS_Store
-# workflows игнорируем: git-токен без scope `workflow` не может их пушить
-# (dependabot.yml — не workflow, пушится обычным токеном)
-.github/workflows/
 backups/
 # все env-файлы с секретами (.env, .env.local, .env.production …),
 # кроме шаблона .env.example — иначе пароль БД уедет в git

@@ -1,0 +1,73 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - uses: actions/setup-node@v4   # node --check инлайн-JS (test_frontend_syntax)
+        with:
+          node-version: "22"
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+      - name: Run tests
+        run: pytest -q --ignore=tests/e2e
+
+  e2e:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - name: Install dependencies + playwright
+        run: |
+          pip install -r requirements.txt playwright pytest-playwright
+          python -m playwright install --with-deps chromium
+      - name: E2E smoke (chromium)
+        run: pytest tests/e2e -q
+
+  # Автодеплой на Render + smoke. Требует секрет RENDER_DEPLOY_HOOK
+  # (Render → Settings → Deploy Hook). Нет секрета — job тихо пропускает деплой,
+  # CI всё равно защищает main. Урок 2026-07-19: ручной Manual Deploy дважды
+  # «сработал» кликом, но молча не ушёл — деплой без проверки не считается деплоем.
+  deploy:
+    needs: [test, e2e]
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Trigger Render deploy
+        id: hook
+        env:
+          HOOK: ${{ secrets.RENDER_DEPLOY_HOOK }}
+        run: |
+          if [ -z "$HOOK" ]; then
+            echo "RENDER_DEPLOY_HOOK не задан — деплой остаётся ручным (Manual Deploy)."
+            echo "triggered=no" >> "$GITHUB_OUTPUT"
+          else
+            curl -fsS "$HOOK" && echo "triggered=yes" >> "$GITHUB_OUTPUT"
+          fi
+      - name: Smoke — /health нового релиза
+        if: steps.hook.outputs.triggered == 'yes'
+        run: |
+          echo "Ждём до ~8 минут, пока Render соберёт и поднимет..."
+          sleep 60
+          for i in $(seq 1 28); do
+            body=$(curl -fsS --max-time 20 https://yummy-astana.onrender.com/health || true)
+            if echo "$body" | grep -q '"status":"ok"'; then
+              echo "SMOKE OK: $body"; exit 0
+            fi
+            sleep 15
+          done
+          echo "SMOKE FAILED: /health не ожил после деплоя"; exit 1
