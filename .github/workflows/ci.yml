@@ -15,7 +15,7 @@ jobs:
         with:
           python-version: "3.12"
           cache: pip
-      - uses: actions/setup-node@v4   # node --check инлайн-JS (test_frontend_syntax)
+      - uses: actions/setup-node@v7   # node --check инлайн-JS (test_frontend_syntax)
         with:
           node-version: "22"
       - name: Install dependencies
