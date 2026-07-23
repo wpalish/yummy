@@ -257,6 +257,13 @@ class Accounts:
                     token_hash TEXT PRIMARY KEY, user_id TEXT,
                     expires_at INTEGER, used_at INTEGER)"""
             )
+            # Регистрация с кодом из письма: аккаунт создаётся ТОЛЬКО после
+            # ввода кода (пока SMTP настроен). До того — pending-заявка.
+            c.execute(
+                """CREATE TABLE IF NOT EXISTS pending_regs(
+                    email TEXT PRIMARY KEY, pw_hash TEXT, code_hash TEXT,
+                    expires_at INTEGER, attempts INTEGER DEFAULT 0)"""
+            )
             # Персистентный аудит-лог: stdout Render ротируется, БД — нет.
             # IP пишем ХЕШЕМ (ПДн по закону РК); retention — 90 дней.
             c.execute(
@@ -429,6 +436,47 @@ class Accounts:
             return credvault.decrypt(r["totp_secret"])
         except ValueError:
             return None                     # сменили ключ без ротации — 2FA слетает, не 500
+
+    # ---- регистрация с кодом из письма (email-верификация) ---- #
+    _REG_CODE_TTL = 15 * 60
+    _REG_MAX_ATTEMPTS = 5
+
+    @staticmethod
+    def _code_hash(email: str, code: str) -> str:
+        return hashlib.sha256(f"{email}:{code}".encode()).hexdigest()
+
+    def stash_pending_reg(self, email: str, pw_hash: str) -> str:
+        """Отложить регистрацию до подтверждения кода. Повторный вызов
+        перезаписывает заявку (= переотправка кода). Возвращает сырой код."""
+        code = f"{secrets.randbelow(1_000_000):06d}"
+        with self._lock, self._conn() as c:
+            c.execute(
+                """INSERT INTO pending_regs(email,pw_hash,code_hash,expires_at,attempts)
+                   VALUES(?,?,?,?,0)
+                   ON CONFLICT(email) DO UPDATE SET pw_hash=excluded.pw_hash,
+                     code_hash=excluded.code_hash, expires_at=excluded.expires_at,
+                     attempts=0""",
+                (email, pw_hash, self._code_hash(email, code),
+                 int(time.time()) + self._REG_CODE_TTL))
+        return code
+
+    def consume_pending_reg(self, email: str, code: str) -> str | None:
+        """Проверить код. Верный → вернуть pw_hash и удалить заявку.
+        Неверный → attempts+1; после лимита или по TTL заявка сгорает."""
+        with self._lock, self._conn() as c:
+            r = c.execute("SELECT * FROM pending_regs WHERE email=?", (email,)).fetchone()
+            if not r or r["expires_at"] < time.time():
+                c.execute("DELETE FROM pending_regs WHERE email=?", (email,))
+                return None
+            if not hmac.compare_digest(r["code_hash"], self._code_hash(email, code)):
+                if r["attempts"] + 1 >= self._REG_MAX_ATTEMPTS:
+                    c.execute("DELETE FROM pending_regs WHERE email=?", (email,))
+                else:
+                    c.execute("UPDATE pending_regs SET attempts=attempts+1 WHERE email=?",
+                              (email,))
+                return None
+            c.execute("DELETE FROM pending_regs WHERE email=?", (email,))
+            return r["pw_hash"]
 
     # ---- сброс пароля (one-time токен; письмо шлёт mailer, если настроен) ---- #
     def issue_reset_token(self, email: str, ttl: int = 3600) -> str | None:
@@ -643,9 +691,23 @@ def _ip(req: HttpRequest) -> str:
     return ip_hash(req.client.host if req and req.client else "?")
 
 
-@router.post("/auth/register", response_model=AuthResult, status_code=201,
+def _finish_registration(email: str, pw_hash: str, response: Response,
+                         request: HttpRequest) -> AuthResult:
+    """Создать аккаунт и выдать токены (общее для мгновенной регистрации и
+    подтверждения кода). Роль admin — только по allowlist YUMMY_ADMIN_EMAILS."""
+    role = "admin" if email in _ADMIN_EMAILS else "customer"
+    uid = accounts.create(email, pw_hash, role, None, None)
+    row = accounts.by_id(uid)
+    new_refresh = accounts.issue_refresh(uid)
+    _set_refresh_cookie(response, new_refresh)
+    audit.info("register OK id=%s role=%s email=%s ip=%s", uid, role, email, _ip(request))
+    return AuthResult(access_token=create_token(uid, role, ver=_row_token_ver(row)),
+                      refresh_token=new_refresh, user=_public(row))
+
+
+@router.post("/auth/register", status_code=201,
              dependencies=[Depends(auth_rate_limit)])
-def register(data: RegisterInput, request: HttpRequest, response: Response) -> AuthResult:
+def register(data: RegisterInput, request: HttpRequest, response: Response):
     if accounts.by_email(data.email):
         audit.info("register DENIED (email занят) email=%s ip=%s", data.email, _ip(request))
         raise HTTPException(409, "Email уже зарегистрирован")
@@ -656,12 +718,44 @@ def register(data: RegisterInput, request: HttpRequest, response: Response) -> A
         audit.info("register DENIED (partner без инвайта) email=%s ip=%s",
                    data.email, _ip(request))
         raise HTTPException(403, "Заведения подключаются по приглашению — напишите нам")
-    role = "admin" if data.email in _ADMIN_EMAILS else "customer"
-    uid = accounts.create(data.email, hash_password(data.password), role, None, None)
-    row = accounts.by_id(uid)
-    audit.info("register OK id=%s role=%s email=%s ip=%s", uid, role, data.email, _ip(request))
-    return AuthResult(access_token=create_token(uid, role, ver=_row_token_ver(row)),
-                      refresh_token=accounts.issue_refresh(uid), user=_public(row))
+    # Настроен SMTP → «настоящая» регистрация: аккаунт создаётся ТОЛЬКО после
+    # ввода кода из письма. Без SMTP — как раньше (пилот не ломаем).
+    from . import mailer
+    if mailer.is_configured():
+        code = accounts.stash_pending_reg(data.email, hash_password(data.password))
+        sent = mailer.send(data.email, "Yummy: код подтверждения",
+                           f"Ваш код подтверждения регистрации: {code}\n"
+                           "Код действует 15 минут. Если это были не вы — "
+                           "просто проигнорируйте письмо.")
+        audit.info("register PENDING email=%s sent=%s ip=%s", data.email, sent, _ip(request))
+        if sent:
+            return {"status": "verify", "email": data.email,
+                    "hint": "Код отправлен на почту — введите его для завершения"}
+        # SMTP настроен, но письмо не ушло (сбой провайдера) — не блокируем
+        # регистрацию из-за чужой аварии: честный фолбэк на мгновенный аккаунт
+    return _finish_registration(data.email, hash_password(data.password),
+                                response, request)
+
+
+class VerifyEmailInput(BaseModel):
+    email: str
+    code: str
+
+
+@router.post("/auth/verify-email", response_model=AuthResult, status_code=201,
+             dependencies=[Depends(auth_rate_limit)])
+def verify_email(data: VerifyEmailInput, request: HttpRequest,
+                 response: Response) -> AuthResult:
+    """Завершить регистрацию кодом из письма. 5 попыток / 15 минут."""
+    email = data.email.strip().lower()
+    if accounts.by_email(email):
+        raise HTTPException(409, "Email уже зарегистрирован")
+    pw_hash = accounts.consume_pending_reg(email, data.code.strip())
+    if not pw_hash:
+        audit.warning("verify-email FAIL email=%s ip=%s", email, _ip(request))
+        raise HTTPException(400, "Код неверен или устарел — запросите новый, "
+                                 "зарегистрировавшись заново")
+    return _finish_registration(email, pw_hash, response, request)
 
 
 @router.post("/auth/login", response_model=AuthResult, dependencies=[Depends(auth_rate_limit)])

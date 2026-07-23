@@ -116,15 +116,19 @@ function loginForm(){
     <button class="onb-back" data-act="showOnboarding">← Назад</button>
     <h2>Вход</h2>
     <p class="lead">Войдите в аккаунт покупателя или заведения.</p>
+    <form id="lgForm">
     <label>Email <input id="lgEmail" type="email" placeholder="you@email.com" autocomplete="email" /><span class="ferr" id="le_email"></span></label>
     <label>Пароль <span class="pw"><input id="lgPass" type="password" autocomplete="current-password" />
       <button type="button" class="pw-t" id="lgToggle" aria-label="Показать пароль">👁</button></span><span class="ferr" id="le_pass"></span></label>
-    <button class="btn" id="lgBtn" style="margin-top:.5rem">Войти</button>
+    <button class="btn" id="lgBtn" type="submit" style="margin-top:.5rem">Войти</button>
+    </form>
     <button class="guest" data-act="forgotPw" style="margin-top:.4rem">Забыли пароль?</button>
   </div>`;
   $("#lgEmail").focus();
   $("#lgToggle").onclick=()=>{const p=$("#lgPass");p.type=p.type==="password"?"text":"password";};
-  $("#lgBtn").onclick=async()=>{
+  // submit настоящей <form> — менеджеры паролей предлагают сохранение
+  $("#lgForm").onsubmit=async(ev)=>{
+    ev.preventDefault();
     const email=$("#lgEmail").value.trim(), pass=$("#lgPass").value;
     $("#le_email").textContent=""; $("#le_pass").textContent="";
     if(!_emailOk(email)){$("#le_email").textContent="Некорректный email";return;}
@@ -153,8 +157,9 @@ function loginForm(){
         btn.insertAdjacentHTML("beforebegin",
           `<label>Код из приложения-аутентификатора
              <input id="lgTotp" inputmode="numeric" autocomplete="one-time-code" maxlength="6" placeholder="123456" /></label>`);
-        const orig=$("#lgBtn").onclick;
-        $("#lgBtn").onclick=async()=>{
+        // форма теперь настоящая: переопределяем submit, а не onclick кнопки
+        $("#lgForm").onsubmit=async(ev2)=>{
+          ev2.preventDefault();
           const code=$("#lgTotp").value.trim();
           if(code.length!==6){toast("Введите 6-значный код",true);return;}
           const b2=$("#lgBtn"); b2.disabled=true; b2.textContent="Проверяем…";
@@ -249,6 +254,7 @@ function regForm(role){
     <button class="onb-back" data-act="showOnboarding">← Назад к выбору роли</button>
     <h2>${partner?"Регистрация заведения":"Создать аккаунт"}</h2>
     <p class="lead">${partner?"Кабинет владельца кофейни или пекарни.":"Личный кабинет покупателя."}</p>
+    <form id="rgForm">
     ${partner
       ?`<label>Название заведения <input id="rgName" placeholder="Напр.: Coffee Point" autocomplete="organization" /><span class="ferr" id="e_name"></span></label>`
       :`<label>Имя <input id="rgName" placeholder="Как к вам обращаться" autocomplete="name" /><span class="ferr" id="e_name"></span></label>`}
@@ -258,11 +264,15 @@ function regForm(role){
     <label class="consent"><input type="checkbox" id="rgConsent" />
       <span>Принимаю <a data-act="showLegal" data-a1="offer">оферту</a> и даю согласие на обработку персональных данных согласно <a data-act="showLegal" data-a1="privacy">политике</a>.${partner?` Принимаю <a data-act="showLegal" data-a1="agreement">договор</a> и <a data-act="showLegal" data-a1="quality">стандарты пищевой безопасности</a>.`:""}</span></label>
     <span class="ferr" id="e_consent"></span>
-    <button class="btn" id="rgBtn" style="margin-top:.4rem">Зарегистрироваться</button>
+    <button class="btn" id="rgBtn" type="submit" style="margin-top:.4rem">Зарегистрироваться</button>
+    </form>
   </div>`;
   $("#rgName").focus();
   $("#pwToggle").onclick=()=>{const p=$("#rgPass");p.type=p.type==="password"?"text":"password";};
-  $("#rgBtn").onclick=async()=>{
+  // настоящий submit формы (а не onclick): менеджеры паролей предлагают
+  // сохранение стабильно только на событии submit реального <form>
+  $("#rgForm").onsubmit=async(ev)=>{
+    ev.preventDefault();
     const setE=(id,m)=>$("#"+id).textContent=m||"";
     ["e_name","e_email","e_pass"].forEach(id=>setE(id,""));
     const name=$("#rgName").value.trim(), email=$("#rgEmail").value.trim(), pass=$("#rgPass").value;
@@ -278,15 +288,46 @@ function regForm(role){
       let out;
       try{ out=await tryRegister(payload); }
       catch(e){ setE("e_email",e.message); btn.disabled=false; btn.textContent="Зарегистрироваться"; return; }
-      // роль приходит с сервера: публичная регистрация = только покупатель
-      const srvRole=(out.res&&out.res.user&&out.res.user.role)||"customer";
-      const acc={role:srvRole==="admin"?"admin":"buyer",name,email,createdAt:Date.now(),server:out.mode==="server"};
-      if(out.mode==="server"&&out.res&&out.res.access_token){acc.token=out.res.access_token;acc.refresh=out.res.refresh_token||"";}
-      setAccount(acc);
-      hideOnboarding();
-      toast(out.mode==="server"?"Аккаунт создан ✓":"Профиль создан (демо). Добро пожаловать!");
-      switchView("store");
+      if(out.mode==="server"&&out.res&&out.res.status==="verify"){
+        verifyCodeForm(email,name); return;      // код отправлен на почту
+      }
+      finishRegSuccess(out,name,email);
     }catch(e){ toast(e.message,true); btn.disabled=false; btn.textContent="Зарегистрироваться"; }
+  };
+}
+function finishRegSuccess(out,name,email){
+  // роль приходит с сервера: публичная регистрация = только покупатель
+  const srvRole=(out.res&&out.res.user&&out.res.user.role)||"customer";
+  const acc={role:srvRole==="admin"?"admin":"buyer",name,email,createdAt:Date.now(),server:out.mode==="server"};
+  if(out.mode==="server"&&out.res&&out.res.access_token){acc.token=out.res.access_token;acc.refresh=out.res.refresh_token||"";}
+  setAccount(acc);
+  hideOnboarding();
+  toast(out.mode==="server"?"Аккаунт создан ✓":"Профиль создан (демо). Добро пожаловать!");
+  switchView("store");
+}
+/* Ввод кода из письма — завершение «настоящей» регистрации */
+function verifyCodeForm(email,name){
+  const o=$("#onboard");
+  o.innerHTML=`<div class="onb-card">
+    <h2>Подтвердите почту</h2>
+    <p class="lead">Мы отправили 6-значный код на <b>${esc(email)}</b>. Введите его — и аккаунт готов.</p>
+    <form id="vcForm">
+      <label>Код из письма <input id="vcCode" inputmode="numeric" maxlength="6" placeholder="123456"
+        autocomplete="one-time-code" /><span class="ferr" id="vc_err"></span></label>
+      <button class="btn" id="vcBtn" type="submit" style="margin-top:.4rem">Подтвердить</button>
+    </form>
+    <button class="guest" data-act="showOnboarding" style="margin-top:.5rem">← Указать другую почту</button>
+  </div>`;
+  $("#vcCode").focus();
+  $("#vcForm").onsubmit=async(ev)=>{
+    ev.preventDefault();
+    const code=$("#vcCode").value.trim();
+    if(!/^\d{6}$/.test(code)){$("#vc_err").textContent="Введите 6 цифр из письма";return;}
+    const btn=$("#vcBtn"); btn.disabled=true; btn.textContent="Проверяем…";
+    try{
+      const res=await post("/auth/verify-email",{email,code});
+      finishRegSuccess({mode:"server",res},name,email);
+    }catch(e){ $("#vc_err").textContent=e.message; btn.disabled=false; btn.textContent="Подтвердить"; }
   };
 }
 function onbGuest(){setAccount({role:"guest",name:"Гость",createdAt:Date.now()});hideOnboarding();}
