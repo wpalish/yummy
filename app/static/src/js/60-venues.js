@@ -4,7 +4,7 @@ let ALL_VENUES=null, curChain="all", curVDist="all", vmapObj=null, vmapMode=fals
 // Где логотип не удалось достоверно достать — цветной бейдж с эмодзи (fallback).
 const CHAIN_META={
   "Espresso Day":{cls:"esp",ic:"☕",color:"#6F4E37",logo:"/static/img/logo-espresso.png"},
-  "Zebra Coffee":{cls:"zeb",ic:"🦓",color:"#2b2b2b"},
+  "Zebra Coffee":{cls:"zeb",ic:"🦓",color:"#2b2b2b",logo:"/static/img/logo-zebra.png"},
   "Costa Coffee":{cls:"cos",ic:"🫘",color:"#8B1A1A",logo:"/static/img/logo-costa.png"},
   "Drinkit":{cls:"drk",ic:"🥤",color:"#00A19A",logo:"/static/img/logo-drinkit.png"},
   "Master Coffee":{cls:"mas",ic:"👑",color:"#B8860B",logo:"/static/img/logo-master.png"},
