@@ -1025,6 +1025,8 @@ const ECO_KG=0.5, ECO_CO2=1.3;
    Плейсхолдер не заменён (открыт статический файл) → считаем demo. */
 const PAYMENT_MODE=(v=>v.startsWith("__")?"demo":v)("__PAYMENT_MODE__");
 const DEMO_PAY=PAYMENT_MODE==="demo";
+const APIPAY=PAYMENT_MODE==="apipay";     // реальный Kaspi через ApiPay
+const CAN_BUY=DEMO_PAY||APIPAY;           // показывать форму покупки
 const TG_CHANNEL=(v=>(v.startsWith("__")||/^-?\d/.test(v))?"":v.replace(/^@/,""))("__TG_CHANNEL__");
 const tgChannelUrl=()=>TG_CHANNEL?"https://t.me/"+TG_CHANNEL:"";
 const CATS=[["all","Все","🔥"],["sweet","Сладкое","🍩"],["bakery","Выпечка","🥐"],["snack","Снеки","🥪"],["mixed","Микс","🧺"]];
@@ -1728,16 +1730,17 @@ async function openBox(id){
       <div class="row"><span>Осталось</span><span>${b.qty_left} из ${b.qty_total}</span></div>
       ${b.description?`<div class="inside"><b>Что обычно внутри:</b> ${esc(b.description)}</div>`:""}
       <div class="rules"><b>Сюрприз-бокс.</b> Точный состав может отличаться — это набор из свежих остатков дня. Забрать нужно в окне самовывоза, иначе заказ сгорает (предоплата не возвращается). Если заведение не выдаст — полный возврат.</div>
-      ${DEMO_PAY?`<label>Ваше имя <input id="oName" placeholder="Имя" /></label>
+      ${CAN_BUY?`<label>Ваше имя <input id="oName" placeholder="Имя" /></label>
       <label>Телефон <input id="oPhone" placeholder="+7 7XX XXX XX XX" /></label>
-      <button class="btn" id="payBtn" style="margin-top:.8rem">Оплатить ${money(b.price)}</button>
+      <button class="btn" id="payBtn" style="margin-top:.8rem">${APIPAY?"Оплатить через Kaspi":"Оплатить"} ${money(b.price)}</button>
       <div id="kaspiSlot"></div>`
       :`<div class="rules" style="border-color:var(--red)"><b>Покупка пока недоступна.</b> Заведение ещё не подключило приём платежей — как только подключит, бокс можно будет оплатить и забрать.</div>`}
       <button class="btn sec" id="shareBtn" style="margin-top:.5rem">🔗 Поделиться боксом</button>
       ${DEMO_PAY?`<div class="demo-pay">💳 Демо-оплата. В продакшене — Kaspi Pay / Kaspi QR.</div>`:""}
+      ${APIPAY?`<div class="demo-pay">💳 Счёт придёт в приложение Kaspi на ваш номер — подтвердите оплату там.</div>`:""}
     </div>`);
   const acc=account();  // зарегистрированному покупателю подставляем имя/телефон
-  if(DEMO_PAY&&acc&&acc.role==="buyer"){ if(acc.name)$("#oName").value=acc.name; if(acc.phone)$("#oPhone").value=acc.phone; }
+  if(CAN_BUY&&acc&&acc.role==="buyer"){ if(acc.name)$("#oName").value=acc.name; if(acc.phone)$("#oPhone").value=acc.phone; }
   if(DEMO_PAY&&KASPI_SERVICE_ID){ // включается автоматически, когда появится service_id мерчанта
     $("#kaspiSlot").innerHTML=`<a href="https://kaspi.kz/pay/${encodeURIComponent(KASPI_SERVICE_ID)}?amount=${b.price}"
       style="display:block;text-align:center;background:#F14635;color:#fff;font-weight:800;padding:.8rem 1rem;border-radius:13px;margin-top:.5rem;text-decoration:none">Оплатить через Kaspi</a>`;
@@ -1748,7 +1751,7 @@ async function openBox(id){
     try{ if(navigator.share){await navigator.share(data);} else {await navigator.clipboard.writeText(url);toast("Ссылка скопирована 🔗");} }
     catch(e){ try{await navigator.clipboard.writeText(url);toast("Ссылка скопирована 🔗");}catch(_){toast(url);} }
   };
-  if(!DEMO_PAY)return;   // покупка недоступна — кнопки оплаты нет
+  if(!CAN_BUY)return;    // покупка недоступна — кнопки оплаты нет
   $("#payBtn").onclick=async()=>{
     const name=$("#oName").value.trim(), phone=$("#oPhone").value.trim();
     if(!name||phone.length<5){toast("Укажите имя и телефон",true);return;}
@@ -1764,21 +1767,38 @@ async function openBox(id){
 function successScreen(res){
   const o=res.order;
   if(o.payment_status==="pending"){ // бокс зарезервирован, ждём оплату (мерчант партнёра)
+    if(APIPAY){
+      // реальный Kaspi: счёт ушёл в приложение покупателя, оплату подтвердит
+      // вебхук ApiPay. Опрашиваем статус заказа, пока не станет paid → QR.
+      showModal(`<div class="mc ok-wrap" style="padding-top:1.4rem">
+        <div class="ok-ic">⏳</div>
+        <h3>Счёт отправлен в ваш Kaspi</h3>
+        <p style="color:var(--txt2);font-size:.86rem;margin:.2rem 0 0">${esc(o.partner_name)} · ${esc(o.address)}</p>
+        <div class="code">${esc(o.code)}</div>
+        <p style="font-size:.84rem;color:var(--txt2);margin:.5rem 0">Откройте приложение <b>Kaspi</b> и подтвердите оплату — счёт на ${money(o.price)} уже там. QR откроется автоматически после оплаты.</p>
+        <p id="apStatus" style="font-size:.82rem;color:var(--brown);font-weight:700">Ждём подтверждение оплаты…</p>
+        <button class="btn sec" data-act="closeModal" style="margin-top:.5rem">Закрыть (код сохранён)</button>
+      </div>`);
+      let tries=0;
+      const poll=async()=>{
+        if(++tries>40)return;   // ~5 минут (инвойс живёт 24ч, но UI не держим вечно)
+        try{const fresh=await get("/orders/"+encodeURIComponent(o.code));
+          if(fresh.payment_status==="paid"){ successScreen({order:fresh,qr_svg:""}); loadOrders&&loadOrders(); return; }
+        }catch(e){}
+        setTimeout(poll,7000);
+      };
+      setTimeout(poll,7000);
+      return;
+    }
+    // демо: оплату подтверждает админ/вебхук; покупателю показываем ожидание
     showModal(`<div class="mc ok-wrap" style="padding-top:1.4rem">
       <div class="ok-ic">⏳</div>
       <h3>Бокс зарезервирован на 15 минут</h3>
       <p style="color:var(--txt2);font-size:.86rem;margin:.2rem 0 0">${esc(o.partner_name)} · ${esc(o.address)}</p>
       <div class="code">${esc(o.code)}</div>
-      <p style="font-size:.84rem;color:var(--txt2);margin:.5rem 0">Оплата зачисляется напрямую заведению. QR откроется после оплаты.</p>
-      <button class="btn" id="confirmPayBtn" style="margin-bottom:.5rem">Оплатить ${money(o.price)}</button>
-      <div class="demo-pay">В продакшене — Kaspi Pay мерчанта заведения. Кнопка выше подтверждает оплату (пока нет Kaspi-интеграции).</div>
+      <p style="font-size:.84rem;color:var(--txt2);margin:.5rem 0">Оплата зачисляется напрямую заведению. QR откроется после подтверждения оплаты.</p>
       <button class="btn sec" data-act="closeModal" style="margin-top:.5rem">Позже</button>
     </div>`);
-    $("#confirmPayBtn").onclick=async()=>{
-      const btn=$("#confirmPayBtn");btn.disabled=true;btn.textContent="Проверяем оплату…";
-      try{const r=await post("/orders/confirm-payment",{code:o.code});successScreen(r);}
-      catch(e){toast(e.message,true);btn.disabled=false;btn.textContent="Оплатить "+money(o.price);}
-    };
     return;
   }
   showModal(`<div class="mc ok-wrap" style="padding-top:1.4rem">

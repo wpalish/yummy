@@ -134,12 +134,15 @@ class Store:
             # миграция существующих SQLite-БД (на PG — ADD COLUMN IF NOT EXISTS).
             if database.POSTGRES:
                 c.execute("ALTER TABLE commission_ledger ADD COLUMN IF NOT EXISTS invoice_id TEXT")
+                c.execute("ALTER TABLE orders ADD COLUMN IF NOT EXISTS invoice_id TEXT")
             else:
                 cols = {r[1] for r in c.execute("PRAGMA table_info(orders)").fetchall()}
                 if "payment_status" not in cols:
                     c.execute("ALTER TABLE orders ADD COLUMN payment_status TEXT DEFAULT 'not_required'")
                 if "user_id" not in cols:
                     c.execute("ALTER TABLE orders ADD COLUMN user_id TEXT")
+                if "invoice_id" not in cols:                 # id инвойса ApiPay/Kaspi
+                    c.execute("ALTER TABLE orders ADD COLUMN invoice_id TEXT")
                 lcols = {r[1] for r in c.execute("PRAGMA table_info(commission_ledger)").fetchall()}
                 if "invoice_id" not in lcols:
                     c.execute("ALTER TABLE commission_ledger ADD COLUMN invoice_id TEXT")
@@ -360,6 +363,22 @@ class Store:
         pending → paid. Идемпотентно: повторное подтверждение не дублирует."""
         with self._lock, self._conn() as c:
             r = c.execute("SELECT * FROM orders WHERE code=?", (code.strip().upper(),)).fetchone()
+            if not r or r["payment_status"] != "pending":
+                return None
+            c.execute("UPDATE orders SET payment_status='paid' WHERE id=?", (r["id"],))
+            r2 = c.execute("SELECT * FROM orders WHERE id=?", (r["id"],)).fetchone()
+            return self._order_from_row(c, r2)
+
+    def set_order_invoice(self, order_id: str, invoice_id: str) -> None:
+        """Привязать инвойс ApiPay к заказу — по нему вебхук найдёт заказ."""
+        with self._lock, self._conn() as c:
+            c.execute("UPDATE orders SET invoice_id=? WHERE id=?", (str(invoice_id), order_id))
+
+    def confirm_payment_by_invoice(self, invoice_id: str) -> Order | None:
+        """Путь Kaspi-webhook: находим заказ по invoice_id, pending → paid.
+        Идемпотентно (повторный вебхук того же invoice не дублирует оплату)."""
+        with self._lock, self._conn() as c:
+            r = c.execute("SELECT * FROM orders WHERE invoice_id=?", (str(invoice_id),)).fetchone()
             if not r or r["payment_status"] != "pending":
                 return None
             c.execute("UPDATE orders SET payment_status='paid' WHERE id=?", (r["id"],))

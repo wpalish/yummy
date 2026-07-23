@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import csv
 import io
+import json
 import logging
 import os
 import time
@@ -157,7 +158,9 @@ _ALLOWED_HOSTS = [h.strip() for h in os.getenv("YUMMY_ALLOWED_HOSTS", "").split(
 #    disabled         — платёжного провайдера нет → покупка НЕДОСТУПНА (503),
 #                       вместо фейкового «оплачено». Публиковать платный бокс
 #                       можно только партнёру с активным мерчант-аккаунтом.
-#  (значение kaspi появится вместе с реальной Kaspi-интеграцией)
+#    apipay           — РЕАЛЬНЫЙ Kaspi через ApiPay.kz: заказ pending, инвойс на
+#                       телефон, оплата подтверждается вебхуком (HMAC-подпись).
+#                       Нужны APIPAY_API_KEY + APIPAY_WEBHOOK_SECRET (см. apipay.py).
 #
 #  YUMMY_DEMO_SEED: посев демо-заведений. В проде (YUMMY_ENFORCE_AUTH=1) НИКОГДА
 #  не сеем сам — пустая БД должна давать пустой каталог, а не выдуманные кофейни.
@@ -399,7 +402,22 @@ def create_order(payload: OrderCreate, bg: BackgroundTasks,
         raise HTTPException(409, "Боксы только что закончились")
     bg.add_task(notify_mod.notify_new_order, order)   # партнёру/опс-чату, без ключа — no-op
     if order.payment_status == "pending":
-        # QR не отдаём до оплаты; в проде здесь ссылка на Kaspi мерчанта партнёра
+        # Реальный Kaspi через ApiPay: создаём инвойс, покупатель подтверждает
+        # оплату в Kaspi, статус прилетит вебхуком. QR — только после оплаты.
+        if _PAYMENT_MODE == "apipay":
+            from . import apipay
+            try:
+                inv = apipay.create_invoice(
+                    order.user_phone, order.price,
+                    f"Yummy · {order.partner_name} · {order.code}",
+                    idempotency_key=order.id)
+                store.set_order_invoice(order.id, inv.get("id"))
+            except apipay.PaymentUnavailable as exc:
+                # заказ уже создан pending — свипер вернёт бокс через ttl;
+                # покупателю честно сообщаем, что счёт не выставился
+                log.warning("apipay invoice failed order=%s: %s", order.id, exc)
+                raise HTTPException(503, str(exc)) from exc
+        # QR не отдаём до оплаты
         return OrderResult(order=order, qr_svg="")
     return OrderResult(order=order, qr_svg=qr_svg(order.code))
 
@@ -417,6 +435,30 @@ def confirm_payment(payload: RedeemInput) -> dict:
         raise HTTPException(409, "Заказ не найден или уже оплачен")
     store.accrue_commission(_new("cl"), order)   # долг партнёра фиксируется при оплате
     return OrderResult(order=order, qr_svg=qr_svg(order.code))
+
+
+@app.post("/webhooks/apipay", tags=["Store"])
+async def apipay_webhook(request: HttpRequest) -> dict:
+    """Kaspi-webhook от ApiPay: invoice.status_changed → заказ pending→paid.
+    Подпись HMAC-SHA256 сырого тела ОБЯЗАТЕЛЬНА (иначе кто угодно отметил бы
+    заказы оплаченными). Отвечаем 200 быстро; дедуп по invoice_id идемпотентен."""
+    from . import apipay
+    raw = await request.body()
+    if not apipay.verify_webhook(raw, request.headers.get("X-Webhook-Signature", "")):
+        log.warning("apipay webhook: неверная подпись rid=%s",
+                    getattr(request.state, "request_id", "-"))
+        raise HTTPException(401, "Неверная подпись вебхука")
+    try:
+        payload = json.loads(raw.decode() or "{}")
+    except ValueError:
+        raise HTTPException(400, "Некорректное тело вебхука")
+    inv = payload.get("invoice") or {}
+    if payload.get("event") == "invoice.status_changed" and inv.get("status") == "paid":
+        order = store.confirm_payment_by_invoice(str(inv.get("id")))
+        if order:
+            store.accrue_commission(_new("cl"), order)   # комиссия при реальной оплате
+            log.info("audit: apipay paid order=%s invoice=%s", order.id, inv.get("id"))
+    return {"status": "ok"}          # всегда 200, чтобы ApiPay не ретраил без нужды
 
 
 @app.get("/me/orders", response_model=list[Order], tags=["Store"])

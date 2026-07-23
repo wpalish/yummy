@@ -235,6 +235,8 @@ const ECO_KG=0.5, ECO_CO2=1.3;
    Плейсхолдер не заменён (открыт статический файл) → считаем demo. */
 const PAYMENT_MODE=(v=>v.startsWith("__")?"demo":v)("__PAYMENT_MODE__");
 const DEMO_PAY=PAYMENT_MODE==="demo";
+const APIPAY=PAYMENT_MODE==="apipay";     // реальный Kaspi через ApiPay
+const CAN_BUY=DEMO_PAY||APIPAY;           // показывать форму покупки
 const TG_CHANNEL=(v=>(v.startsWith("__")||/^-?\d/.test(v))?"":v.replace(/^@/,""))("__TG_CHANNEL__");
 const tgChannelUrl=()=>TG_CHANNEL?"https://t.me/"+TG_CHANNEL:"";
 const CATS=[["all","Все","🔥"],["sweet","Сладкое","🍩"],["bakery","Выпечка","🥐"],["snack","Снеки","🥪"],["mixed","Микс","🧺"]];
