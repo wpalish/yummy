@@ -29,8 +29,14 @@ async function loadVenues(){
   const vs=await fetchVenues();
   // фильтр по сети
   const chains=[...new Set(vs.map(v=>v.chain))];
-  $("#chainFilter").innerHTML=[`<button class="${curChain==="all"?"on":""}" data-c="all">Все сети · ${vs.length}</button>`]
-    .concat(chains.map(c=>`<button class="${curChain===c?"on":""}" data-c="${esc(c)}">${CHAIN_META[c]?.ic||""} ${esc(c)} · ${vs.filter(v=>v.chain===c).length}</button>`)).join("");
+  const chip=(c,label,cnt)=>{
+    const m=CHAIN_META[c]||{};
+    const inner=m.logo?`<img src="${m.logo}" alt="">`:`<span class="em">${m.ic||"☕"}</span>`;
+    return `<button class="${curChain===c?"on":""}" data-c="${esc(c)}"><span class="ring">${inner}</span>${esc(label)}<br>· ${cnt} ·</button>`;
+  };
+  $("#chainFilter").innerHTML=
+    `<button class="${curChain==="all"?"on":""}" data-c="all"><span class="ring"><span class="em">☕</span></span>Все<br>· ${vs.length} ·</button>`
+    + chains.map(c=>chip(c, c.replace(/ Coffee$/,""), vs.filter(v=>v.chain===c).length)).join("");
   document.querySelectorAll("#chainFilter button").forEach(b=>b.onclick=()=>{curChain=b.dataset.c;loadVenues();});
   // районы с počтом
   let pool=curChain==="all"?vs:vs.filter(v=>v.chain===curChain);
@@ -47,16 +53,25 @@ function venuesFiltered(){
   if(curVDist!=="all")vs=vs.filter(v=>v.district===curVDist);
   return vs;
 }
+const VENUE_PHOTOS=["coffee.jpg","bakery.jpg","dessert.jpg","bread.jpg","sweet.jpg","mixed.jpg"];
+function venuePhoto(v){ // детерминированное фото по id — стабильно между рендерами
+  let h=0; for(const ch of v.id)h=(h*31+ch.charCodeAt(0))>>>0;
+  return "/static/img/"+VENUE_PHOTOS[h%VENUE_PHOTOS.length];
+}
 function vCard(v){
+  const m=CHAIN_META[v.chain]||{};
+  const badge=m.logo?`<div class="badge"><img src="${m.logo}" alt="${esc(v.chain)}"></div>`
+                    :`<div class="badge em">${m.ic||"☕"}</div>`;
   return `<article class="vcard" data-id="${v.id}">
-    ${chainBadge(v.chain, 44)}
-    <div class="b">
+    <img class="ph" src="${venuePhoto(v)}" alt="" loading="lazy">
+    ${badge}<span class="ribbon"></span>
+    <div class="panel">
       <h3>${esc(v.chain)}</h3>
-      <div class="addr">${esc(v.addr)} · ${esc(v.district)}</div>
-      <div class="meta">
-        ${v.rating?`<span class="star">⭐ ${v.rating}${v.reviews?` · ${v.reviews}`:""}</span>`:""}
-        <span class="pill gr">📍 на карте</span>
+      <div class="row">
+        ${v.rating?`<span class="star">★ ${v.rating}</span>${v.reviews?`<span>(${v.reviews}+)</span>`:""}<span class="dot">·</span>`:""}
+        <span class="vd">${esc(v.district)}</span>
       </div>
+      <div class="offer">Боксы со скидкой <b>40–70%</b> · ${esc(v.addr)}</div>
     </div></article>`;
 }
 function renderVenues(){
