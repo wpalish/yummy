@@ -1579,14 +1579,24 @@ function shopFromMap(name){
 
 /* ============ ЗАВЕДЕНИЯ (178 точек 6 сетей из 2GIS) ============ */
 let ALL_VENUES=null, curChain="all", curVDist="all", vmapObj=null, vmapMode=false;
+// logo — настоящий логотип бренда с его официального сайта (self-hosted).
+// Где логотип не удалось достоверно достать — цветной бейдж с эмодзи (fallback).
 const CHAIN_META={
-  "Espresso Day":{cls:"esp",ic:"☕",color:"#6F4E37"},
+  "Espresso Day":{cls:"esp",ic:"☕",color:"#6F4E37",logo:"/static/img/logo-espresso.png"},
   "Zebra Coffee":{cls:"zeb",ic:"🦓",color:"#2b2b2b"},
   "Costa Coffee":{cls:"cos",ic:"🫘",color:"#8B1A1A"},
   "Drinkit":{cls:"drk",ic:"🥤",color:"#00A19A"},
-  "Master Coffee":{cls:"mas",ic:"👑",color:"#B8860B"},
+  "Master Coffee":{cls:"mas",ic:"👑",color:"#B8860B",logo:"/static/img/logo-master.png"},
   "Discovery Coffee":{cls:"dis",ic:"🧭",color:"#1F6F54"},
 };
+// бейдж сети: <img> с логотипом ИЛИ цветной квадрат с эмодзи. size — px.
+function chainBadge(chain, size){
+  const m=CHAIN_META[chain]||{cls:"",ic:"☕"};
+  const px=size||44;
+  if(m.logo) return `<img class="logo img" src="${m.logo}" alt="${esc(chain)}" loading="lazy"
+    style="width:${px}px;height:${px}px;border-radius:13px;object-fit:contain;background:#fff;padding:4px" />`;
+  return `<div class="logo ${m.cls}" style="width:${px}px;height:${px}px;border-radius:13px;display:grid;place-items:center;font-size:${Math.round(px*0.42)}px;color:#fff">${m.ic}</div>`;
+}
 async function fetchVenues(){
   if(ALL_VENUES)return ALL_VENUES;
   for(const u of ["/static/venues.json","venues.json"]){
@@ -1617,9 +1627,8 @@ function venuesFiltered(){
   return vs;
 }
 function vCard(v){
-  const m=CHAIN_META[v.chain]||{cls:"",ic:"☕"};
   return `<article class="vcard" data-id="${v.id}">
-    <div class="logo ${m.cls}">${m.ic}</div>
+    ${chainBadge(v.chain, 44)}
     <div class="b">
       <h3>${esc(v.chain)}</h3>
       <div class="addr">${esc(v.addr)} · ${esc(v.district)}</div>
@@ -1666,10 +1675,9 @@ function renderVMap(){
 const CAT_EMO={sweet:"🍩",bakery:"🥐",mixed:"🧺",snack:"🥪"};
 window.openVenue=id=>{
   const v=(ALL_VENUES||[]).find(x=>x.id===id); if(!v)return;
-  const m=CHAIN_META[v.chain]||{ic:"☕"};
   showModal(`<div class="mc">
     <div style="display:flex;gap:.7rem;align-items:center">
-      <div class="logo ${m.cls}" style="width:52px;height:52px;border-radius:13px;display:grid;place-items:center;font-size:1.6rem;color:#fff">${m.ic}</div>
+      ${chainBadge(v.chain, 52)}
       <div><h3 style="margin:0">${esc(v.chain)}</h3><div style="font-size:.8rem;color:var(--txt2)">${esc(v.addr)} · ${esc(v.district)}${v.rating?" · ⭐ "+v.rating:""}</div></div>
     </div>
     <a href="https://2gis.kz/astana/firm/${v.id}" target="_blank" rel="noopener" style="display:inline-block;margin:.6rem 0 .2rem;font-size:.78rem;font-weight:700">🗺 Открыть в 2ГИС →</a>
