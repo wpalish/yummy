@@ -1785,7 +1785,7 @@ function successScreen(res){
       const poll=async()=>{
         if(++tries>40)return;   // ~5 минут (инвойс живёт 24ч, но UI не держим вечно)
         try{const fresh=await get("/orders/"+encodeURIComponent(o.code));
-          if(fresh.payment_status==="paid"){ successScreen({order:fresh,qr_svg:""}); loadOrders&&loadOrders(); return; }
+          if(fresh.payment_status==="paid"){ successScreen({order:fresh,qr_svg:qrTag(fresh.code)}); loadOrders&&loadOrders(); return; }
         }catch(e){}
         setTimeout(poll,7000);
       };
@@ -1868,10 +1868,15 @@ window.leaveReviewForm=(orderId,partnerId,partnerName)=>{
     }
   };
 };
+// QR из кода выдачи на клиенте — сырой <svg> (тот же контракт, что backend qr_svg).
+// Пусто, если qrcode-generator не загружен. Оборачивать в .qr — на месте вызова.
+function qrTag(code){
+  try{ if(typeof qrcode==="function"){const q=qrcode(0,"M");q.addData(code);q.make();
+    return q.createSvgTag({cellSize:6,margin:2});} }catch(e){}
+  return "";
+}
 window.showCode=code=>{
-  // QR рисуем на месте, если библиотека есть (Pages-версия); иначе — крупный код
-  let qr="";
-  try{ if(typeof qrcode==="function"){const q=qrcode(0,"M");q.addData(code);q.make();qr=`<div class="qr">${q.createSvgTag({cellSize:6,margin:2})}</div>`;} }catch(e){}
+  const svg=qrTag(code); const qr=svg?`<div class="qr">${svg}</div>`:"";
   showModal(`<div class="mc ok-wrap" style="padding-top:1.3rem">
     <h3>Код выдачи</h3>${qr}
     <div class="code">${esc(code)}</div>

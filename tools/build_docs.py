@@ -43,7 +43,7 @@ API_BLOCK = '''async function api(m,u,b,_retry,_net){const h=b?{"Content-Type":"
 const get=u=>api("GET",u), post=(u,b)=>api("POST",u,b), del=u=>api("DELETE",u);'''
 
 LEAFLET_TAG = '<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha384-cxOPjt7s7Iz04uaHJceBmS+qpjv2JkIHNVcuOrM+YHwZOmJGBXI00mdUXEq65HTH" crossorigin="anonymous"></script>'
-QR_TAG = LEAFLET_TAG + '\n<script src="https://cdn.jsdelivr.net/npm/qrcode-generator@1.4.4/qrcode.js" integrity="sha384-8FWZA6BGMXhsfO+BLtrJK0We6gg5o1JyO8xQm6peWDEUs17ACA5ziE/NIAkl9z2k" crossorigin="anonymous"></script>'
+QR_TAG = LEAFLET_TAG   # qrcode-generator теперь в shell.html — дублировать не нужно
 
 
 def extract_client_store() -> str:
