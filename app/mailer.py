@@ -26,10 +26,12 @@ def send(to: str, subject: str, body: str) -> bool:
     """True — письмо ушло. Ошибки логируем и возвращаем False (не 500)."""
     if not is_configured():
         return False
-    host = os.getenv("YUMMY_SMTP_HOST", "")
-    port = int(os.getenv("YUMMY_SMTP_PORT", "587"))
-    user = os.getenv("YUMMY_SMTP_USER", "")
-    password = os.getenv("YUMMY_SMTP_PASS", "")
+    host = os.getenv("YUMMY_SMTP_HOST", "").strip()
+    port = int(os.getenv("YUMMY_SMTP_PORT", "587").strip() or "587")
+    user = os.getenv("YUMMY_SMTP_USER", "").strip()
+    # Gmail показывает app-пароль с пробелами («abcd efgh ijkl mnop») для
+    # читаемости, но SMTP-логин требует его БЕЗ пробелов — снимаем их.
+    password = os.getenv("YUMMY_SMTP_PASS", "").replace(" ", "").strip()
     msg = EmailMessage()
     msg["From"] = os.getenv("YUMMY_SMTP_FROM", "")
     msg["To"] = to
@@ -49,5 +51,8 @@ def send(to: str, subject: str, body: str) -> bool:
                 s.send_message(msg)
         return True
     except Exception as exc:                    # noqa: BLE001 — наружу не 500
-        log.warning("smtp send failed: %s", exc)
+        # тип ошибки помогает диагностике: auth (неверный app-пароль),
+        # timeout (порт закрыт), connect (неверный host). Секрет не логируем.
+        log.warning("smtp send failed host=%s port=%s user=%s: %s: %s",
+                    host, port, user, type(exc).__name__, exc)
         return False
