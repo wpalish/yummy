@@ -25,14 +25,18 @@ window.revokeUserSessions=async id=>{
   catch(e){ toast(e.message,true); }
 };
 
-/* 2FA (TOTP): включение с QR, выключение по коду */
+/* 2FA (TOTP): включение с QR, выключение по коду.
+   Слоты .totp-slot: и в админке (#aTotp), и в кабинете владельца (#pTotp) —
+   оба обновляются одним статусом. */
 async function loadTotp(){
-  const el=$("#aTotp"); if(!el)return;
+  const els=[...document.querySelectorAll(".totp-slot")]; if(!els.length)return;
   let st={enabled:false};
-  try{ st=await get("/auth/totp/status"); }catch(e){ el.innerHTML='<p class="sub">Требуется вход.</p>'; return; }
-  el.innerHTML=st.enabled
+  try{ st=await get("/auth/totp/status"); }
+  catch(e){ els.forEach(el=>el.innerHTML='<p class="sub">Требуется вход.</p>'); return; }
+  const html=st.enabled
     ?'<span class="tag t-issued">2FA включена</span> <button class="linkbtn" data-act="totpOff">Выключить…</button>'
     :'<span class="tag t-expired">2FA выключена</span> <button class="btn sec" data-act="totpOn" style="width:auto;padding:.4rem .9rem;margin-left:.5rem">Включить 2FA</button>';
+  els.forEach(el=>el.innerHTML=html);
 }
 window.totpOn=async()=>{
   let s; try{ s=await post("/auth/totp/setup",{}); }catch(e){ toast(e.message,true); return; }

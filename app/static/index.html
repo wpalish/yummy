@@ -613,6 +613,9 @@
       <div class="cardp"><h3>Брони и выдачи</h3><div id="pOrders"></div>
         <button class="btn sec" id="pCsv" style="margin-top:.7rem">⬇ Выгрузить журнал (CSV)</button></div>
       <div class="cardp"><h3>Аналитика по дням</h3><div id="pDaily"></div></div>
+      <div class="cardp"><h3>Двухфакторная защита (2FA)</h3>
+        <p class="sub" style="margin:.2rem 0 .6rem">TOTP-код из Google Authenticator / 1Password при каждом входе. <b>Обязательна для владельца заведения</b>: защищает управление боксами, выдачами, персоналом и деньгами — украденный пароль без телефона бесполезен.</p>
+        <div id="pTotp" class="totp-slot"></div></div>
       <div class="cardp hidden" id="pStaffCard"><h3>Персонал</h3>
         <div id="pStaff"></div>
         <div class="frow" style="margin-top:.7rem;align-items:flex-end">
@@ -667,7 +670,7 @@
         <button class="btn sec hidden" id="aMoreOrders" style="margin-top:.6rem">Показать ещё</button></div>
       <div class="cardp"><h3>Двухфакторная защита (2FA)</h3>
         <p class="sub" style="margin:.2rem 0 .6rem">TOTP-код из Google Authenticator / 1Password при каждом входе. Обязательна для админа: украденный пароль без телефона бесполезен.</p>
-        <div id="aTotp"></div></div>
+        <div id="aTotp" class="totp-slot"></div></div>
       <div class="cardp"><h3>Аудит-журнал</h3>
         <p class="sub" style="margin:.2rem 0 .6rem">Входы, блокировки, возвраты, платёжные действия. Хранится в БД 90 дней, IP — хешем.</p>
         <div id="aAudit" style="font-size:.74rem;font-family:ui-monospace,monospace;max-height:280px;overflow-y:auto"></div></div>
@@ -1976,6 +1979,7 @@ async function loadPartner(){
     $("#pSelect").dataset.filled="1";
     $("#pSelect").onchange=loadPartnerData;
   }
+  loadTotp();   // карточка 2FA в кабинете (обязательна для владельца)
   loadPartnerData();
 }
 function curPartner(){return $("#pSelect").value;}
@@ -2292,14 +2296,18 @@ window.revokeUserSessions=async id=>{
   catch(e){ toast(e.message,true); }
 };
 
-/* 2FA (TOTP): включение с QR, выключение по коду */
+/* 2FA (TOTP): включение с QR, выключение по коду.
+   Слоты .totp-slot: и в админке (#aTotp), и в кабинете владельца (#pTotp) —
+   оба обновляются одним статусом. */
 async function loadTotp(){
-  const el=$("#aTotp"); if(!el)return;
+  const els=[...document.querySelectorAll(".totp-slot")]; if(!els.length)return;
   let st={enabled:false};
-  try{ st=await get("/auth/totp/status"); }catch(e){ el.innerHTML='<p class="sub">Требуется вход.</p>'; return; }
-  el.innerHTML=st.enabled
+  try{ st=await get("/auth/totp/status"); }
+  catch(e){ els.forEach(el=>el.innerHTML='<p class="sub">Требуется вход.</p>'); return; }
+  const html=st.enabled
     ?'<span class="tag t-issued">2FA включена</span> <button class="linkbtn" data-act="totpOff">Выключить…</button>'
     :'<span class="tag t-expired">2FA выключена</span> <button class="btn sec" data-act="totpOn" style="width:auto;padding:.4rem .9rem;margin-left:.5rem">Включить 2FA</button>';
+  els.forEach(el=>el.innerHTML=html);
 }
 window.totpOn=async()=>{
   let s; try{ s=await post("/auth/totp/setup",{}); }catch(e){ toast(e.message,true); return; }

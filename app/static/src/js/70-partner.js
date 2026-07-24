@@ -6,6 +6,7 @@ async function loadPartner(){
     $("#pSelect").dataset.filled="1";
     $("#pSelect").onchange=loadPartnerData;
   }
+  loadTotp();   // карточка 2FA в кабинете (обязательна для владельца)
   loadPartnerData();
 }
 function curPartner(){return $("#pSelect").value;}

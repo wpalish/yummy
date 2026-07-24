@@ -613,6 +613,9 @@
       <div class="cardp"><h3>Брони и выдачи</h3><div id="pOrders"></div>
         <button class="btn sec" id="pCsv" style="margin-top:.7rem">⬇ Выгрузить журнал (CSV)</button></div>
       <div class="cardp"><h3>Аналитика по дням</h3><div id="pDaily"></div></div>
+      <div class="cardp"><h3>Двухфакторная защита (2FA)</h3>
+        <p class="sub" style="margin:.2rem 0 .6rem">TOTP-код из Google Authenticator / 1Password при каждом входе. <b>Обязательна для владельца заведения</b>: защищает управление боксами, выдачами, персоналом и деньгами — украденный пароль без телефона бесполезен.</p>
+        <div id="pTotp" class="totp-slot"></div></div>
       <div class="cardp hidden" id="pStaffCard"><h3>Персонал</h3>
         <div id="pStaff"></div>
         <div class="frow" style="margin-top:.7rem;align-items:flex-end">
@@ -667,7 +670,7 @@
         <button class="btn sec hidden" id="aMoreOrders" style="margin-top:.6rem">Показать ещё</button></div>
       <div class="cardp"><h3>Двухфакторная защита (2FA)</h3>
         <p class="sub" style="margin:.2rem 0 .6rem">TOTP-код из Google Authenticator / 1Password при каждом входе. Обязательна для админа: украденный пароль без телефона бесполезен.</p>
-        <div id="aTotp"></div></div>
+        <div id="aTotp" class="totp-slot"></div></div>
       <div class="cardp"><h3>Аудит-журнал</h3>
         <p class="sub" style="margin:.2rem 0 .6rem">Входы, блокировки, возвраты, платёжные действия. Хранится в БД 90 дней, IP — хешем.</p>
         <div id="aAudit" style="font-size:.74rem;font-family:ui-monospace,monospace;max-height:280px;overflow-y:auto"></div></div>

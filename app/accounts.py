@@ -1035,21 +1035,26 @@ _ADMIN_EMAILS = {e.strip().lower() for e in os.getenv("YUMMY_ADMIN_EMAILS", "").
 
 def require_role(*roles: str):
     """Dependency-фабрика: требует валидный JWT нужной роли (когда включено).
-    Для админа дополнительно ОБЯЗАТЕЛЬНА включённая 2FA: украденный пароль без
-    телефона не открывает админку. Эндпоинты /auth/totp/* идут через
-    current_user, поэтому включить 2FA свежий админ может всегда.
-    Спасательный люк (потерян телефон): YUMMY_ADMIN_2FA_OPTIONAL=1."""
+    Для админа И владельца заведения (partner_role=owner) дополнительно
+    ОБЯЗАТЕЛЬНА включённая 2FA: у них доступ к деньгам/выдачам/персоналу, и
+    украденный пароль без телефона не должен открывать управление. Персонал
+    (manager/cashier) и обычные покупатели — 2FA по желанию. Эндпоинты
+    /auth/totp/* идут через current_user, поэтому включить 2FA свежий
+    админ/владелец может всегда (не залочится). Спасательный люк (потерян
+    телефон): YUMMY_ADMIN_2FA_OPTIONAL=1 отключает требование для всех."""
     def _dep(authorization: str | None = Header(default=None)) -> PublicUser | None:
         if not _ENFORCE:
             return None  # демо-режим: доступ открыт (как раньше)
         user = current_user(authorization)  # 401, если токена нет/невалиден
         if roles and user.role not in roles:
             raise HTTPException(403, "Недостаточно прав")
-        if (user.role == "admin"
+        needs_2fa = user.role == "admin" or user.partner_role == "owner"
+        if (needs_2fa
                 and os.getenv("YUMMY_ADMIN_2FA_OPTIONAL", "") != "1"
                 and accounts.totp_secret(user.id) is None):
-            raise HTTPException(403, "Для админа обязательна 2FA: включите её "
-                                     "(Админ → Двухфакторная защита) и войдите заново")
+            who = "админа" if user.role == "admin" else "владельца заведения"
+            raise HTTPException(403, f"Для {who} обязательна 2FA: включите её "
+                                     "(в кабинете → Двухфакторная защита) и войдите заново")
         return user
     return _dep
 
