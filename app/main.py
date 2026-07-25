@@ -458,6 +458,16 @@ async def apipay_webhook(request: HttpRequest) -> dict:
         if order:
             store.accrue_commission(_new("cl"), order)   # комиссия при реальной оплате
             log.info("audit: apipay paid order=%s invoice=%s", order.id, inv.get("id"))
+        else:
+            # оплата пришла, а заказа под неё нет (или он уже оплачен) — это
+            # расхождение денег и учёта, его нельзя терять в тишине
+            log.warning("apipay webhook: заказ не найден или уже оплачен invoice=%s keys=%s",
+                        inv.get("id"), sorted(inv.keys()))
+    else:
+        # событие другого типа/статуса — логируем, иначе несовпадение формата
+        # выглядит как «вебхук доставлен (200), но ничего не произошло»
+        log.info("apipay webhook: событие пропущено event=%s status=%s invoice=%s",
+                 payload.get("event"), inv.get("status"), inv.get("id"))
     return {"status": "ok"}          # всегда 200, чтобы ApiPay не ретраил без нужды
 
 
