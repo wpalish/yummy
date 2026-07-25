@@ -133,7 +133,57 @@
   .viewtgl{display:flex;gap:.2rem;background:var(--cream);padding:.2rem;border-radius:10px;}
   .viewtgl button{border:0;background:transparent;color:var(--txt2);font-weight:700;font-size:.76rem;padding:.32rem .7rem;border-radius:8px;}
   .viewtgl button.on{background:var(--card);color:var(--brown);box-shadow:0 1px 3px rgba(101,54,36,.15);}
-  #map{height:380px;border-radius:16px;box-shadow:0 0 0 1px var(--border) inset;z-index:1;}
+  #map{height:100%;min-height:380px;border-radius:20px;box-shadow:0 0 0 1px var(--border) inset;z-index:1;}
+  .sectools{display:flex;align-items:center;gap:.5rem;}
+  #sortBy{width:auto;font-size:.78rem;font-weight:700;color:var(--txt2);padding:.38rem 1.6rem .38rem .7rem;
+    border-radius:10px;background:var(--cream);border:0;box-shadow:0 0 0 1px var(--border) inset;cursor:pointer;
+    appearance:none;background-image:linear-gradient(45deg,transparent 50%,var(--txt2) 50%),
+      linear-gradient(135deg,var(--txt2) 50%,transparent 50%);
+    background-position:calc(100% - 15px) 52%,calc(100% - 10px) 52%;
+    background-size:5px 5px,5px 5px;background-repeat:no-repeat;}
+
+  /* Карта — сплит: слева прокручиваемый список боксов, справа липкая карта */
+  .storesplit{display:grid;grid-template-columns:360px 1fr;gap:1rem;align-items:start;}
+  .mapwrap{position:relative;height:min(74vh,660px);}
+  .msidebar{max-height:min(74vh,660px);overflow-y:auto;display:flex;flex-direction:column;gap:.55rem;
+    padding-right:.25rem;scrollbar-width:thin;}
+  .geobtn{position:absolute;right:.75rem;bottom:.75rem;z-index:400;background:var(--card);color:var(--ink);
+    border:0;border-radius:999px;padding:.55rem .9rem;font-size:.78rem;font-weight:700;
+    box-shadow:0 6px 18px oklch(22% .03 45/.22);}
+  .geobtn:hover{background:#fff;}
+  /* Попап-карточка точки на карте */
+  .mpop-wrap .leaflet-popup-content-wrapper{border-radius:18px;padding:0;overflow:hidden;
+    box-shadow:0 18px 44px oklch(22% .03 45/.28);}
+  .mpop-wrap .leaflet-popup-content{margin:0;width:auto!important;}
+  .mpop img{width:100%;height:112px;object-fit:cover;display:block;}
+  .mpop-b{padding:.7rem .8rem .8rem;font-family:inherit;}
+  .mpop-b b{font-size:.95rem;color:var(--ink);font-family:var(--font-h);}
+  .mpop-b .s{font-size:.8rem;color:var(--txt);margin-top:.1rem;}
+  .mpop-b .m{font-size:.72rem;color:var(--txt2);margin:.25rem 0 .4rem;}
+  .mpop-b .pr{display:flex;align-items:baseline;gap:.4rem;margin-bottom:.55rem;flex-wrap:nowrap;white-space:nowrap;}
+  .mpop-b .pr b{font-size:1.15rem;font-family:var(--font-h);}
+  .mpop-b .pr s{color:var(--txt2);font-size:.78rem;font-weight:400;}
+  .mpop-b .pr .dsc{color:var(--green);font-weight:800;font-size:.78rem;}
+  .mpop-cta{width:100%;background:var(--ink);border:0;padding:.6rem;border-radius:999px;font-weight:700;
+    color:var(--on-ink);cursor:pointer;font-family:inherit;font-size:.85rem;}
+  .mpop-cta:hover{background:var(--yellow-h);}
+  .mpop-b .n{font-size:.72rem;color:var(--txt2);text-align:center;margin-top:.35rem;}
+  .mpop-b a{display:block;text-align:center;margin-top:.4rem;font-size:.74rem;font-weight:700;}
+  /* Строка бокса в сайдбаре: фото, название, заведение, цена */
+  .mrow{display:flex;gap:.7rem;align-items:center;background:var(--card);border-radius:16px;padding:.55rem;
+    box-shadow:0 0 0 1px var(--border) inset;cursor:pointer;transition:box-shadow .15s,transform .15s var(--ease);}
+  .mrow:hover,.mrow.on{box-shadow:0 0 0 2px var(--accent) inset;transform:translateY(-1px);}
+  .mrow img{width:56px;height:56px;border-radius:12px;object-fit:cover;flex:none;}
+  .mrow .g{min-width:0;flex:1;}
+  .mrow b{display:block;font-size:.86rem;color:var(--ink);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+  .mrow .v{font-size:.74rem;color:var(--txt2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+  .mrow .p{font-size:.74rem;color:var(--txt2);margin-top:.15rem;}
+  .mrow .pr{font-family:var(--font-h);font-weight:800;font-size:.95rem;color:var(--ink);flex:none;}
+  @media(max-width:860px){
+    .storesplit{grid-template-columns:1fr;}
+    .mapwrap{height:340px;}
+    .msidebar{max-height:none;}
+  }
 
   /* ===== КАРТОЧКИ ===== */
   .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(255px,1fr));gap:1.1rem;}
@@ -620,9 +670,24 @@
       <div class="dists" id="districts"></div>
       <div class="sechead">
         <h2 id="listTitle">Боксы рядом</h2>
-        <div class="viewtgl"><button id="vList" class="on">Список</button><button id="vMap">Карта</button></div>
+        <div class="sectools">
+          <select id="sortBy" aria-label="Сортировать">
+            <option value="default">Сортировать</option>
+            <option value="cheap">Сначала дешёвые</option>
+            <option value="disc">Больше скидка</option>
+            <option value="soon">Скоро забирать</option>
+            <option value="near">Ближе ко мне</option>
+          </select>
+          <div class="viewtgl"><button id="vList" class="on">Список</button><button id="vMap">Карта</button></div>
+        </div>
       </div>
-      <div id="map" class="hidden"></div>
+      <div class="storesplit hidden" id="storeSplit">
+        <aside class="msidebar" id="mapList"></aside>
+        <div class="mapwrap">
+          <div id="map"></div>
+          <button class="geobtn" id="geoBtn">📍 Моё местоположение</button>
+        </div>
+      </div>
       <div class="grid" id="boxes"></div>
       <div class="hiw">
         <h2>Как это работает</h2>
@@ -882,6 +947,7 @@ const ACT = {
   csvAll:          () => downloadCsv("/admin/orders.csv","yummy-orders.csv"),
   csvPartner:      el => downloadCsv(`/partners/${el.dataset.a1}/orders.csv`,"yummy-orders.csv"),
   mapShop:         el => shopFromMap(el.dataset.name),
+  openBox:         el => openBox(el.dataset.a1),
   cancelOrder:     el => cancelOrder(el.dataset.a1),
   userRefund:      el => userRefund(el.dataset.a1),
   showCode:        el => showCode(el.dataset.a1),
@@ -1021,6 +1087,13 @@ const KZ={
 "Превращайте вечерние списания в выручку. Подключение бесплатно.":"Кешкі шығындарды табысқа айналдырыңыз. Қосылу тегін.",
 "Стать партнёром":"Серіктес болу","Присоединяйся":"Қосыл",
 "Создай аккаунт за 20 секунд":"20 секундта аккаунт құр",
+"Сортировать":"Сұрыптау","Сначала дешёвые":"Алдымен арзандары","Больше скидка":"Жеңілдігі көбірек",
+"Скоро забирать":"Жақында алу керек","Ближе ко мне":"Маған жақынырақ",
+"📍 Моё местоположение":"📍 Менің орналасқан жерім","Забронировать":"Брондау","Вы здесь":"Сіз осындасыз",
+"Определяем ваше местоположение…":"Орналасқан жеріңізді анықтаудамыз…",
+"Местоположение определено 📍":"Орналасқан жер анықталды 📍",
+"Не удалось получить местоположение — разрешите доступ в браузере":"Орналасқан жерді алу мүмкін болмады — браузерде рұқсат беріңіз",
+"Геолокация не поддерживается браузером":"Браузер геолокацияны қолдамайды",
 "К вечеру в любимых кофейнях остаётся свежая выпечка. Забирай её со скидкой — и ничего не пропадёт впустую.":"Кешке қарай сүйікті кофеханаларда жаңа нан-тоқаш қалады. Оны жеңілдікпен алып кет — ешнәрсе босқа кетпейді.",
 "Бесплатно, без подписок и абонплаты":"Тегін, жазылымсыз және абоненттік төлемсіз",
 "Оплата онлайн — код и QR сразу после оплаты":"Онлайн төлем — код пен QR төлемнен кейін бірден",
@@ -1636,6 +1709,8 @@ async function loadStore(){
     else curDistrict=c.dataset.d;
     saveFilters();loadStore();});
   try{ALL_BOXES=await get("/boxes?district=all");}catch(e){ALL_BOXES=[];}
+  // координаты живут на партнёре (у Box их нет) — кэшируем для расчёта расстояния
+  try{ (await get("/partners")).forEach(p=>{PARTNER_GEO[p.id]={lat:p.lat,lng:p.lng};}); }catch(e){}
   const totalLeft=ALL_BOXES.reduce((s,b)=>s+b.qty_left,0);
   $("#heroSub").textContent=totalLeft
     ?`${totalLeft} ${plural(totalLeft,["бокс доступен","бокса доступно","боксов доступно"])} к самовывозу сегодня вечером. Свежее, дешевле и без списаний.`
@@ -1670,7 +1745,7 @@ function filtered(){
   return bs;
 }
 function renderBoxes(){
-  const bs=filtered();
+  const bs=sortBoxes(filtered());
   $("#listTitle").textContent=bs.length?`Боксы рядом (${bs.length})`:"Боксы рядом";
   $("#boxes").innerHTML=bs.length?bs.map(boxCard).join(""):'<p class="empty">Ничего не нашлось. Попробуй другой район или категорию 🌙</p>';
   document.querySelectorAll(".boxc").forEach(el=>el.onclick=()=>openBox(el.dataset.id));
@@ -1701,9 +1776,76 @@ function boxCard(b){
       <div class="price"><b>${money(b.price)}</b><s>${money(b.value_est)}</s></div>
     </div></article>`;
 }
+/* ---- сортировка и геолокация ---- */
+let curSort="default", myPos=null;   // myPos — {lat,lng} после явного согласия пользователя
+const PARTNER_GEO={};                // partner_id → {lat,lng}; у Box координат нет
+const R_EARTH=6371;                  // км, для формулы гаверсинуса
+function distKm(a,b){
+  const rad=d=>d*Math.PI/180;
+  const dLat=rad(b.lat-a.lat), dLng=rad(b.lng-a.lng);
+  const h=Math.sin(dLat/2)**2+Math.cos(rad(a.lat))*Math.cos(rad(b.lat))*Math.sin(dLng/2)**2;
+  return 2*R_EARTH*Math.asin(Math.sqrt(h));
+}
+function boxDist(b){ // расстояние до заведения бокса, если координаты и позиция известны
+  const g=PARTNER_GEO[b.partner_id];
+  if(!myPos||!g)return null;
+  return distKm(myPos,g);
+}
+function distLabel(b){ const d=boxDist(b); return d==null?"":`${d<1?Math.round(d*1000)+" м":d.toFixed(1)+" км"}`; }
+function sortBoxes(bs){
+  const a=[...bs];                                   // не мутируем исходный массив
+  if(curSort==="cheap")a.sort((x,y)=>x.price-y.price);
+  else if(curSort==="disc")a.sort((x,y)=>y.discount-x.discount);
+  else if(curSort==="soon")a.sort((x,y)=>Date.parse(x.pickup_from)-Date.parse(y.pickup_from));
+  else if(curSort==="near"&&myPos)a.sort((x,y)=>(boxDist(x)??1e9)-(boxDist(y)??1e9));
+  return a;
+}
+$("#sortBy").onchange=e=>{
+  curSort=e.target.value;
+  if(curSort==="near"&&!myPos){ askGeo(); }
+  renderBoxes(); if(mapMode)renderMapList();
+};
+/* Геолокация только по явному действию пользователя (клик), с честным фолбэком. */
+function askGeo(){
+  if(!navigator.geolocation){toast("Геолокация не поддерживается браузером",true);return;}
+  toast("Определяем ваше местоположение…");
+  navigator.geolocation.getCurrentPosition(
+    p=>{ myPos={lat:p.coords.latitude,lng:p.coords.longitude};
+         toast("Местоположение определено 📍"); renderBoxes(); if(mapMode){renderMapList();renderMap();} },
+    ()=>toast("Не удалось получить местоположение — разрешите доступ в браузере",true),
+    {enableHighAccuracy:false,timeout:8000,maximumAge:300000});
+}
+$("#geoBtn").onclick=askGeo;
+
 /* карта */
-$("#vList").onclick=()=>{mapMode=false;$("#vList").classList.add("on");$("#vMap").classList.remove("on");$("#map").classList.add("hidden");$("#boxes").classList.remove("hidden");};
-$("#vMap").onclick=()=>{mapMode=true;$("#vMap").classList.add("on");$("#vList").classList.remove("on");$("#boxes").classList.add("hidden");$("#map").classList.remove("hidden");renderMap();};
+$("#vList").onclick=()=>{mapMode=false;$("#vList").classList.add("on");$("#vMap").classList.remove("on");
+  $("#storeSplit").classList.add("hidden");$("#boxes").classList.remove("hidden");};
+$("#vMap").onclick=()=>{mapMode=true;$("#vMap").classList.add("on");$("#vList").classList.remove("on");
+  $("#boxes").classList.add("hidden");$("#storeSplit").classList.remove("hidden");renderMapList();renderMap();};
+/* Список боксов рядом с картой: клик по строке — открыть попап нужной точки. */
+function renderMapList(){
+  const bs=sortBoxes(filtered()), el=$("#mapList");
+  if(!bs.length){el.innerHTML='<p class="empty">Ничего не нашлось.</p>';return;}
+  el.innerHTML=bs.map(b=>{
+    const d=distLabel(b);
+    return `<article class="mrow" data-id="${b.id}" data-pid="${b.partner_id}">
+      <img src="img/${imgFor(b)}" alt="" loading="lazy" width="56" height="56">
+      <div class="g"><b>${esc(b.title||b.partner_name)}</b>
+        <span class="v">${esc(b.partner_name)}</span>
+        <div class="p">📍 ${esc(b.district)}${d?" · "+d:""} · ⏱ ${win(b.pickup_from,b.pickup_to)}</div></div>
+      <span class="pr">${money(b.price)}</span></article>`;
+  }).join("");
+  el.querySelectorAll(".mrow").forEach(r=>r.onclick=()=>{
+    el.querySelectorAll(".mrow").forEach(x=>x.classList.remove("on"));
+    r.classList.add("on");
+    focusPartnerOnMap(r.dataset.pid);
+  });
+}
+function focusPartnerOnMap(pid){
+  if(!mapObj||!mapObj._byPartner)return;
+  const mk=mapObj._byPartner[pid]; if(!mk)return;
+  mapObj.setView(mk.getLatLng(),15,{animate:true}); mk.openPopup();
+}
 /* подложку карты легко сменить на 2GIS MapGL, когда будет API-ключ (dev.2gis.com) */
 async function renderMap(){
   let ps=[];try{ps=await get("/partners");}catch(e){return;}
@@ -1714,23 +1856,38 @@ async function renderMap(){
   }
   setTimeout(()=>mapObj.invalidateSize(),100);
   if(mapObj._markers)mapObj._markers.forEach(m=>m.remove());
+  mapObj._byPartner={};
   mapObj._markers=ps.map(p=>{
     const pb=ALL_BOXES.filter(b=>b.partner_id===p.id);
     const n=pb.reduce((s,b)=>s+b.qty_left,0);
-    const minP=pb.length?Math.min(...pb.map(b=>b.price)):null;
-    const html=`<div style="font-family:inherit;min-width:190px">
-      <b style="color:var(--brown);font-size:.95rem">${esc(p.name)}</b>
-      <div style="font-size:.76rem;color:#7E6A5A;margin:.15rem 0 .4rem">${esc(p.address)} · ⭐ ${p.rating}</div>
-      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:.5rem">
-        <span style="background:#FFF5D6;color:#7E5233;padding:2px 8px;border-radius:7px;font-size:.72rem;font-weight:700">${n} ${plural(n,["бокс","бокса","боксов"])}</span>
-        ${minP?`<b style="color:var(--brown)">от ${money(minP)}</b>`:""}
-      </div>
-      ${n?`<button class="map-shop" data-act="mapShop" data-name="${esc(p.name)}" style="width:100%;background:oklch(22% .03 45);border:0;padding:8px;border-radius:999px;font-weight:700;color:oklch(97% .018 82);cursor:pointer;font-family:inherit">Смотреть боксы</button>`:'<span style="font-size:.74rem;color:#7E6A5A">Сегодня боксов нет</span>'}
-      <a href="https://2gis.kz/astana/directions/points/%7C${p.lng}%2C${p.lat}" target="_blank" rel="noopener"
-        style="display:block;text-align:center;margin-top:6px;font-size:.76rem;font-weight:700;color:#653624">🗺 Маршрут в 2ГИС</a>
-    </div>`;
-    return L.marker([p.lat,p.lng],{icon:mapObj._icon,title:p.name}).addTo(mapObj).bindPopup(html);
+    const top=pb.length?pb.reduce((a,b)=>a.price<=b.price?a:b):null;   // самый дешёвый — его и показываем
+    const d=top?distLabel(top):"";
+    // Карточка-попап как в референсе: фото, название, оффер, рейтинг, расстояние, цена, CTA
+    const html=`<div class="mpop">
+      ${top?`<img src="img/${imgFor(top)}" alt="" loading="lazy">`:""}
+      <div class="mpop-b">
+        <b>${esc(p.name)}</b>
+        ${top?`<div class="s">${esc(top.title||top.category_ru)}</div>`:""}
+        <div class="m">⭐ ${p.rating}${d?" · "+d:""} · ${esc(p.address)}</div>
+        ${top?`<div class="pr"><b>${money(top.price)}</b><s>${money(top.value_est)}</s>
+          <span class="dsc">−${top.discount}%</span></div>`:""}
+        ${n?`<button class="mpop-cta" data-act="openBox" data-a1="${esc(top.id)}">Забронировать</button>
+             <div class="n">${n} ${plural(n,["бокс","бокса","боксов"])} в наличии</div>`
+           :'<div class="n">Сегодня боксов нет</div>'}
+        <a href="https://2gis.kz/astana/directions/points/%7C${p.lng}%2C${p.lat}" target="_blank" rel="noopener">🗺 Маршрут в 2ГИС</a>
+      </div></div>`;
+    const mk=L.marker([p.lat,p.lng],{icon:mapObj._icon,title:p.name}).addTo(mapObj)
+      .bindPopup(html,{minWidth:264,maxWidth:280,className:"mpop-wrap"});
+    mapObj._byPartner[p.id]=mk;
+    return mk;
   });
+  // Своя точка — отдельным маркером, только если пользователь сам её разрешил
+  if(myPos){
+    if(mapObj._me)mapObj._me.remove();
+    mapObj._me=L.circleMarker([myPos.lat,myPos.lng],
+      {radius:8,fillColor:"#2C7BE5",color:"#fff",weight:3,fillOpacity:1}).addTo(mapObj).bindPopup("Вы здесь");
+    mapObj.setView([myPos.lat,myPos.lng],13,{animate:true});
+  }
 }
 function shopFromMap(name){
   curQuery=name.toLowerCase();

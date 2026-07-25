@@ -133,7 +133,57 @@
   .viewtgl{display:flex;gap:.2rem;background:var(--cream);padding:.2rem;border-radius:10px;}
   .viewtgl button{border:0;background:transparent;color:var(--txt2);font-weight:700;font-size:.76rem;padding:.32rem .7rem;border-radius:8px;}
   .viewtgl button.on{background:var(--card);color:var(--brown);box-shadow:0 1px 3px rgba(101,54,36,.15);}
-  #map{height:380px;border-radius:16px;box-shadow:0 0 0 1px var(--border) inset;z-index:1;}
+  #map{height:100%;min-height:380px;border-radius:20px;box-shadow:0 0 0 1px var(--border) inset;z-index:1;}
+  .sectools{display:flex;align-items:center;gap:.5rem;}
+  #sortBy{width:auto;font-size:.78rem;font-weight:700;color:var(--txt2);padding:.38rem 1.6rem .38rem .7rem;
+    border-radius:10px;background:var(--cream);border:0;box-shadow:0 0 0 1px var(--border) inset;cursor:pointer;
+    appearance:none;background-image:linear-gradient(45deg,transparent 50%,var(--txt2) 50%),
+      linear-gradient(135deg,var(--txt2) 50%,transparent 50%);
+    background-position:calc(100% - 15px) 52%,calc(100% - 10px) 52%;
+    background-size:5px 5px,5px 5px;background-repeat:no-repeat;}
+
+  /* Карта — сплит: слева прокручиваемый список боксов, справа липкая карта */
+  .storesplit{display:grid;grid-template-columns:360px 1fr;gap:1rem;align-items:start;}
+  .mapwrap{position:relative;height:min(74vh,660px);}
+  .msidebar{max-height:min(74vh,660px);overflow-y:auto;display:flex;flex-direction:column;gap:.55rem;
+    padding-right:.25rem;scrollbar-width:thin;}
+  .geobtn{position:absolute;right:.75rem;bottom:.75rem;z-index:400;background:var(--card);color:var(--ink);
+    border:0;border-radius:999px;padding:.55rem .9rem;font-size:.78rem;font-weight:700;
+    box-shadow:0 6px 18px oklch(22% .03 45/.22);}
+  .geobtn:hover{background:#fff;}
+  /* Попап-карточка точки на карте */
+  .mpop-wrap .leaflet-popup-content-wrapper{border-radius:18px;padding:0;overflow:hidden;
+    box-shadow:0 18px 44px oklch(22% .03 45/.28);}
+  .mpop-wrap .leaflet-popup-content{margin:0;width:auto!important;}
+  .mpop img{width:100%;height:112px;object-fit:cover;display:block;}
+  .mpop-b{padding:.7rem .8rem .8rem;font-family:inherit;}
+  .mpop-b b{font-size:.95rem;color:var(--ink);font-family:var(--font-h);}
+  .mpop-b .s{font-size:.8rem;color:var(--txt);margin-top:.1rem;}
+  .mpop-b .m{font-size:.72rem;color:var(--txt2);margin:.25rem 0 .4rem;}
+  .mpop-b .pr{display:flex;align-items:baseline;gap:.4rem;margin-bottom:.55rem;flex-wrap:nowrap;white-space:nowrap;}
+  .mpop-b .pr b{font-size:1.15rem;font-family:var(--font-h);}
+  .mpop-b .pr s{color:var(--txt2);font-size:.78rem;font-weight:400;}
+  .mpop-b .pr .dsc{color:var(--green);font-weight:800;font-size:.78rem;}
+  .mpop-cta{width:100%;background:var(--ink);border:0;padding:.6rem;border-radius:999px;font-weight:700;
+    color:var(--on-ink);cursor:pointer;font-family:inherit;font-size:.85rem;}
+  .mpop-cta:hover{background:var(--yellow-h);}
+  .mpop-b .n{font-size:.72rem;color:var(--txt2);text-align:center;margin-top:.35rem;}
+  .mpop-b a{display:block;text-align:center;margin-top:.4rem;font-size:.74rem;font-weight:700;}
+  /* Строка бокса в сайдбаре: фото, название, заведение, цена */
+  .mrow{display:flex;gap:.7rem;align-items:center;background:var(--card);border-radius:16px;padding:.55rem;
+    box-shadow:0 0 0 1px var(--border) inset;cursor:pointer;transition:box-shadow .15s,transform .15s var(--ease);}
+  .mrow:hover,.mrow.on{box-shadow:0 0 0 2px var(--accent) inset;transform:translateY(-1px);}
+  .mrow img{width:56px;height:56px;border-radius:12px;object-fit:cover;flex:none;}
+  .mrow .g{min-width:0;flex:1;}
+  .mrow b{display:block;font-size:.86rem;color:var(--ink);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+  .mrow .v{font-size:.74rem;color:var(--txt2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+  .mrow .p{font-size:.74rem;color:var(--txt2);margin-top:.15rem;}
+  .mrow .pr{font-family:var(--font-h);font-weight:800;font-size:.95rem;color:var(--ink);flex:none;}
+  @media(max-width:860px){
+    .storesplit{grid-template-columns:1fr;}
+    .mapwrap{height:340px;}
+    .msidebar{max-height:none;}
+  }
 
   /* ===== КАРТОЧКИ ===== */
   .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(255px,1fr));gap:1.1rem;}
@@ -620,9 +670,24 @@
       <div class="dists" id="districts"></div>
       <div class="sechead">
         <h2 id="listTitle">Боксы рядом</h2>
-        <div class="viewtgl"><button id="vList" class="on">Список</button><button id="vMap">Карта</button></div>
+        <div class="sectools">
+          <select id="sortBy" aria-label="Сортировать">
+            <option value="default">Сортировать</option>
+            <option value="cheap">Сначала дешёвые</option>
+            <option value="disc">Больше скидка</option>
+            <option value="soon">Скоро забирать</option>
+            <option value="near">Ближе ко мне</option>
+          </select>
+          <div class="viewtgl"><button id="vList" class="on">Список</button><button id="vMap">Карта</button></div>
+        </div>
       </div>
-      <div id="map" class="hidden"></div>
+      <div class="storesplit hidden" id="storeSplit">
+        <aside class="msidebar" id="mapList"></aside>
+        <div class="mapwrap">
+          <div id="map"></div>
+          <button class="geobtn" id="geoBtn">📍 Моё местоположение</button>
+        </div>
+      </div>
       <div class="grid" id="boxes"></div>
       <div class="hiw">
         <h2>Как это работает</h2>
