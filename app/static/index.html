@@ -43,7 +43,12 @@
   }
   h1,h2,h3,h4,.nm,.pageh,.code{font-family:var(--font-h);letter-spacing:-.02em;}
   *{box-sizing:border-box;}
-  body{margin:0;background:var(--bg);color:var(--txt);line-height:1.55;}
+  /* Декоративные формы лендинга намеренно выходят за контейнер. overflow-x:hidden
+     на body НЕ клиппит их (свойство пробрасывается на вьюпорт, body перестаёт быть
+     клиппером) — поэтому clip, он режет без создания скролл-контейнера. hidden
+     оставлен строкой выше как фолбэк для старых браузеров. */
+  html{overflow-x:hidden;overflow-x:clip;}
+  body{margin:0;background:var(--bg);color:var(--txt);line-height:1.55;overflow-x:hidden;overflow-x:clip;}
   :focus-visible{outline:3px solid var(--yellow);outline-offset:2px;border-radius:6px;}
   .skip{position:absolute;left:-9999px;top:0;background:var(--brown);color:#fff;padding:.6rem 1rem;
     border-radius:0 0 12px 0;z-index:100;font-weight:700;text-decoration:none;}
@@ -250,19 +255,60 @@
   .reveal.in{opacity:1;transform:none;}
   @media(prefers-reduced-motion:reduce){ .reveal{opacity:1;transform:none;transition:none;} }
   .on-landing .bnav{display:none;}
-  .lh{display:flex;align-items:center;gap:2.5rem;padding:3.2rem 0 2.4rem;min-height:62vh;}
-  .lh-txt{flex:1.1;min-width:0;}
-  .lh-txt h1{margin:.2rem 0 0;font-size:clamp(2.4rem,5.6vw,3.6rem);font-weight:800;color:var(--ink);line-height:1.04;}
-  .lh-txt p{margin:.9rem 0 0;font-size:1.02rem;color:var(--txt2);max-width:520px;}
-  .lh-img{flex:1;min-width:0;}
-  .lh-img img{width:100%;aspect-ratio:5/4;object-fit:cover;border-radius:28px;
-    box-shadow:0 24px 60px oklch(22% .03 45/.18);transform:rotate(1.5deg);}
-  @media(max-width:760px){ .lh{flex-direction:column;padding:2rem 0 1.6rem;min-height:0;} .lh-img{width:100%;} }
-  .l-stats{display:grid;grid-template-columns:repeat(3,1fr);gap:1rem;margin:1.4rem 0 0;}
-  @media(max-width:640px){ .l-stats{grid-template-columns:1fr;} }
-  .l-stats div{background:var(--card);border-radius:24px;box-shadow:0 0 0 1px var(--border) inset;padding:1.4rem 1.3rem;}
-  .l-stats b{display:block;font-family:var(--font-h);font-size:2.4rem;font-weight:800;color:var(--ink);letter-spacing:-.03em;}
+
+  /* Органический фон-«потёк»: декоративный слой, вне потока и вне a11y-дерева.
+     Формы выходят за контейнер — горизонтальный скролл гасим на body. */
+  #view-landing{position:relative;}
+  /* :not(.deco) — иначе id-селектор перебил бы position:absolute у слоя форм */
+  #view-landing>*:not(.deco){position:relative;z-index:1;}
+  .deco{position:absolute;inset:-2rem -50vw;z-index:0;pointer-events:none;overflow:hidden;}
+  .deco svg{position:absolute;display:block;}
+  .deco .b1{top:-6rem;right:44vw;width:52rem;opacity:.55;}
+  .deco .b2{top:26rem;left:44vw;width:44rem;opacity:.4;}
+  .deco .b3{top:74rem;right:46vw;width:40rem;opacity:.32;}
+  @media(max-width:760px){ .deco{display:none;} }
+
+  .lh{display:grid;grid-template-columns:1.05fr .95fr;align-items:center;gap:2.5rem;padding:3.6rem 0 3rem;min-height:64vh;}
+  .lh-txt{min-width:0;}
+  /* Крупнее контраст масштаба: заголовок задаёт тон всей странице */
+  .lh-txt h1{margin:.25rem 0 0;font-size:clamp(2.6rem,6.4vw,4.4rem);font-weight:800;color:var(--ink);
+    line-height:.98;letter-spacing:-.035em;}
+  .lh-txt p{margin:1.05rem 0 0;font-size:1.04rem;color:var(--txt2);max-width:480px;}
+  /* Фото-герой: органическая скруглённость + «чипы» с едой, ломающие рамку */
+  .lh-img{position:relative;min-width:0;}
+  .lh-img img.main{width:100%;aspect-ratio:4/3.4;object-fit:cover;
+    border-radius:56% 44% 52% 48%/48% 52% 46% 54%;
+    box-shadow:0 30px 70px oklch(22% .03 45/.22);}
+  .lh-chip{position:absolute;border-radius:50%;object-fit:cover;box-shadow:0 14px 34px oklch(22% .03 45/.26);
+    border:5px solid var(--bg);}
+  .lh-chip.c1{width:104px;height:104px;left:-2.6rem;top:14%;}
+  .lh-chip.c2{width:76px;height:76px;right:-1.4rem;bottom:16%;}
+  .lh-badge{position:absolute;left:-1.2rem;bottom:8%;background:var(--accent);color:#fff;font-weight:800;
+    font-family:var(--font-h);font-size:.92rem;letter-spacing:-.01em;padding:.6rem 1rem;border-radius:999px;
+    box-shadow:0 12px 30px oklch(66% .14 55/.42);}
+  @media(max-width:760px){
+    .lh{grid-template-columns:1fr;padding:2rem 0 1.6rem;min-height:0;}
+    .lh-img img.main{border-radius:32px;aspect-ratio:5/4;}
+    .lh-chip,.lh-badge{display:none;}
+  }
+
+  /* Стат-карточки: парят, с круглым иконочным бейджем, средняя — акцентная */
+  .l-stats{display:grid;grid-template-columns:repeat(3,1fr);gap:1.1rem;margin:2.4rem 0 0;}
+  @media(max-width:640px){ .l-stats{grid-template-columns:1fr;gap:1.6rem;} }
+  .l-stats div{position:relative;background:var(--card);border-radius:26px;padding:1.6rem 1.4rem 1.4rem;
+    box-shadow:0 14px 38px oklch(22% .03 45/.09),0 0 0 1px var(--border) inset;
+    transition:transform .25s var(--ease),box-shadow .25s var(--ease);}
+  .l-stats div:hover{transform:translateY(-4px);box-shadow:0 22px 50px oklch(22% .03 45/.15),0 0 0 1px var(--border) inset;}
+  .l-stats div .ic{position:absolute;top:-18px;right:20px;width:46px;height:46px;border-radius:50%;
+    display:grid;place-items:center;font-size:1.25rem;background:var(--cream);
+    box-shadow:0 8px 20px oklch(22% .03 45/.16);}
+  .l-stats b{display:block;font-family:var(--font-h);font-size:2.6rem;font-weight:800;color:var(--ink);letter-spacing:-.03em;}
   .l-stats span{font-size:.88rem;color:var(--txt2);}
+  /* Акцентом выделен главный оффер — цвет несёт смысл, а не декор */
+  .l-stats div.hl{background:var(--accent);box-shadow:0 18px 44px oklch(66% .14 55/.34);}
+  .l-stats div.hl b{color:#fff;}
+  .l-stats div.hl span{color:oklch(100% 0 0/.9);}
+  .l-stats div.hl .ic{background:oklch(100% 0 0/.9);}
   .l-sec{padding:3.4rem 0 0;}
   .l-sec h2{margin:.2rem 0 0;font-size:clamp(1.7rem,3.6vw,2.4rem);font-weight:800;color:var(--ink);line-height:1.1;}
   .l-sub{color:var(--txt2);max-width:560px;margin:.7rem 0 1.1rem;}
@@ -272,8 +318,21 @@
   .l-band p{margin:.4rem 0 0;color:oklch(97.2% .018 82/.75);font-size:.92rem;}
   .cta.light{background:var(--on-ink);color:var(--ink);flex:none;}
   .cta.light:hover{background:#fff;}
-  .l-regcard{max-width:460px;background:var(--card);border-radius:24px;box-shadow:0 0 0 1px var(--border) inset;
-    padding:1.5rem 1.5rem 1.6rem;margin-top:1.2rem;}
+  /* Регистрация — сплит: тёмная карточка-питч + форма (как в референсе) */
+  .l-regsplit{display:grid;grid-template-columns:1fr 1fr;gap:1.2rem;align-items:stretch;margin-top:1.2rem;}
+  @media(max-width:860px){ .l-regsplit{grid-template-columns:1fr;} }
+  .l-regpitch{background:var(--ink);color:var(--on-ink);border-radius:28px;padding:2.2rem 2rem;
+    display:flex;flex-direction:column;justify-content:center;}
+  .l-regpitch .caption{color:var(--accent);}
+  .l-regpitch h2{margin:.3rem 0 0;color:var(--on-ink);}
+  .l-regpitch p{margin:.9rem 0 0;color:oklch(97.2% .018 82/.72);font-size:.95rem;max-width:34ch;}
+  .l-perks{list-style:none;margin:1.3rem 0 0;padding:0;display:flex;flex-direction:column;gap:.6rem;}
+  .l-perks li{position:relative;padding-left:1.7rem;font-size:.9rem;color:oklch(97.2% .018 82/.86);}
+  .l-perks li::before{content:"";position:absolute;left:0;top:.42em;width:9px;height:9px;border-radius:50%;
+    background:var(--accent);box-shadow:0 0 0 4px oklch(66% .14 55/.22);}
+  .l-regcard{background:var(--card);border-radius:28px;
+    box-shadow:0 18px 44px oklch(22% .03 45/.1),0 0 0 1px var(--border) inset;
+    padding:1.7rem 1.6rem 1.8rem;}
   .roles2{display:flex;gap:.4rem;background:var(--cream);padding:.28rem;border-radius:999px;margin-bottom:1rem;}
   .roles2 button{flex:1;border:0;background:transparent;color:var(--txt2);font-weight:700;font-size:.86rem;
     padding:.55rem .6rem;border-radius:999px;transition:.15s;}
@@ -295,7 +354,8 @@
   .role-card .ic{font-size:1.9rem;flex:none;}
   .role-card .t{font-weight:800;color:var(--brown);font-size:1rem;}
   .role-card .d{font-size:.8rem;color:var(--txt2);margin-top:.1rem;}
-  .onb .guest{display:block;width:100%;text-align:center;background:0;border:0;color:var(--txt2);
+  /* .l-regcard тоже: та же форма живёт и в онбординге, и в сплите лендинга */
+  .onb .guest,.l-regcard .guest{display:block;width:100%;text-align:center;background:0;border:0;color:var(--txt2);
     font-size:.82rem;font-weight:600;margin-top:.4rem;text-decoration:underline;cursor:pointer;}
   .onb-back{background:0;border:0;color:var(--txt2);font-weight:700;font-size:.82rem;cursor:pointer;padding:0;margin-bottom:.3rem;}
   .ferr{display:block;color:var(--red);font-size:.74rem;font-weight:600;margin:.2rem 0 0 .1rem;min-height:.9rem;}
@@ -446,9 +506,25 @@
   <main>
     <!-- ===================== ЛЕНДИНГ (история → регистрация) ===================== -->
     <section id="view-landing" class="hidden">
+      <!-- Декоративные «потёки» крема и шоколада. aria-hidden: смысла не несут. -->
+      <div class="deco" aria-hidden="true">
+        <svg class="b1" viewBox="0 0 600 520" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <path d="M486 68c62 54 96 145 78 226-18 81-88 152-171 178-83 26-179 7-243-45C86 375 53 292 68 214 83 136 146 73 224 41c78-32 200-27 262 27Z" fill="oklch(88% .035 74)"/>
+        </svg>
+        <svg class="b2" viewBox="0 0 600 520" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <path d="M498 96c54 62 74 158 44 232-30 74-110 126-196 142-86 16-178-4-232-62-54-58-70-154-38-228 32-74 112-126 202-138 90-12 166 2 220 54Z" fill="oklch(94% .03 72)"/>
+        </svg>
+        <svg class="b3" viewBox="0 0 600 520" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <path d="M470 60c70 60 106 160 82 244-24 84-108 152-198 170-90 18-186-14-238-84-52-70-60-178-20-256 40-78 128-126 216-130 88-4 88 -4 158 56Z" fill="oklch(88% .05 66)"/>
+        </svg>
+      </div>
+
       <div class="lh">
         <div class="lh-txt reveal">
           <span class="caption">Астана · движение против выбрасывания еды</span>
+          <!-- Заголовок НЕ разбивать на узлы (<em>/<span>): i18n переводит каждый
+               текстовый узел отдельно, а в казахском глагол уходит в конец фразы —
+               пофрагментный перевод ломает грамматику (test_kz_coverage это ловит). -->
           <h1>Спасай свежую еду из любимых кофеен</h1>
           <p>К вечеру в кофейнях остаётся свежая выпечка. Раньше она отправлялась в мусор — теперь в сюрприз-боксы со скидкой до 70%.</p>
           <div class="cta-row">
@@ -456,13 +532,18 @@
             <button class="cta sec2" data-act="scrollTo" data-a1="#l-how">Как это работает ↓</button>
           </div>
         </div>
-        <div class="lh-img reveal"><img src="/static/img/hero.jpg" alt="Сюрприз-бокс Yummy" loading="eager" fetchpriority="high" /></div>
+        <div class="lh-img reveal">
+          <img class="main" src="/static/img/hero.jpg" alt="Сюрприз-бокс Yummy со свежей выпечкой" width="720" height="612" loading="eager" fetchpriority="high" />
+          <img class="lh-chip c1" src="/static/img/sweet.jpg" alt="" width="104" height="104" loading="lazy" />
+          <img class="lh-chip c2" src="/static/img/dessert.jpg" alt="" width="76" height="76" loading="lazy" />
+          <span class="lh-badge">до −70%</span>
+        </div>
       </div>
 
       <div class="l-stats reveal">
-        <div><b>⅓</b><span>еды в мире выбрасывается впустую</span></div>
-        <div><b>40%</b><span>вечерней выпечки кофейни списывают</span></div>
-        <div><b>−70%</b><span>твоя скидка на спасённый бокс</span></div>
+        <div><span class="ic" aria-hidden="true">🌍</span><b>⅓</b><span>еды в мире выбрасывается впустую</span></div>
+        <div class="hl"><span class="ic" aria-hidden="true">🥐</span><b>40%</b><span>вечерней выпечки кофейни списывают</span></div>
+        <div><span class="ic" aria-hidden="true">💸</span><b>−70%</b><span>твоя скидка на спасённый бокс</span></div>
       </div>
 
       <div id="l-how" class="l-sec reveal">
@@ -488,8 +569,17 @@
       </div>
 
       <div id="l-reg" class="l-sec reveal">
-        <span class="caption">Присоединяйся</span>
-        <h2>Создай аккаунт за 20 секунд</h2>
+        <div class="l-regsplit">
+        <div class="l-regpitch">
+          <span class="caption">Присоединяйся</span>
+          <h2>Создай аккаунт за 20 секунд</h2>
+          <p>К вечеру в любимых кофейнях остаётся свежая выпечка. Забирай её со скидкой — и ничего не пропадёт впустую.</p>
+          <ul class="l-perks">
+            <li>Бесплатно, без подписок и абонплаты</li>
+            <li>Оплата онлайн — код и QR сразу после оплаты</li>
+            <li>Забираешь в тот же вечер, рядом с домом</li>
+          </ul>
+        </div>
         <div class="l-regcard">
           <div class="roles2">
             <button id="lr-buyer" class="on" data-act="landRole" data-a1="buyer">🛍️ Я покупатель</button>
@@ -505,6 +595,7 @@
           <button class="btn" id="lrBtn" style="margin-top:.4rem">Зарегистрироваться</button>
           <button class="guest" data-act="openLogin">Уже есть аккаунт? Войти</button>
           <button class="guest" data-act="guestStore">Пропустить, просто осмотреться →</button>
+        </div>
         </div>
       </div>
     </section>
@@ -930,6 +1021,11 @@ const KZ={
 "Превращайте вечерние списания в выручку. Подключение бесплатно.":"Кешкі шығындарды табысқа айналдырыңыз. Қосылу тегін.",
 "Стать партнёром":"Серіктес болу","Присоединяйся":"Қосыл",
 "Создай аккаунт за 20 секунд":"20 секундта аккаунт құр",
+"К вечеру в любимых кофейнях остаётся свежая выпечка. Забирай её со скидкой — и ничего не пропадёт впустую.":"Кешке қарай сүйікті кофеханаларда жаңа нан-тоқаш қалады. Оны жеңілдікпен алып кет — ешнәрсе босқа кетпейді.",
+"Бесплатно, без подписок и абонплаты":"Тегін, жазылымсыз және абоненттік төлемсіз",
+"Оплата онлайн — код и QR сразу после оплаты":"Онлайн төлем — код пен QR төлемнен кейін бірден",
+"Забираешь в тот же вечер, рядом с домом":"Сол кештің өзінде, үйдің жанынан алып кетесің",
+"до −70%":"−70%-ға дейін",
 "Обновляем…":"Жаңартудамыз…","Оплата…":"Төлем…","Входим…":"Кіру…","Создаём аккаунт…":"Аккаунт құрудамыз…",
 "Это сюрприз-бокс из свежих остатков дня. В карточке каждого бокса есть примерный состав, но точное наполнение меняется — в этом и смысл выгодной цены.":"Бұл — күннің жаңа қалдықтарынан жасалған сюрприз-бокс. Әр бокстың карточкасында шамамен құрамы көрсетілген, бірақ нақты құрамы өзгеріп тұрады — тиімді бағаның мәні де осында.",
 "Нажми «Вернуть деньги» в «Моих заказах» или напиши в поддержку — если заказ не выдан по вине заведения, мы возвращаем полную сумму.":"«Менің тапсырыстарым» бөлімінде «Ақшаны қайтару» батырмасын бас немесе қолдауға жаз — тапсырыс мекеменің кінәсінен берілмесе, толық соманы қайтарамыз.",
