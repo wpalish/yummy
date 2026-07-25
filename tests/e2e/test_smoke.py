@@ -79,14 +79,17 @@ def test_catalog_renders_boxes(page, server):
 
 
 def test_booking_gives_pickup_code(page, server):
-    """Критический флоу покупателя: бокс → бронь → код выдачи YM-XXXX."""
+    """Критический флоу покупателя: бокс → экран оформления → код выдачи YM-XXXX."""
     _fresh(page, server)
     page.wait_for_selector(".boxc", timeout=10_000)
     page.locator(".boxc").first.click()
     page.wait_for_selector("#modal .mc", timeout=5_000)
-    page.fill("#oName", "E2E Тест")
-    page.fill("#oPhone", "+77010000001")
-    page.locator("#payBtn").click()
+    # оплата переехала из модалки на отдельный экран оформления
+    page.locator('[data-act="openCheckout"]').click()
+    page.wait_for_selector("#ckPay", timeout=5_000)
+    page.fill("#ckName", "E2E Тест")
+    page.fill("#ckPhone", "+77010000001")
+    page.locator("#ckPay").click()
     code_el = page.wait_for_selector("text=/YM-[A-Z0-9]{4}/", timeout=10_000)
     assert "YM-" in code_el.inner_text()
 

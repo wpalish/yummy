@@ -185,6 +185,33 @@
     .msidebar{max-height:none;}
   }
 
+  /* ===== ОФОРМЛЕНИЕ ЗАКАЗА ===== */
+  .ck-back{background:0;border:0;color:var(--txt2);font-weight:700;font-size:.84rem;padding:.4rem 0;margin-top:1rem;}
+  .ck-back:hover{color:var(--ink);}
+  .ckgrid{display:grid;grid-template-columns:1.15fr .85fr;gap:1.2rem;align-items:start;}
+  @media(max-width:860px){ .ckgrid{grid-template-columns:1fr;} }
+  .ckc{background:var(--card);border-radius:24px;padding:1.3rem 1.4rem;margin-bottom:1.1rem;
+    box-shadow:0 12px 32px oklch(22% .03 45/.07),0 0 0 1px var(--border) inset;}
+  .ckc h3{margin:0 0 .9rem;font-size:1.05rem;font-weight:800;color:var(--ink);}
+  /* Способ оплаты — плитки; у нас только Kaspi, чужие платёжные бренды не рисуем */
+  .paym{display:flex;gap:.7rem;flex-wrap:wrap;}
+  .paym label{display:flex;align-items:center;gap:.7rem;flex:1;min-width:190px;margin:0;cursor:pointer;
+    background:var(--cream);border-radius:16px;padding:.9rem 1rem;box-shadow:0 0 0 1px var(--border) inset;
+    transition:box-shadow .15s;font-size:.9rem;font-weight:700;color:var(--ink);}
+  .paym label:has(input:checked){box-shadow:0 0 0 2px var(--ink) inset;background:var(--card);}
+  .paym input{width:18px;height:18px;flex:none;accent-color:var(--ink);margin:0;}
+  .paym .pay-l{display:flex;align-items:center;gap:.5rem;}
+  .paym .kaspi{background:#F14635;color:#fff;font-weight:800;font-size:.72rem;padding:.2rem .5rem;border-radius:6px;}
+  .ck-pickup b{color:var(--ink);}
+  .ck-map{height:170px;border-radius:14px;margin-top:.7rem;box-shadow:0 0 0 1px var(--border) inset;}
+  /* Сводка заказа */
+  .cksum{position:sticky;top:5rem;}
+  .cksum .ph{width:100%;height:150px;object-fit:cover;border-radius:16px;margin-bottom:.9rem;}
+  .cksum .save{color:var(--green);font-weight:800;}
+  .ck-total{display:flex;justify-content:space-between;align-items:baseline;padding-top:.7rem;margin-top:.5rem;
+    border-top:1px solid var(--border);font-weight:800;color:var(--ink);}
+  .ck-total b{font-family:var(--font-h);font-size:1.4rem;}
+
   /* ===== ЛИЧНЫЙ КАБИНЕТ ===== */
   .acc{display:grid;grid-template-columns:220px 1fr;gap:1.4rem;align-items:start;margin-top:1.4rem;}
   .accnav{position:sticky;top:5rem;display:flex;flex-direction:column;gap:.25rem;background:var(--ink);
@@ -743,6 +770,13 @@
       <div id="myorders" style="margin-top:1.8rem"></div>
     </section>
 
+    <!-- ===================== ОФОРМЛЕНИЕ ЗАКАЗА ===================== -->
+    <section id="view-checkout" class="hidden">
+      <button class="ck-back" data-act="checkoutBack">← Назад к боксам</button>
+      <h1 class="pageh" style="margin:.4rem 0 1.2rem">Оформление заказа</h1>
+      <div class="ckgrid" id="ckBody"></div>
+    </section>
+
     <!-- ===================== ЛИЧНЫЙ КАБИНЕТ ===================== -->
     <section id="view-account" class="hidden">
       <div class="acc">
@@ -1001,6 +1035,8 @@ const ACT = {
   mapShop:         el => shopFromMap(el.dataset.name),
   openBox:         el => openBox(el.dataset.a1),
   unsaveVenue:     el => unsaveVenue(el.dataset.a1),
+  openCheckout:    el => openCheckout(el.dataset.a1),
+  checkoutBack:    () => checkoutBack(),
   cancelOrder:     el => cancelOrder(el.dataset.a1),
   userRefund:      el => userRefund(el.dataset.a1),
   showCode:        el => showCode(el.dataset.a1),
@@ -1140,6 +1176,10 @@ const KZ={
 "Превращайте вечерние списания в выручку. Подключение бесплатно.":"Кешкі шығындарды табысқа айналдырыңыз. Қосылу тегін.",
 "Стать партнёром":"Серіктес болу","Присоединяйся":"Қосыл",
 "Создай аккаунт за 20 секунд":"20 секундта аккаунт құр",
+"Оформление заказа":"Тапсырысты рәсімдеу","← Назад к боксам":"← Бокстарға оралу",
+"Способ оплаты":"Төлем тәсілі","Детали самовывоза":"Өзі алып кету мәліметтері",
+"Время выдачи":"Беру уақыты","Ваши контакты":"Сіздің байланыстарыңыз","Ваш заказ":"Сіздің тапсырысыңыз",
+"Цена бокса":"Бокс бағасы","Обычная стоимость":"Әдеттегі құны","Экономия":"Үнемдеу","Итого":"Барлығы",
 "▦ Дашборд":"▦ Дашборд","♡ Избранное":"♡ Таңдаулылар","⚙ Настройки":"⚙ Баптаулар",
 "🧾 Мои заказы":"🧾 Менің тапсырыстарым","Мой вклад":"Менің үлесім","Последние заказы":"Соңғы тапсырыстар",
 "№ заказа":"Тапсырыс №","Заведение":"Мекеме","Статус":"Мәртебе","Забрать":"Алу","Действие":"Әрекет",
@@ -1329,7 +1369,7 @@ function switchView(v){
     document.body.classList.toggle("on-landing",v==="landing");
     roleBtns.forEach(x=>x.classList.toggle("on",x.dataset.role===v));
     navBtns.forEach(x=>x.classList.toggle("on",x.dataset.nav===v));
-    ["landing","store","venues","partner","admin","account"].forEach(s=>$("#view-"+s).classList.toggle("hidden",s!==v));
+    ["landing","store","venues","partner","admin","account","checkout"].forEach(s=>$("#view-"+s).classList.toggle("hidden",s!==v));
     if(v==="store")loadStore(); if(v==="venues")loadVenues(); if(v==="partner")loadPartner(); if(v==="admin")loadAdmin();
     if(v==="account")loadAccount();
     window.scrollTo({top:0});
@@ -2055,6 +2095,97 @@ function shopFromMap(name){
   setTimeout(()=>$("#boxes").scrollIntoView({behavior:"smooth"}),150);
 }
 
+/* ============ ОФОРМЛЕНИЕ ЗАКАЗА ============ */
+/* Отдельный экран вместо тесной модалки: способ оплаты, детали самовывоза
+   с картой и сводка заказа. Способ оплаты — только тот, что реально работает
+   (Kaspi через ApiPay либо демо-оплата пилота); чужие платёжные бренды
+   (Visa/Mastercard/Google Pay) не рисуем — их у нас нет. */
+let CK_BOX=null, ckMap=null;
+
+window.checkoutBack=()=>switchView("store");
+async function openCheckout(boxId){
+  let b; try{ b=await get("/boxes/"+boxId); }catch(e){ toast(e.message,true); return; }
+  CK_BOX=b; closeModal(); switchView("checkout"); renderCheckout();
+}
+function renderCheckout(){
+  const b=CK_BOX; if(!b)return;
+  const saving=Math.max(0,b.value_est-b.price);
+  const acc=account()||{};
+  $("#ckBody").innerHTML=`
+    <div>
+      <div class="ckc">
+        <h3>Способ оплаты</h3>
+        <div class="paym">
+          ${APIPAY?`<label><input type="radio" name="paym" value="kaspi" checked>
+            <span class="pay-l"><span class="kaspi">Kaspi</span> Счёт в приложении</span></label>`
+          :`<label><input type="radio" name="paym" value="demo" checked>
+            <span class="pay-l">🧪 Демо-оплата пилота</span></label>`}
+        </div>
+        <p style="font-size:.76rem;color:var(--txt2);margin:.7rem 0 0">
+          ${APIPAY?"Счёт придёт в приложение Kaspi на ваш номер — подтвердите оплату там."
+                  :"Пилот: оплата тестовая, деньги не списываются. В продакшене — Kaspi."}</p>
+      </div>
+
+      <div class="ckc ck-pickup">
+        <h3>Детали самовывоза</h3>
+        <div style="font-size:.92rem"><b>${esc(b.partner_name)}</b></div>
+        <div style="font-size:.84rem;color:var(--txt2);margin:.15rem 0 .5rem">${esc(b.address)} · ${esc(b.district)}</div>
+        <div class="row"><span>Время выдачи</span><b>${win(b.pickup_from,b.pickup_to)}</b></div>
+        <div id="ckMap" class="ck-map"></div>
+        <a href="${gisUrl(b.partner_name,b.address)}" target="_blank" rel="noopener"
+          style="display:inline-block;margin-top:.6rem;font-size:.8rem;font-weight:700">🗺 Маршрут в 2ГИС →</a>
+      </div>
+
+      <div class="ckc">
+        <h3>Ваши контакты</h3>
+        <label>Имя <input id="ckName" placeholder="Как к вам обращаться" autocomplete="name" value="${esc(acc.name||"")}" /></label>
+        <label>Телефон <input id="ckPhone" placeholder="+7 7XX XXX XX XX" autocomplete="tel" value="${esc(acc.phone||"")}" /></label>
+        <span class="ferr" id="ckErr"></span>
+        <button class="btn" id="ckPay" style="margin-top:.6rem">Оплатить ${money(b.price)}</button>
+      </div>
+    </div>
+
+    <div class="cksum">
+      <div class="ckc">
+        <h3>Ваш заказ</h3>
+        <img class="ph" src="/static/img/${imgFor(b)}" alt="" loading="lazy">
+        <div style="font-weight:800;color:var(--ink)">${esc(b.title||b.category_ru)}</div>
+        <div style="font-size:.82rem;color:var(--txt2);margin-bottom:.7rem">${esc(b.partner_name)}</div>
+        <div class="row"><span>Цена бокса</span><b>${money(b.price)}</b></div>
+        <div class="row"><span>Обычная стоимость</span><s style="color:var(--txt2)">${money(b.value_est)}</s></div>
+        <div class="row"><span>Экономия</span><span class="save">−${money(saving)} (−${b.discount}%)</span></div>
+        <div class="ck-total"><span>Итого</span><b>${money(b.price)}</b></div>
+        <p style="font-size:.74rem;color:var(--txt2);margin:.8rem 0 0">
+          Сюрприз-бокс: точный состав может отличаться. Забрать нужно в окне самовывоза,
+          иначе заказ сгорает. Если заведение не выдаст — полный возврат.</p>
+      </div>
+    </div>`;
+  drawCkMap(b);
+  $("#ckPay").onclick=payCheckout;
+}
+function drawCkMap(b){
+  const el=$("#ckMap"); if(!el||typeof L==="undefined")return;
+  const g=PARTNER_GEO[b.partner_id]; if(!g)return;         // координаты только у партнёра
+  if(ckMap){ckMap.remove();ckMap=null;}
+  ckMap=L.map(el,{zoomControl:false,scrollWheelZoom:false}).setView([g.lat,g.lng],15);
+  L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png",{attribution:"© OpenStreetMap"}).addTo(ckMap);
+  L.marker([g.lat,g.lng]).addTo(ckMap);
+  setTimeout(()=>ckMap.invalidateSize(),120);
+}
+async function payCheckout(){
+  const b=CK_BOX, name=$("#ckName").value.trim(), phone=$("#ckPhone").value.trim();
+  if(!name||phone.length<5){$("#ckErr").textContent="Укажите имя и телефон";return;}
+  const btn=$("#ckPay"); btn.disabled=true; btn.textContent="Оплата…";
+  try{
+    const res=await post("/orders",{box_id:b.id,user_name:name,user_phone:phone});
+    saveCode(res.order.code);
+    const a=account(); if(a&&a.role==="buyer"&&!a.phone){a.phone=phone;setAccount(a);}
+    switchView("store");                 // витрину обновит loadStore, поверх — экран успеха
+    successScreen(res);
+  }catch(e){
+    $("#ckErr").textContent=e.message; btn.disabled=false; btn.textContent="Оплатить "+money(b.price);
+  }
+}
 /* ============ ЗАВЕДЕНИЯ (178 точек 6 сетей из 2GIS) ============ */
 let ALL_VENUES=null, curChain="all", curVDist="all", vmapObj=null, vmapMode=false;
 // logo — настоящий логотип бренда с его официального сайта (self-hosted).
@@ -2222,39 +2353,19 @@ async function openBox(id){
       <div class="row"><span>Осталось</span><span>${b.qty_left} из ${b.qty_total}</span></div>
       ${b.description?`<div class="inside"><b>Что обычно внутри:</b> ${esc(b.description)}</div>`:""}
       <div class="rules"><b>Сюрприз-бокс.</b> Точный состав может отличаться — это набор из свежих остатков дня. Забрать нужно в окне самовывоза, иначе заказ сгорает (предоплата не возвращается). Если заведение не выдаст — полный возврат.</div>
-      ${CAN_BUY?`<label>Ваше имя <input id="oName" placeholder="Имя" /></label>
-      <label>Телефон <input id="oPhone" placeholder="+7 7XX XXX XX XX" /></label>
-      <button class="btn" id="payBtn" style="margin-top:.8rem">${APIPAY?"Оплатить через Kaspi":"Оплатить"} ${money(b.price)}</button>
-      <div id="kaspiSlot"></div>`
+      ${CAN_BUY?`<button class="btn" data-act="openCheckout" data-a1="${esc(b.id)}" style="margin-top:.8rem">Оформить заказ · ${money(b.price)}</button>`
       :`<div class="rules" style="border-color:var(--red)"><b>Покупка пока недоступна.</b> Заведение ещё не подключило приём платежей — как только подключит, бокс можно будет оплатить и забрать.</div>`}
       <button class="btn sec" id="shareBtn" style="margin-top:.5rem">🔗 Поделиться боксом</button>
       ${DEMO_PAY?`<div class="demo-pay">💳 Демо-оплата. В продакшене — Kaspi Pay / Kaspi QR.</div>`:""}
       ${APIPAY?`<div class="demo-pay">💳 Счёт придёт в приложение Kaspi на ваш номер — подтвердите оплату там.</div>`:""}
     </div>`);
-  const acc=account();  // зарегистрированному покупателю подставляем имя/телефон
-  if(CAN_BUY&&acc&&acc.role==="buyer"){ if(acc.name)$("#oName").value=acc.name; if(acc.phone)$("#oPhone").value=acc.phone; }
-  if(DEMO_PAY&&KASPI_SERVICE_ID){ // включается автоматически, когда появится service_id мерчанта
-    $("#kaspiSlot").innerHTML=`<a href="https://kaspi.kz/pay/${encodeURIComponent(KASPI_SERVICE_ID)}?amount=${b.price}"
-      style="display:block;text-align:center;background:#F14635;color:#fff;font-weight:800;padding:.8rem 1rem;border-radius:13px;margin-top:.5rem;text-decoration:none">Оплатить через Kaspi</a>`;
-  }
   $("#shareBtn").onclick=async()=>{
     const url=location.origin+location.pathname+"?box="+encodeURIComponent(b.id);
     const data={title:"Yummy — "+(b.title||b.partner_name),text:`${b.title||b.partner_name} за ${money(b.price)} (скидка −${b.discount}%) в ${b.partner_name}`,url};
     try{ if(navigator.share){await navigator.share(data);} else {await navigator.clipboard.writeText(url);toast("Ссылка скопирована 🔗");} }
     catch(e){ try{await navigator.clipboard.writeText(url);toast("Ссылка скопирована 🔗");}catch(_){toast(url);} }
   };
-  if(!CAN_BUY)return;    // покупка недоступна — кнопки оплаты нет
-  $("#payBtn").onclick=async()=>{
-    const name=$("#oName").value.trim(), phone=$("#oPhone").value.trim();
-    if(!name||phone.length<5){toast("Укажите имя и телефон",true);return;}
-    $("#payBtn").disabled=true;$("#payBtn").textContent="Оплата…";
-    try{
-      const res=await post("/orders",{box_id:b.id,user_name:name,user_phone:phone});
-      saveCode(res.order.code);
-      const a=account(); if(a&&a.role==="buyer"&&!a.phone){a.phone=phone;setAccount(a);}  // запомнить телефон
-      successScreen(res);
-    }catch(e){toast(e.message,true);$("#payBtn").disabled=false;$("#payBtn").textContent="Оплатить "+money(b.price);}
-  };
+  // оплата переехала на отдельный экран оформления (55-checkout.js)
 }
 function successScreen(res){
   const o=res.order;

@@ -165,39 +165,19 @@ async function openBox(id){
       <div class="row"><span>Осталось</span><span>${b.qty_left} из ${b.qty_total}</span></div>
       ${b.description?`<div class="inside"><b>Что обычно внутри:</b> ${esc(b.description)}</div>`:""}
       <div class="rules"><b>Сюрприз-бокс.</b> Точный состав может отличаться — это набор из свежих остатков дня. Забрать нужно в окне самовывоза, иначе заказ сгорает (предоплата не возвращается). Если заведение не выдаст — полный возврат.</div>
-      ${CAN_BUY?`<label>Ваше имя <input id="oName" placeholder="Имя" /></label>
-      <label>Телефон <input id="oPhone" placeholder="+7 7XX XXX XX XX" /></label>
-      <button class="btn" id="payBtn" style="margin-top:.8rem">${APIPAY?"Оплатить через Kaspi":"Оплатить"} ${money(b.price)}</button>
-      <div id="kaspiSlot"></div>`
+      ${CAN_BUY?`<button class="btn" data-act="openCheckout" data-a1="${esc(b.id)}" style="margin-top:.8rem">Оформить заказ · ${money(b.price)}</button>`
       :`<div class="rules" style="border-color:var(--red)"><b>Покупка пока недоступна.</b> Заведение ещё не подключило приём платежей — как только подключит, бокс можно будет оплатить и забрать.</div>`}
       <button class="btn sec" id="shareBtn" style="margin-top:.5rem">🔗 Поделиться боксом</button>
       ${DEMO_PAY?`<div class="demo-pay">💳 Демо-оплата. В продакшене — Kaspi Pay / Kaspi QR.</div>`:""}
       ${APIPAY?`<div class="demo-pay">💳 Счёт придёт в приложение Kaspi на ваш номер — подтвердите оплату там.</div>`:""}
     </div>`);
-  const acc=account();  // зарегистрированному покупателю подставляем имя/телефон
-  if(CAN_BUY&&acc&&acc.role==="buyer"){ if(acc.name)$("#oName").value=acc.name; if(acc.phone)$("#oPhone").value=acc.phone; }
-  if(DEMO_PAY&&KASPI_SERVICE_ID){ // включается автоматически, когда появится service_id мерчанта
-    $("#kaspiSlot").innerHTML=`<a href="https://kaspi.kz/pay/${encodeURIComponent(KASPI_SERVICE_ID)}?amount=${b.price}"
-      style="display:block;text-align:center;background:#F14635;color:#fff;font-weight:800;padding:.8rem 1rem;border-radius:13px;margin-top:.5rem;text-decoration:none">Оплатить через Kaspi</a>`;
-  }
   $("#shareBtn").onclick=async()=>{
     const url=location.origin+location.pathname+"?box="+encodeURIComponent(b.id);
     const data={title:"Yummy — "+(b.title||b.partner_name),text:`${b.title||b.partner_name} за ${money(b.price)} (скидка −${b.discount}%) в ${b.partner_name}`,url};
     try{ if(navigator.share){await navigator.share(data);} else {await navigator.clipboard.writeText(url);toast("Ссылка скопирована 🔗");} }
     catch(e){ try{await navigator.clipboard.writeText(url);toast("Ссылка скопирована 🔗");}catch(_){toast(url);} }
   };
-  if(!CAN_BUY)return;    // покупка недоступна — кнопки оплаты нет
-  $("#payBtn").onclick=async()=>{
-    const name=$("#oName").value.trim(), phone=$("#oPhone").value.trim();
-    if(!name||phone.length<5){toast("Укажите имя и телефон",true);return;}
-    $("#payBtn").disabled=true;$("#payBtn").textContent="Оплата…";
-    try{
-      const res=await post("/orders",{box_id:b.id,user_name:name,user_phone:phone});
-      saveCode(res.order.code);
-      const a=account(); if(a&&a.role==="buyer"&&!a.phone){a.phone=phone;setAccount(a);}  // запомнить телефон
-      successScreen(res);
-    }catch(e){toast(e.message,true);$("#payBtn").disabled=false;$("#payBtn").textContent="Оплатить "+money(b.price);}
-  };
+  // оплата переехала на отдельный экран оформления (55-checkout.js)
 }
 function successScreen(res){
   const o=res.order;

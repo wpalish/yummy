@@ -185,6 +185,33 @@
     .msidebar{max-height:none;}
   }
 
+  /* ===== ОФОРМЛЕНИЕ ЗАКАЗА ===== */
+  .ck-back{background:0;border:0;color:var(--txt2);font-weight:700;font-size:.84rem;padding:.4rem 0;margin-top:1rem;}
+  .ck-back:hover{color:var(--ink);}
+  .ckgrid{display:grid;grid-template-columns:1.15fr .85fr;gap:1.2rem;align-items:start;}
+  @media(max-width:860px){ .ckgrid{grid-template-columns:1fr;} }
+  .ckc{background:var(--card);border-radius:24px;padding:1.3rem 1.4rem;margin-bottom:1.1rem;
+    box-shadow:0 12px 32px oklch(22% .03 45/.07),0 0 0 1px var(--border) inset;}
+  .ckc h3{margin:0 0 .9rem;font-size:1.05rem;font-weight:800;color:var(--ink);}
+  /* Способ оплаты — плитки; у нас только Kaspi, чужие платёжные бренды не рисуем */
+  .paym{display:flex;gap:.7rem;flex-wrap:wrap;}
+  .paym label{display:flex;align-items:center;gap:.7rem;flex:1;min-width:190px;margin:0;cursor:pointer;
+    background:var(--cream);border-radius:16px;padding:.9rem 1rem;box-shadow:0 0 0 1px var(--border) inset;
+    transition:box-shadow .15s;font-size:.9rem;font-weight:700;color:var(--ink);}
+  .paym label:has(input:checked){box-shadow:0 0 0 2px var(--ink) inset;background:var(--card);}
+  .paym input{width:18px;height:18px;flex:none;accent-color:var(--ink);margin:0;}
+  .paym .pay-l{display:flex;align-items:center;gap:.5rem;}
+  .paym .kaspi{background:#F14635;color:#fff;font-weight:800;font-size:.72rem;padding:.2rem .5rem;border-radius:6px;}
+  .ck-pickup b{color:var(--ink);}
+  .ck-map{height:170px;border-radius:14px;margin-top:.7rem;box-shadow:0 0 0 1px var(--border) inset;}
+  /* Сводка заказа */
+  .cksum{position:sticky;top:5rem;}
+  .cksum .ph{width:100%;height:150px;object-fit:cover;border-radius:16px;margin-bottom:.9rem;}
+  .cksum .save{color:var(--green);font-weight:800;}
+  .ck-total{display:flex;justify-content:space-between;align-items:baseline;padding-top:.7rem;margin-top:.5rem;
+    border-top:1px solid var(--border);font-weight:800;color:var(--ink);}
+  .ck-total b{font-family:var(--font-h);font-size:1.4rem;}
+
   /* ===== ЛИЧНЫЙ КАБИНЕТ ===== */
   .acc{display:grid;grid-template-columns:220px 1fr;gap:1.4rem;align-items:start;margin-top:1.4rem;}
   .accnav{position:sticky;top:5rem;display:flex;flex-direction:column;gap:.25rem;background:var(--ink);
@@ -741,6 +768,13 @@
         <a class="cta" href="mailto:alisher.nursain@gmail.com?subject=Yummy%3A%20предлагаю%20заведение">Предложить заведение</a>
       </div>
       <div id="myorders" style="margin-top:1.8rem"></div>
+    </section>
+
+    <!-- ===================== ОФОРМЛЕНИЕ ЗАКАЗА ===================== -->
+    <section id="view-checkout" class="hidden">
+      <button class="ck-back" data-act="checkoutBack">← Назад к боксам</button>
+      <h1 class="pageh" style="margin:.4rem 0 1.2rem">Оформление заказа</h1>
+      <div class="ckgrid" id="ckBody"></div>
     </section>
 
     <!-- ===================== ЛИЧНЫЙ КАБИНЕТ ===================== -->
