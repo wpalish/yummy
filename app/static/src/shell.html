@@ -185,6 +185,45 @@
     .msidebar{max-height:none;}
   }
 
+  /* ===== ЛИЧНЫЙ КАБИНЕТ ===== */
+  .acc{display:grid;grid-template-columns:220px 1fr;gap:1.4rem;align-items:start;margin-top:1.4rem;}
+  .accnav{position:sticky;top:5rem;display:flex;flex-direction:column;gap:.25rem;background:var(--ink);
+    border-radius:22px;padding:.7rem;}
+  .accnav button{text-align:left;border:0;background:transparent;color:oklch(97.2% .018 82/.72);
+    font-weight:700;font-size:.88rem;padding:.7rem .85rem;border-radius:14px;transition:.15s;}
+  .accnav button:hover{background:oklch(97.2% .018 82/.1);color:var(--on-ink);}
+  .accnav button.on{background:var(--on-ink);color:var(--ink);}
+  .acch{margin:0 0 .9rem;font-family:var(--font-h);font-size:1.5rem;font-weight:800;color:var(--ink);letter-spacing:-.02em;}
+  /* «Мой вклад» — крупные карточки с круглой иконкой */
+  .impact{display:grid;grid-template-columns:1fr 1fr;gap:1rem;margin-bottom:1.8rem;}
+  /* Прямые потомки: иначе стиль карточки достаётся и вложенному блоку с текстом */
+  .impact>div{display:flex;align-items:center;gap:1rem;background:var(--card);border-radius:22px;padding:1.3rem;
+    box-shadow:0 12px 32px oklch(22% .03 45/.08),0 0 0 1px var(--border) inset;}
+  .impact .ic{width:56px;height:56px;border-radius:50%;display:grid;place-items:center;font-size:1.6rem;
+    background:var(--cream);flex:none;}
+  .impact b{display:block;font-family:var(--font-h);font-size:1.9rem;font-weight:800;color:var(--ink);
+    letter-spacing:-.03em;white-space:nowrap;}
+  .impact span{font-size:.84rem;color:var(--txt2);}
+  @media(max-width:860px){ .acc{grid-template-columns:1fr;} .accnav{position:static;flex-direction:row;overflow-x:auto;}
+    .accnav button{white-space:nowrap;} .impact{grid-template-columns:1fr;} }
+  /* Таблица заказов */
+  .otable{width:100%;border-collapse:collapse;font-size:.86rem;}
+  .otable th{text-align:left;font-size:.72rem;text-transform:uppercase;letter-spacing:.05em;color:var(--txt2);
+    font-weight:800;padding:.6rem .7rem;border-bottom:1px solid var(--border);}
+  .otable td{padding:.75rem .7rem;border-bottom:1px solid var(--border);vertical-align:middle;}
+  .otable tr:last-child td{border-bottom:0;}
+  .otable .cd{font-weight:800;color:var(--ink);font-family:var(--font-h);}
+  .otwrap{background:var(--card);border-radius:22px;padding:.5rem .6rem;overflow-x:auto;
+    box-shadow:0 0 0 1px var(--border) inset;}
+  /* Сохранённые заведения */
+  .savg{display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:1rem;}
+  .savc{position:relative;border-radius:20px;overflow:hidden;background:var(--card);
+    box-shadow:0 0 0 1px var(--border) inset;}
+  .savc img{width:100%;height:128px;object-fit:cover;}
+  .savc .n{display:flex;align-items:center;justify-content:space-between;gap:.5rem;padding:.7rem .8rem;}
+  .savc .n b{font-size:.9rem;color:var(--ink);}
+  .savc .hb{background:0;border:0;font-size:1.15rem;color:var(--red);cursor:pointer;line-height:1;}
+
   /* ===== КАРТОЧКИ ===== */
   .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(255px,1fr));gap:1.1rem;}
   @media(max-width:560px){ .grid{grid-template-columns:repeat(2,1fr);gap:.75rem;} }
@@ -702,6 +741,19 @@
         <a class="cta" href="mailto:alisher.nursain@gmail.com?subject=Yummy%3A%20предлагаю%20заведение">Предложить заведение</a>
       </div>
       <div id="myorders" style="margin-top:1.8rem"></div>
+    </section>
+
+    <!-- ===================== ЛИЧНЫЙ КАБИНЕТ ===================== -->
+    <section id="view-account" class="hidden">
+      <div class="acc">
+        <nav class="accnav" aria-label="Разделы кабинета">
+          <button class="on" data-tab="dash">▦ Дашборд</button>
+          <button data-tab="orders">🧾 Мои заказы</button>
+          <button data-tab="favs">♡ Избранное</button>
+          <button data-tab="settings">⚙ Настройки</button>
+        </nav>
+        <div class="accbody" id="accBody"></div>
+      </div>
     </section>
 
     <!-- ===================== ЗАВЕДЕНИЯ (Uber-Eats-style) ===================== -->

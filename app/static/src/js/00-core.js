@@ -54,6 +54,7 @@ const ACT = {
   csvPartner:      el => downloadCsv(`/partners/${el.dataset.a1}/orders.csv`,"yummy-orders.csv"),
   mapShop:         el => shopFromMap(el.dataset.name),
   openBox:         el => openBox(el.dataset.a1),
+  unsaveVenue:     el => unsaveVenue(el.dataset.a1),
   cancelOrder:     el => cancelOrder(el.dataset.a1),
   userRefund:      el => userRefund(el.dataset.a1),
   showCode:        el => showCode(el.dataset.a1),

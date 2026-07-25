@@ -30,8 +30,9 @@ function switchView(v){
     document.body.classList.toggle("on-landing",v==="landing");
     roleBtns.forEach(x=>x.classList.toggle("on",x.dataset.role===v));
     navBtns.forEach(x=>x.classList.toggle("on",x.dataset.nav===v));
-    ["landing","store","venues","partner","admin"].forEach(s=>$("#view-"+s).classList.toggle("hidden",s!==v));
+    ["landing","store","venues","partner","admin","account"].forEach(s=>$("#view-"+s).classList.toggle("hidden",s!==v));
     if(v==="store")loadStore(); if(v==="venues")loadVenues(); if(v==="partner")loadPartner(); if(v==="admin")loadAdmin();
+    if(v==="account")loadAccount();
     window.scrollTo({top:0});
     if(v==="landing")setTimeout(revealCheck,60);
   };
@@ -45,6 +46,6 @@ navBtns.forEach(b=>b.onclick=()=>{
     navBtns.forEach(x=>x.classList.toggle("on",x===b));return;}
   switchView(n);
 });
-function gotoOrders(){switchView("store");setTimeout(()=>$("#myorders").scrollIntoView({behavior:"smooth"}),250);}
+function gotoOrders(){switchView("account");}
 function scrollToBoxes(){$("#boxes").scrollIntoView({behavior:"smooth",block:"start"});}
 

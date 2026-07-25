@@ -53,7 +53,8 @@ function venuesFiltered(){
   if(curVDist!=="all")vs=vs.filter(v=>v.district===curVDist);
   return vs;
 }
-const VENUE_PHOTOS=["coffee.jpg","bakery.jpg","dessert.jpg","bread.jpg","sweet.jpg","mixed.jpg"];
+// coffee.jpg убран: это был комп-файл Shutterstock с водяными знаками (нелицензионный).
+const VENUE_PHOTOS=["bakery.jpg","dessert.jpg","bread.jpg","sweet.jpg","mixed.jpg","snack.jpg"];
 function venuePhoto(v){ // детерминированное фото по id — стабильно между рендерами
   let h=0; for(const ch of v.id)h=(h*31+ch.charCodeAt(0))>>>0;
   return "/static/img/"+VENUE_PHOTOS[h%VENUE_PHOTOS.length];
