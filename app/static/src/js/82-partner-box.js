@@ -52,7 +52,12 @@ window.downloadCsv=async(url,filename)=>{
   try{
     const base=(typeof API_BASE!=="undefined"?API_BASE:"");
     const r=await fetch(base+url,{headers:a&&a.token?{"Authorization":"Bearer "+a.token}:{}});
-    if(!r.ok)throw new Error(r.status===401||r.status===403?"Нет доступа":"Не удалось выгрузить");
+    if(!r.ok){
+      // сервер шлёт понятный detail (напр. «Для админа обязательна 2FA…») —
+      // без него кнопка выглядела бы просто сломанной
+      let d;try{d=await r.json();}catch(e){}
+      throw new Error((d&&d.detail)||(r.status===401||r.status===403?"Нет доступа":"Не удалось выгрузить ("+r.status+")"));
+    }
     const blob=await r.blob(), link=document.createElement("a");
     link.href=URL.createObjectURL(blob); link.download=filename;
     document.body.appendChild(link); link.click(); link.remove();

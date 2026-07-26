@@ -45,3 +45,14 @@ def test_inline_js_parses(page, tmp_path):
     js.write_text(_inline_js(ROOT / page), encoding="utf-8")
     r = subprocess.run(["node", "--check", str(js)], capture_output=True, text=True)
     assert r.returncode == 0, f"{page}: SyntaxError в инлайн-JS:\n{r.stderr[:1500]}"
+
+
+def test_download_csv_shows_server_detail():
+    """403 от admin-эндпоинта (напр. «обязательна 2FA») должен долетать в toast,
+    а не превращаться в немую кнопку с общим «Нет доступа»."""
+    src = (ROOT / "app/static/src/js/82-partner-box.js").read_text(encoding="utf-8")
+    body = src.split("window.downloadCsv=", 1)[1]
+    assert "d.detail" in body, "downloadCsv не читает detail из тела ошибки"
+
+    built = (ROOT / "app/static/index.html").read_text(encoding="utf-8")
+    assert "window.downloadCsv=" in built and "d.detail" in built
