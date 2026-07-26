@@ -45,7 +45,7 @@ async function loadVenues(){
     .concat(dists.map(d=>`<button class="dist${curVDist===d?" on":""}" data-d="${esc(d)}">${esc(d)} · ${pool.filter(v=>v.district===d).length}</button>`)).join("");
   document.querySelectorAll("#vDistricts .dist").forEach(b=>b.onclick=()=>{curVDist=b.dataset.d;loadVenues();});
   renderVenues();
-  if(vmapMode)renderVMap();
+  if(vmapMode){renderVMapList();renderVMap();}
 }
 function venuesFiltered(){
   let vs=ALL_VENUES||[];
@@ -91,8 +91,60 @@ function renderVenues(){
   if(curVDist!=="all"){list.style.display="grid";}
   document.querySelectorAll(".vcard").forEach(el=>el.onclick=()=>openVenue(el.dataset.id));
 }
-$("#vvList").onclick=()=>{vmapMode=false;$("#vvList").classList.add("on");$("#vvMap").classList.remove("on");$("#vmap").classList.add("hidden");$("#venueList").classList.remove("hidden");};
-$("#vvMap").onclick=()=>{vmapMode=true;$("#vvMap").classList.add("on");$("#vvList").classList.remove("on");$("#venueList").classList.add("hidden");$("#vmap").classList.remove("hidden");renderVMap();};
+$("#vvList").onclick=()=>{vmapMode=false;$("#vvList").classList.add("on");$("#vvMap").classList.remove("on");
+  $("#venueSplit").classList.add("hidden");$("#venueList").classList.remove("hidden");};
+$("#vvMap").onclick=()=>{vmapMode=true;$("#vvMap").classList.add("on");$("#vvList").classList.remove("on");
+  $("#venueList").classList.add("hidden");$("#venueSplit").classList.remove("hidden");renderVMapList();renderVMap();};
+$("#vGeoBtn").onclick=()=>{ askGeo(); };
+/* расстояние до заведения (координаты у заведения — lat/lon, не lat/lng) */
+function venueDist(v){
+  if(!myPos||v.lat==null||v.lon==null)return null;
+  return distKm(myPos,{lat:v.lat,lng:v.lon});
+}
+function venueDistLabel(v){
+  const d=venueDist(v);
+  return d==null?"":(d<1?Math.round(d*1000)+" м":d.toFixed(1)+" км");
+}
+/* Список заведений рядом с картой; клик по строке наводит карту на точку. */
+function renderVMapList(){
+  const vs=venuesFiltered(), el=$("#vMapList"); if(!el)return;
+  if(!vs.length){el.innerHTML='<p class="empty">Ничего не нашлось.</p>';return;}
+  const sorted=myPos?[...vs].sort((a,b)=>(venueDist(a)??1e9)-(venueDist(b)??1e9)):vs;
+  el.innerHTML=sorted.slice(0,120).map(v=>{
+    const d=venueDistLabel(v);
+    return `<article class="mrow" data-id="${esc(v.id)}">
+      <img src="${venuePhoto(v)}" alt="" loading="lazy" width="56" height="56">
+      <div class="g"><b>${esc(v.chain)}</b>
+        <span class="v">${esc(v.addr)}</span>
+        <div class="p">📍 ${esc(v.district)}${d?" · "+d:""}${v.rating?" · ⭐ "+v.rating:""}</div></div>
+    </article>`;
+  }).join("");
+  el.querySelectorAll(".mrow").forEach(r=>r.onclick=()=>{
+    el.querySelectorAll(".mrow").forEach(x=>x.classList.remove("on"));
+    r.classList.add("on"); focusVenueOnMap(r.dataset.id);
+  });
+}
+function focusVenueOnMap(id){
+  if(!vmapObj||!vmapObj._byId)return;
+  const mk=vmapObj._byId[id]; if(!mk)return;
+  vmapObj.setView(mk.getLatLng(),16,{animate:true}); mk.openPopup();
+}
+/* Карточка заведения в попапе. Честно: это точки из 2ГИС, они ещё НЕ партнёры —
+   цен и брони у них нет, поэтому CTA — «позвать заведение», а не «Забронировать». */
+function venuePopupHtml(v){
+  const m=CHAIN_META[v.chain]||{};
+  const d=venueDistLabel(v);
+  return `<div class="mpop">
+    <img src="${venuePhoto(v)}" alt="" loading="lazy">
+    <div class="mpop-b">
+      <b>${esc(v.chain)}</b>
+      <div class="s">${esc(v.addr)}</div>
+      <div class="m">${v.rating?`⭐ ${v.rating}${v.reviews?` (${v.reviews}+)`:""} · `:""}${esc(v.district)}${d?" · "+d:""}</div>
+      <div class="vnote">Заведение ещё не в Yummy — боксов пока нет</div>
+      <button class="mpop-cta" data-act="callVenue" data-a1="${esc(v.id)}">📣 Хочу боксы отсюда</button>
+      <a href="https://2gis.kz/astana/firm/${esc(v.id)}" target="_blank" rel="noopener">🗺 Открыть в 2ГИС</a>
+    </div></div>`;
+}
 function renderVMap(){
   const vs=venuesFiltered();
   if(!vmapObj){
@@ -101,12 +153,22 @@ function renderVMap(){
   }
   setTimeout(()=>vmapObj.invalidateSize(),80);
   if(vmapObj._mk)vmapObj._mk.forEach(m=>m.remove());
+  vmapObj._byId={};
   vmapObj._mk=vs.map(v=>{
-    const color=(CHAIN_META[v.chain]&&CHAIN_META[v.chain].color)||"#6F4E37";
-    const mk=L.circleMarker([v.lat,v.lon],{radius:6,fillColor:color,color:"#fff",weight:1.5,fillOpacity:.9}).addTo(vmapObj);
-    mk.bindPopup(`<b>${esc(v.chain)}</b><br>${esc(v.addr)}<br>${esc(v.district)}${v.rating?" · ⭐ "+v.rating:""}<br><button data-act="openVenue" data-a1="${v.id}" style="margin-top:6px;width:100%;background:oklch(22% .03 45);border:0;padding:7px;border-radius:999px;font-weight:700;color:oklch(97% .018 82);cursor:pointer">Подробнее</button>`);
+    const m=CHAIN_META[v.chain]||{};
+    const inner=m.logo?`<img src="${m.logo}" alt="">`:`<span>${m.ic||"☕"}</span>`;
+    const icon=L.divIcon({html:`<div class="vpin">${inner}</div>`,className:"",
+                          iconSize:[38,38],iconAnchor:[19,38],popupAnchor:[0,-34]});
+    const mk=L.marker([v.lat,v.lon],{icon,title:v.chain}).addTo(vmapObj)
+      .bindPopup(venuePopupHtml(v),{minWidth:250,maxWidth:270,className:"mpop-wrap"});
+    vmapObj._byId[v.id]=mk;
     return mk;
   });
+  if(myPos){
+    if(vmapObj._me)vmapObj._me.remove();
+    vmapObj._me=L.circleMarker([myPos.lat,myPos.lng],
+      {radius:8,fillColor:"#2C7BE5",color:"#fff",weight:3,fillOpacity:1}).addTo(vmapObj).bindPopup("Вы здесь");
+  }
   if(vs.length){const g=L.featureGroup(vmapObj._mk); try{vmapObj.fitBounds(g.getBounds().pad(0.1));}catch(e){}}
 }
 const CAT_EMO={sweet:"🍩",bakery:"🥐",mixed:"🧺",snack:"🥪"};
