@@ -455,7 +455,15 @@ async def apipay_webhook(request: HttpRequest) -> dict:
     inv = payload.get("invoice") or {}
     if payload.get("event") == "invoice.status_changed" and inv.get("status") == "paid":
         order = store.confirm_payment_by_invoice(str(inv.get("id")))
-        if order:
+        if order and order.status in ("cancelled", "expired"):
+            # ПОЗДНЯЯ ОПЛАТА: резерв уже сняли по таймауту (release_expired_pending),
+            # бокс мог уйти другому покупателю — а деньги пришли. Факт оплаты
+            # фиксируем (payment_status=paid, иначе потеряем поступление), но
+            # комиссию НЕ начисляем: сумму придётся возвращать покупателю.
+            log.warning("audit: apipay ПОЗДНЯЯ оплата отменённого заказа order=%s "
+                        "invoice=%s сумма=%s status=%s — ТРЕБУЕТСЯ ВОЗВРАТ",
+                        order.id, inv.get("id"), order.price, order.status)
+        elif order:
             store.accrue_commission(_new("cl"), order)   # комиссия при реальной оплате
             log.info("audit: apipay paid order=%s invoice=%s", order.id, inv.get("id"))
         else:

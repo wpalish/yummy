@@ -174,3 +174,32 @@ def test_webhook_paid_confirms_order_and_accrues(env, monkeypatch):
     # повторный вебхук идемпотентен: оплата не задваивается
     assert _hook().status_code == 200
     assert store.commission_summary("p1")["owed_minor"] == 9900
+
+
+def test_late_payment_of_cancelled_order_skips_commission(env, monkeypatch):
+    """Резерв сняли по таймауту, а деньги пришли позже: факт оплаты фиксируем
+    (иначе потеряем поступление), но комиссию НЕ начисляем — сумму возвращать.
+    Раньше отменённый заказ молча становился «оплаченным» с комиссией."""
+    c, store, box = env
+    monkeypatch.setattr(apipay.httpx, "post",
+                        lambda *a, **k: _Resp(201, {"id": 888, "status": "processing"}))
+    oid = c.post("/orders", json={"box_id": box.id, "user_name": "Али",
+                                  "user_phone": "+77010000000"}).json()["order"]["id"]
+
+    # свипер снял просроченный резерв → заказ отменён, бокс вернулся в продажу
+    store.release_expired_pending(ttl_min=0)
+    with store._conn() as conn:
+        assert conn.execute("SELECT status FROM orders WHERE id=?", (oid,)).fetchone()[0] == "cancelled"
+
+    payload = json.dumps({"event": "invoice.status_changed",
+                          "invoice": {"id": 888, "status": "paid"}}).encode()
+    sig = "sha256=" + hmac.new(b"whsec", payload, hashlib.sha256).hexdigest()
+    assert c.post("/webhooks/apipay", content=payload,
+                  headers={"X-Webhook-Signature": sig}).status_code == 200
+
+    with store._conn() as conn:
+        # поступление зафиксировано
+        assert conn.execute("SELECT payment_status FROM orders WHERE id=?",
+                            (oid,)).fetchone()[0] == "paid"
+    # но комиссии на отменённый заказ нет — деньги подлежат возврату
+    assert store.commission_summary("p1")["owed_minor"] == 0
