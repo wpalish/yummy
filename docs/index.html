@@ -396,6 +396,26 @@
   .deco .b3{top:74rem;right:46vw;width:40rem;opacity:.32;}
   @media(max-width:760px){ .deco{display:none;} }
 
+  /* Живой фон: медленный дрейф форм и фото-чипов. Только transform — работа
+     на композиторе, без скролл-обработчиков (правило про CWV и scroll churn). */
+  @keyframes ymFloat{
+    0%,100%{transform:translate3d(0,0,0) rotate(0deg);}
+    50%    {transform:translate3d(0,-20px,0) rotate(2.2deg);}
+  }
+  @keyframes ymFloatAlt{
+    0%,100%{transform:translate3d(0,0,0) rotate(0deg);}
+    50%    {transform:translate3d(10px,14px,0) rotate(-2deg);}
+  }
+  .deco svg{animation:ymFloat 19s ease-in-out infinite;will-change:transform;}
+  .deco .b2{animation:ymFloatAlt 27s ease-in-out infinite;animation-delay:-7s;}
+  .deco .b3{animation:ymFloat 33s ease-in-out infinite;animation-delay:-14s;}
+  .lh-chip.c1{animation:ymFloat 9s ease-in-out infinite;will-change:transform;}
+  .lh-chip.c2{animation:ymFloatAlt 12s ease-in-out infinite;animation-delay:-4s;will-change:transform;}
+  .lh-badge{animation:ymFloat 7.5s ease-in-out infinite;animation-delay:-2s;will-change:transform;}
+  @media(prefers-reduced-motion:reduce){
+    .deco svg,.deco .b2,.deco .b3,.lh-chip.c1,.lh-chip.c2,.lh-badge{animation:none;}
+  }
+
   .lh{display:grid;grid-template-columns:1.05fr .95fr;align-items:center;gap:2.5rem;padding:3.6rem 0 3rem;min-height:64vh;}
   .lh-txt{min-width:0;}
   /* Крупнее контраст масштаба: заголовок задаёт тон всей странице */
