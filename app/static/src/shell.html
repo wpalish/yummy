@@ -190,6 +190,30 @@
     .msidebar{max-height:none;}
   }
 
+  /* ===== СТРАНИЦА ДЛЯ ЗАВЕДЕНИЙ (?partners) ===== */
+  .fp-hero{display:grid;grid-template-columns:1.05fr .95fr;gap:2.2rem;align-items:center;padding:2.6rem 0 1.4rem;}
+  .fp-hero h1{margin:.3rem 0 0;font-family:var(--font-h);font-size:clamp(2.1rem,4.6vw,3.2rem);
+    font-weight:800;line-height:1.02;letter-spacing:-.03em;color:var(--ink);}
+  .fp-lead{margin:1rem 0 1.5rem;font-size:1.02rem;color:var(--txt2);max-width:44ch;}
+  .fp-hero img{width:100%;aspect-ratio:5/4;object-fit:cover;border-radius:32px;
+    box-shadow:0 26px 60px oklch(22% .03 45/.2);}
+  @media(max-width:860px){ .fp-hero{grid-template-columns:1fr;} }
+  /* Цифры оффера — та же логика, что у стат-карточек лендинга */
+  .fp-num{display:grid;grid-template-columns:repeat(3,1fr);gap:1.1rem;margin:1.6rem 0 0;}
+  @media(max-width:640px){ .fp-num{grid-template-columns:1fr;} }
+  .fp-num div{background:var(--card);border-radius:24px;padding:1.5rem 1.3rem;text-align:center;
+    box-shadow:0 12px 32px oklch(22% .03 45/.08),0 0 0 1px var(--border) inset;}
+  .fp-num b{display:block;font-family:var(--font-h);font-size:2.3rem;font-weight:800;
+    color:var(--ink);letter-spacing:-.03em;}
+  .fp-num span{font-size:.86rem;color:var(--txt2);}
+  .fp-num .hl{background:var(--accent);box-shadow:0 16px 40px oklch(66% .14 55/.32);}
+  .fp-num .hl b{color:#fff;} .fp-num .hl span{color:oklch(100% 0 0/.9);}
+  .fp-faq{margin-top:1rem;display:flex;flex-direction:column;gap:.55rem;}
+  .fp-faq details{background:var(--card);border-radius:18px;padding:1rem 1.2rem;
+    box-shadow:0 0 0 1px var(--border) inset;}
+  .fp-faq summary{cursor:pointer;font-weight:700;color:var(--ink);font-size:.95rem;}
+  .fp-faq p{margin:.6rem 0 0;font-size:.9rem;color:var(--txt2);line-height:1.55;}
+
   /* ===== ОФОРМЛЕНИЕ ЗАКАЗА ===== */
   .ck-back{background:0;border:0;color:var(--txt2);font-weight:700;font-size:.84rem;padding:.4rem 0;margin-top:1rem;}
   .ck-back:hover{color:var(--ink);}
@@ -800,6 +824,67 @@
         <a class="cta" href="mailto:alisher.nursain@gmail.com?subject=Yummy%3A%20предлагаю%20заведение">Предложить заведение</a>
       </div>
       <div id="myorders" style="margin-top:1.8rem"></div>
+    </section>
+
+    <!-- ===================== ДЛЯ ЗАВЕДЕНИЙ (ссылка ?partners) ===================== -->
+    <section id="view-forpartners" class="hidden">
+      <div class="fp-hero">
+        <div>
+          <span class="caption">Кофейням и пекарням Астаны</span>
+          <!-- без <br>: i18n переводит каждый текстовый узел отдельно -->
+          <h1>Вечерние списания превращаем в выручку</h1>
+          <p class="fp-lead">Всё, что не продалось к вечеру, вы сейчас выбрасываете в ноль.
+            Мы продаём это сюрприз-боксом со скидкой — вы возвращаете часть денег
+            и получаете гостя, который иначе бы не зашёл.</p>
+          <button class="cta" data-act="fpApply">Оставить заявку</button>
+        </div>
+        <img src="/static/img/hero.jpg" alt="Сюрприз-бокс с выпечкой" width="640" height="512" loading="lazy">
+      </div>
+
+      <div class="fp-num">
+        <div><b>10%</b><span>комиссия, и только с проданного</span></div>
+        <div class="hl"><b>0 ₸</b><span>подключение и абонплата</span></div>
+        <div><b>1 мин</b><span>выставить бокс с телефона</span></div>
+      </div>
+
+      <div class="l-sec">
+        <span class="caption">Как это работает</span>
+        <h2>Три действия, всё с телефона</h2>
+        <div class="hiw-grid" style="margin-top:1.1rem">
+          <div class="hiw-step"><span class="n">1</span><b>Вечером выставляете бокс</b>
+            <p>Указываете, сколько боксов и до скольки забрать. Состав — на ваше усмотрение, это сюрприз.</p></div>
+          <div class="hiw-step"><span class="n">2</span><b>Покупатель платит онлайн</b>
+            <p>Деньги списываются сразу. Не пришёл забрать — деньги остаются у вас.</p></div>
+          <div class="hiw-step"><span class="n">3</span><b>Выдаёте по коду</b>
+            <p>Гость показывает код или QR на кассе. Кассир сканирует — всё.</p></div>
+        </div>
+      </div>
+
+      <div class="l-sec">
+        <span class="caption">Частые вопросы</span>
+        <h2>Что обычно спрашивают</h2>
+        <div class="fp-faq">
+          <details><summary>Это не уронит наш бренд?</summary>
+            <p>В боксе только сегодняшняя продукция, забрать нужно до закрытия. Формат «спасение еды» —
+            мировая практика (Too Good To Go работает в 19 странах). Гости воспринимают это как заботу
+            об экологии, а не как уценку.</p></details>
+          <details><summary>Сколько это стоит?</summary>
+            <p>Подключение бесплатное, абонплаты нет. Комиссия 10% и только с фактических продаж:
+            не продали — не платите. Первый месяц работаем без комиссии.</p></details>
+          <details><summary>А если покупатель не придёт?</summary>
+            <p>Предоплата не возвращается при неявке — деньги остаются у вас. Вы в плюсе в любом случае.</p></details>
+          <details><summary>Сколько времени это отнимает?</summary>
+            <p>Выставить бокс — минута с телефона. Выдать — отсканировать код на кассе. Больше ничего.</p></details>
+          <details><summary>Мы почти ничего не списываем</summary>
+            <p>Даже 5–6 позиций к закрытию — это уже бокс. Начните с одного в день, посмотрите на спрос.</p></details>
+        </div>
+      </div>
+
+      <div class="l-band">
+        <div><h2>Попробуем на одной точке?</h2>
+          <p>Неделя без обязательств. Не пойдёт — отключаетесь в один клик.</p></div>
+        <button class="cta light" data-act="fpApply">Оставить заявку</button>
+      </div>
     </section>
 
     <!-- ===================== ОФОРМЛЕНИЕ ЗАКАЗА ===================== -->

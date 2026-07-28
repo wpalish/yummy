@@ -57,6 +57,7 @@ const ACT = {
   unsaveVenue:     el => unsaveVenue(el.dataset.a1),
   openCheckout:    el => openCheckout(el.dataset.a1),
   checkoutBack:    () => checkoutBack(),
+  fpApply:         () => fpApply(),
   cancelOrder:     el => cancelOrder(el.dataset.a1),
   userRefund:      el => userRefund(el.dataset.a1),
   showCode:        el => showCode(el.dataset.a1),

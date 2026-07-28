@@ -104,6 +104,8 @@ loadStore().then(()=>{
   const inv=qs.get("invite"); if(inv)acceptInviteForm(inv);
   // ссылка сброса пароля из письма: ?reset=<токен>
   const rst=qs.get("reset"); if(rst)resetPwForm(rst);
+  // ?partners — страница для заведений: её кидаем в холодных контактах
+  if(qs.has("partners")){ hideOnboarding&&hideOnboarding(); switchView("forpartners"); }
 });
 
 /* ============ ПРИГЛАШЕНИЕ ПЕРСОНАЛА (ссылка от админа) ============ */

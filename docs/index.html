@@ -190,6 +190,30 @@
     .msidebar{max-height:none;}
   }
 
+  /* ===== СТРАНИЦА ДЛЯ ЗАВЕДЕНИЙ (?partners) ===== */
+  .fp-hero{display:grid;grid-template-columns:1.05fr .95fr;gap:2.2rem;align-items:center;padding:2.6rem 0 1.4rem;}
+  .fp-hero h1{margin:.3rem 0 0;font-family:var(--font-h);font-size:clamp(2.1rem,4.6vw,3.2rem);
+    font-weight:800;line-height:1.02;letter-spacing:-.03em;color:var(--ink);}
+  .fp-lead{margin:1rem 0 1.5rem;font-size:1.02rem;color:var(--txt2);max-width:44ch;}
+  .fp-hero img{width:100%;aspect-ratio:5/4;object-fit:cover;border-radius:32px;
+    box-shadow:0 26px 60px oklch(22% .03 45/.2);}
+  @media(max-width:860px){ .fp-hero{grid-template-columns:1fr;} }
+  /* Цифры оффера — та же логика, что у стат-карточек лендинга */
+  .fp-num{display:grid;grid-template-columns:repeat(3,1fr);gap:1.1rem;margin:1.6rem 0 0;}
+  @media(max-width:640px){ .fp-num{grid-template-columns:1fr;} }
+  .fp-num div{background:var(--card);border-radius:24px;padding:1.5rem 1.3rem;text-align:center;
+    box-shadow:0 12px 32px oklch(22% .03 45/.08),0 0 0 1px var(--border) inset;}
+  .fp-num b{display:block;font-family:var(--font-h);font-size:2.3rem;font-weight:800;
+    color:var(--ink);letter-spacing:-.03em;}
+  .fp-num span{font-size:.86rem;color:var(--txt2);}
+  .fp-num .hl{background:var(--accent);box-shadow:0 16px 40px oklch(66% .14 55/.32);}
+  .fp-num .hl b{color:#fff;} .fp-num .hl span{color:oklch(100% 0 0/.9);}
+  .fp-faq{margin-top:1rem;display:flex;flex-direction:column;gap:.55rem;}
+  .fp-faq details{background:var(--card);border-radius:18px;padding:1rem 1.2rem;
+    box-shadow:0 0 0 1px var(--border) inset;}
+  .fp-faq summary{cursor:pointer;font-weight:700;color:var(--ink);font-size:.95rem;}
+  .fp-faq p{margin:.6rem 0 0;font-size:.9rem;color:var(--txt2);line-height:1.55;}
+
   /* ===== ОФОРМЛЕНИЕ ЗАКАЗА ===== */
   .ck-back{background:0;border:0;color:var(--txt2);font-weight:700;font-size:.84rem;padding:.4rem 0;margin-top:1rem;}
   .ck-back:hover{color:var(--ink);}
@@ -802,6 +826,67 @@
       <div id="myorders" style="margin-top:1.8rem"></div>
     </section>
 
+    <!-- ===================== ДЛЯ ЗАВЕДЕНИЙ (ссылка ?partners) ===================== -->
+    <section id="view-forpartners" class="hidden">
+      <div class="fp-hero">
+        <div>
+          <span class="caption">Кофейням и пекарням Астаны</span>
+          <!-- без <br>: i18n переводит каждый текстовый узел отдельно -->
+          <h1>Вечерние списания превращаем в выручку</h1>
+          <p class="fp-lead">Всё, что не продалось к вечеру, вы сейчас выбрасываете в ноль.
+            Мы продаём это сюрприз-боксом со скидкой — вы возвращаете часть денег
+            и получаете гостя, который иначе бы не зашёл.</p>
+          <button class="cta" data-act="fpApply">Оставить заявку</button>
+        </div>
+        <img src="img/hero.jpg" alt="Сюрприз-бокс с выпечкой" width="640" height="512" loading="lazy">
+      </div>
+
+      <div class="fp-num">
+        <div><b>10%</b><span>комиссия, и только с проданного</span></div>
+        <div class="hl"><b>0 ₸</b><span>подключение и абонплата</span></div>
+        <div><b>1 мин</b><span>выставить бокс с телефона</span></div>
+      </div>
+
+      <div class="l-sec">
+        <span class="caption">Как это работает</span>
+        <h2>Три действия, всё с телефона</h2>
+        <div class="hiw-grid" style="margin-top:1.1rem">
+          <div class="hiw-step"><span class="n">1</span><b>Вечером выставляете бокс</b>
+            <p>Указываете, сколько боксов и до скольки забрать. Состав — на ваше усмотрение, это сюрприз.</p></div>
+          <div class="hiw-step"><span class="n">2</span><b>Покупатель платит онлайн</b>
+            <p>Деньги списываются сразу. Не пришёл забрать — деньги остаются у вас.</p></div>
+          <div class="hiw-step"><span class="n">3</span><b>Выдаёте по коду</b>
+            <p>Гость показывает код или QR на кассе. Кассир сканирует — всё.</p></div>
+        </div>
+      </div>
+
+      <div class="l-sec">
+        <span class="caption">Частые вопросы</span>
+        <h2>Что обычно спрашивают</h2>
+        <div class="fp-faq">
+          <details><summary>Это не уронит наш бренд?</summary>
+            <p>В боксе только сегодняшняя продукция, забрать нужно до закрытия. Формат «спасение еды» —
+            мировая практика (Too Good To Go работает в 19 странах). Гости воспринимают это как заботу
+            об экологии, а не как уценку.</p></details>
+          <details><summary>Сколько это стоит?</summary>
+            <p>Подключение бесплатное, абонплаты нет. Комиссия 10% и только с фактических продаж:
+            не продали — не платите. Первый месяц работаем без комиссии.</p></details>
+          <details><summary>А если покупатель не придёт?</summary>
+            <p>Предоплата не возвращается при неявке — деньги остаются у вас. Вы в плюсе в любом случае.</p></details>
+          <details><summary>Сколько времени это отнимает?</summary>
+            <p>Выставить бокс — минута с телефона. Выдать — отсканировать код на кассе. Больше ничего.</p></details>
+          <details><summary>Мы почти ничего не списываем</summary>
+            <p>Даже 5–6 позиций к закрытию — это уже бокс. Начните с одного в день, посмотрите на спрос.</p></details>
+        </div>
+      </div>
+
+      <div class="l-band">
+        <div><h2>Попробуем на одной точке?</h2>
+          <p>Неделя без обязательств. Не пойдёт — отключаетесь в один клик.</p></div>
+        <button class="cta light" data-act="fpApply">Оставить заявку</button>
+      </div>
+    </section>
+
     <!-- ===================== ОФОРМЛЕНИЕ ЗАКАЗА ===================== -->
     <section id="view-checkout" class="hidden">
       <button class="ck-back" data-act="checkoutBack">← Назад к боксам</button>
@@ -1075,6 +1160,7 @@ const ACT = {
   unsaveVenue:     el => unsaveVenue(el.dataset.a1),
   openCheckout:    el => openCheckout(el.dataset.a1),
   checkoutBack:    () => checkoutBack(),
+  fpApply:         () => fpApply(),
   cancelOrder:     el => cancelOrder(el.dataset.a1),
   userRefund:      el => userRefund(el.dataset.a1),
   showCode:        el => showCode(el.dataset.a1),
@@ -1214,6 +1300,20 @@ const KZ={
 "Превращайте вечерние списания в выручку. Подключение бесплатно.":"Кешкі шығындарды табысқа айналдырыңыз. Қосылу тегін.",
 "Стать партнёром":"Серіктес болу","Присоединяйся":"Қосыл",
 "Создай аккаунт за 20 секунд":"20 секундта аккаунт құр",
+"Кофейням и пекарням Астаны":"Астананың кофеханалары мен наубайханаларына",
+"Вечерние списания превращаем в выручку":"Кешкі шығындарды табысқа айналдырамыз",
+"Оставить заявку":"Өтінім қалдыру","Три действия, всё с телефона":"Үш әрекет, бәрі телефоннан",
+"Что обычно спрашивают":"Әдетте не сұрайды","Это не уронит наш бренд?":"Бұл брендімізге зиян тигізбей ме?",
+"Сколько это стоит?":"Бұл қанша тұрады?","А если покупатель не придёт?":"Ал сатып алушы келмесе ше?",
+"Сколько времени это отнимает?":"Бұл қанша уақыт алады?",
+"Мы почти ничего не списываем":"Біз дерлік ештеңе шығынға жазбаймыз",
+"Попробуем на одной точке?":"Бір нүктеде байқап көрейік пе?",
+"Вечером выставляете бокс":"Кешке боксты шығарасыз","Покупатель платит онлайн":"Сатып алушы онлайн төлейді",
+"Выдаёте по коду":"Код бойынша бересіз","Заявка на подключение":"Қосылуға өтінім",
+"Название заведения":"Мекеме атауы","Телефон или WhatsApp":"Телефон немесе WhatsApp",
+"комиссия, и только с проданного":"комиссия, тек сатылғаннан",
+"подключение и абонплата":"қосылу және абоненттік төлем",
+"выставить бокс с телефона":"телефоннан бокс шығару",
 "Оформление заказа":"Тапсырысты рәсімдеу","← Назад к боксам":"← Бокстарға оралу",
 "Способ оплаты":"Төлем тәсілі","Детали самовывоза":"Өзі алып кету мәліметтері",
 "Время выдачи":"Беру уақыты","Ваши контакты":"Сіздің байланыстарыңыз","Ваш заказ":"Сіздің тапсырысыңыз",
@@ -1583,7 +1683,8 @@ function switchView(v){
     document.body.classList.toggle("on-landing",v==="landing");
     roleBtns.forEach(x=>x.classList.toggle("on",x.dataset.role===v));
     navBtns.forEach(x=>x.classList.toggle("on",x.dataset.nav===v));
-    ["landing","store","venues","partner","admin","account","checkout"].forEach(s=>$("#view-"+s).classList.toggle("hidden",s!==v));
+    ["landing","store","venues","partner","admin","account","checkout","forpartners"]
+      .forEach(s=>$("#view-"+s).classList.toggle("hidden",s!==v));
     if(v==="store")loadStore(); if(v==="venues")loadVenues(); if(v==="partner")loadPartner(); if(v==="admin")loadAdmin();
     if(v==="account")loadAccount();
     window.scrollTo({top:0});
@@ -2035,6 +2136,36 @@ function settingsHtml(){
         Смена пароля, выгрузка данных и удаление аккаунта — в меню профиля справа вверху.</p>
     </div>`;
 }
+/* ============ СТРАНИЦА ДЛЯ ЗАВЕДЕНИЙ ============ */
+/* Отдельный вид с прямой ссылкой ?partners — чтобы кидать её в WhatsApp/директ
+   при холодных контактах вместо объяснений текстом. */
+
+/* Заявка: собираем данные и отдаём пользователю выбор канала. Своего эндпоинта
+   для заявок нет — не выдумываем несуществующую отправку, а честно открываем
+   почту/телеграм с уже заполненным текстом. */
+window.fpApply=()=>{
+  showModal(`<div class="mc">
+    <h3>Заявка на подключение</h3>
+    <p class="sub" style="margin:.1rem 0 .8rem">Заполните — и мы свяжемся в течение дня.</p>
+    <label>Название заведения <input id="fpName" placeholder="Напр.: Бриошь" autocomplete="organization" /></label>
+    <label>Адрес <input id="fpAddr" placeholder="Улица, дом" /></label>
+    <label>Телефон или WhatsApp <input id="fpPhone" placeholder="+7 7XX XXX XX XX" autocomplete="tel" /></label>
+    <span class="ferr" id="fpErr"></span>
+    <button class="btn" id="fpSend" style="margin-top:.6rem">✉️ Отправить на почту</button>
+    <a class="btn sec" id="fpTg" style="display:block;text-decoration:none;margin-top:.5rem"
+       href="https://t.me/yummy_astana_bot" target="_blank" rel="noopener">💬 Написать в Telegram</a>
+    <button class="btn sec" data-act="closeModal" style="margin-top:.5rem">Закрыть</button>
+  </div>`);
+  $("#fpSend").onclick=()=>{
+    const n=$("#fpName").value.trim(), a=$("#fpAddr").value.trim(), p=$("#fpPhone").value.trim();
+    if(!n||!p){ $("#fpErr").textContent="Укажите название и контакт"; return; }
+    const body=`Заведение: ${n}\nАдрес: ${a}\nКонтакт: ${p}\n`;
+    location.href="mailto:alisher.nursain@gmail.com"
+      +"?subject="+encodeURIComponent("Заявка на подключение к Yummy")
+      +"&body="+encodeURIComponent(body);
+    closeModal(); toast("Открываем почту — отправьте письмо 💌");
+  };
+};
 /* ============ ЛЕНДИНГ: инлайн-регистрация + reveal-анимации ============ */
 window.openLogin=()=>{$("#onboard").className="onb";loginForm();};
 window.__landRole="buyer";
@@ -3421,6 +3552,8 @@ loadStore().then(()=>{
   const inv=qs.get("invite"); if(inv)acceptInviteForm(inv);
   // ссылка сброса пароля из письма: ?reset=<токен>
   const rst=qs.get("reset"); if(rst)resetPwForm(rst);
+  // ?partners — страница для заведений: её кидаем в холодных контактах
+  if(qs.has("partners")){ hideOnboarding&&hideOnboarding(); switchView("forpartners"); }
 });
 
 /* ============ ПРИГЛАШЕНИЕ ПЕРСОНАЛА (ссылка от админа) ============ */
