@@ -5,7 +5,10 @@ Anti-food-waste маркетплейс surprise-боксов для Астаны
 забирают самовывозом по QR/коду.
 
 **Живое:** сайт https://wpalish.github.io/yummy · бэкенд
-https://yummy-astana.onrender.com · репо github.com/wpalish/yummy
+https://yummy-astana.fly.dev · репо github.com/wpalish/yummy
+
+Render (https://yummy-astana.onrender.com) пока жив как запасной — та же база
+Supabase. Гасить только после того, как оплата и почта подтверждены на Fly.
 **Telegram-бот:** @yummy_astana_bot (уведомления о новых боксах)
 
 ## Стек (ВАЖНО — НЕ Node/bun/Next)
@@ -49,8 +52,11 @@ https://yummy-astana.onrender.com · репо github.com/wpalish/yummy
 3. **Отзыв только по issued-заказу** через `user_orders()`, не по сырому ID.
 4. **AI/Telegram деградируют без ключа** — фича не ломается, отдаёт фолбэк.
 5. **Секреты — в `.env`** (gitignore). В репо токенов нет.
-6. **Render:** автодеплоя НЕТ (репо подключён по public URL) — после пуша нужен
-   Manual Deploy на дашборде.
+6. **Деплой ручной.** Fly: `./deploy-fly.sh` или `flyctl deploy --remote-only`.
+   Render (запасной): Manual Deploy на дашборде — автодеплоя нет.
+7. **Одна машина на Fly — намеренно.** `_sweeper()` живёт внутри процесса; на
+   двух машинах он крутился бы дважды (двойные снятия резервов). При росте
+   нагрузки сначала вынести свипер, потом масштабировать.
 
 ## Локаль
 

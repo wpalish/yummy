@@ -11,7 +11,7 @@
 set -euo pipefail
 
 APP="yummy-astana"
-REGION="waw"
+REGION="ams"
 ENV_FILE="${1:-render.env}"
 FLY="$HOME/.fly/bin/flyctl"
 [ -x "$FLY" ] || FLY="$(command -v flyctl || true)"
@@ -50,7 +50,10 @@ say "Переношу секреты"
 KEEP='^(DATABASE_URL|YUMMY_SECRET_KEY|YUMMY_CRED_KEY|YUMMY_ADMIN_EMAILS|YUMMY_PAYMENT_MODE|APIPAY_API_KEY|APIPAY_WEBHOOK_SECRET|YUMMY_RESEND_KEY|YUMMY_SMTP_FROM|TELEGRAM_BOT_TOKEN|YUMMY_ORDERS_CHAT_ID|YUMMY_TG_CHANNEL)='
 
 TMP="$(mktemp)"; trap 'rm -f "$TMP"' EXIT
-grep -E "$KEEP" "$ENV_FILE" > "$TMP" || true
+# Render экспортирует часть значений в кавычках (DATABASE_URL, YUMMY_SECRET_KEY).
+# Снимаем обрамляющие кавычки: если бы они уехали в секрет буквально, JWT
+# подписывался бы другим ключом и все сессии слетели бы, а Postgres не подключился.
+grep -E "$KEEP" "$ENV_FILE" | sed -E 's/^([A-Z_]+)="(.*)"$/\1=\2/; s/^([A-Z_]+)='"'"'(.*)'"'"'$/\1=\2/' > "$TMP" || true
 COUNT=$(wc -l < "$TMP" | tr -d ' ')
 [ "$COUNT" -gt 0 ] || die "В $ENV_FILE не нашлось нужных переменных — проверьте файл"
 
@@ -67,6 +70,12 @@ printf '    '; cut -d= -f1 "$TMP" | tr '\n' ' '; echo
 say "Разворачиваю"
 $FLY deploy --app "$APP" --remote-only
 ok "деплой завершён"
+
+# Fly по умолчанию поднимает вторую машину для HA. Нам она не нужна: свипер
+# фоновая задача внутри процесса, на двух машинах он крутится дважды, а платим
+# за обе круглосуточно (auto_stop выключен).
+$FLY scale count 1 --app "$APP" --yes >/dev/null
+ok "оставлена одна машина (один свипер, половина тарифа)"
 
 # ── 4. Проверка ─────────────────────────────────────────────────────────────
 say "Проверяю здоровье"
