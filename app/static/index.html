@@ -312,6 +312,11 @@
   .boxc .price b{font-size:1.35rem;color:var(--ink);font-family:var(--font-h);letter-spacing:-.02em;}
   .boxc .price s{font-size:.82rem;color:var(--txt2);}
   .empty{grid-column:1/-1;color:var(--txt2);text-align:center;padding:2.2rem 1rem;font-size:.92rem;}
+  /* Пустой каталог до первого партнёра — не «ошибка», а состояние запуска. */
+  .ecat{display:flex;flex-direction:column;align-items:center;gap:.55rem;padding:3rem 1.2rem;}
+  .ecat-t{font-family:var(--font-h);font-size:clamp(1.15rem,1rem+1.1vw,1.6rem);color:var(--txt);margin:0;}
+  .ecat-s{max-width:32ch;margin:0 0 .5rem;line-height:1.5;}
+  .ecat .btn{min-width:min(20rem,88%);text-decoration:none;}
 
   /* skeleton */
   .sk{border-radius:16px;overflow:hidden;background:var(--card);box-shadow:0 0 0 1px var(--border) inset;}
@@ -1196,6 +1201,10 @@ const KZ={
 "Список":"Тізім","Карта":"Карта","Все районы":"Барлық аудандар",
 "⚡ Забрать сейчас":"⚡ Қазір алу","♥ Любимые":"♥ Таңдаулылар","✕ Сбросить":"✕ Тазарту",
 "Ничего не нашлось. Попробуй другой район или категорию 🌙":"Ештеңе табылмады. Басқа аудан не санатты көріңіз 🌙",
+"Боксов пока нет — подключаем первые заведения.":"Бокстар әзірге жоқ — алғашқы орындарды қосудамыз.",
+"Мы в Астане только запускаемся. Подпишитесь, и вы узнаете о первых боксах раньше всех.":"Біз Астанада енді іске қосылып жатырмыз. Жазылыңыз, алғашқы бокстар туралы бәрінен бұрын білесіз.",
+"💬 Сообщить, когда появятся":"💬 Пайда болғанда хабарлау",
+"📍 Предложить своё любимое место":"📍 Сүйікті орныңызды ұсыну",
 "Сладкий бокс":"Тәтті бокс","Бокс выпечки":"Нан-тоқаш боксы","Микс-бокс":"Микс-бокс","Снек-бокс":"Снек-бокс",
 "Как это работает":"Бұл қалай жұмыс істейді",
 "Выбери бокс":"Боксты таңда","Кофейни выкладывают вечерние излишки со скидкой 40–70%.":"Кофеханалар кешкі артық өнімді 40–70% жеңілдікпен шығарады.",
@@ -2111,10 +2120,24 @@ function filtered(){
   bs.sort((a,b)=>Date.parse(a.pickup_to)-Date.parse(b.pickup_to));
   return bs;
 }
+// Честная заглушка до первого партнёра. Каждая строка — цельный текстовый узел:
+// локаль переводит узлы по отдельности, разрезанная фраза ломает казахский порядок слов.
+function emptyCatalogHtml(){
+  return `<div class="empty ecat">
+    <p class="ecat-t">Боксов пока нет — подключаем первые заведения.</p>
+    <p class="ecat-s">Мы в Астане только запускаемся. Подпишитесь, и вы узнаете о первых боксах раньше всех.</p>
+    <a class="btn" href="https://t.me/yummy_astana_bot" target="_blank" rel="noopener">💬 Сообщить, когда появятся</a>
+    <button class="btn sec" data-act="viewVenues">📍 Предложить своё любимое место</button>
+  </div>`;
+}
 function renderBoxes(){
   const bs=sortBoxes(filtered());
   $("#listTitle").textContent=bs.length?`Боксы рядом (${bs.length})`:"Боксы рядом";
-  $("#boxes").innerHTML=bs.length?bs.map(boxCard).join(""):'<p class="empty">Ничего не нашлось. Попробуй другой район или категорию 🌙</p>';
+  // Пустой каталог и промах фильтра — разные вещи. Пока не подключено ни одно
+  // заведение, совет «попробуй другой район» врёт: боксов нет нигде.
+  $("#boxes").innerHTML = bs.length ? bs.map(boxCard).join("")
+    : (ALL_BOXES.length ? '<p class="empty">Ничего не нашлось. Попробуй другой район или категорию 🌙</p>'
+                        : emptyCatalogHtml());
   document.querySelectorAll(".boxc").forEach(el=>el.onclick=()=>openBox(el.dataset.id));
 }
 const IMG={sweet:"sweet.jpg",bakery:"bakery.jpg",mixed:"mixed.jpg",snack:"snack.jpg"};

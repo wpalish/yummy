@@ -54,10 +54,24 @@ function filtered(){
   bs.sort((a,b)=>Date.parse(a.pickup_to)-Date.parse(b.pickup_to));
   return bs;
 }
+// Честная заглушка до первого партнёра. Каждая строка — цельный текстовый узел:
+// локаль переводит узлы по отдельности, разрезанная фраза ломает казахский порядок слов.
+function emptyCatalogHtml(){
+  return `<div class="empty ecat">
+    <p class="ecat-t">Боксов пока нет — подключаем первые заведения.</p>
+    <p class="ecat-s">Мы в Астане только запускаемся. Подпишитесь, и вы узнаете о первых боксах раньше всех.</p>
+    <a class="btn" href="https://t.me/yummy_astana_bot" target="_blank" rel="noopener">💬 Сообщить, когда появятся</a>
+    <button class="btn sec" data-act="viewVenues">📍 Предложить своё любимое место</button>
+  </div>`;
+}
 function renderBoxes(){
   const bs=sortBoxes(filtered());
   $("#listTitle").textContent=bs.length?`Боксы рядом (${bs.length})`:"Боксы рядом";
-  $("#boxes").innerHTML=bs.length?bs.map(boxCard).join(""):'<p class="empty">Ничего не нашлось. Попробуй другой район или категорию 🌙</p>';
+  // Пустой каталог и промах фильтра — разные вещи. Пока не подключено ни одно
+  // заведение, совет «попробуй другой район» врёт: боксов нет нигде.
+  $("#boxes").innerHTML = bs.length ? bs.map(boxCard).join("")
+    : (ALL_BOXES.length ? '<p class="empty">Ничего не нашлось. Попробуй другой район или категорию 🌙</p>'
+                        : emptyCatalogHtml());
   document.querySelectorAll(".boxc").forEach(el=>el.onclick=()=>openBox(el.dataset.id));
 }
 const IMG={sweet:"sweet.jpg",bakery:"bakery.jpg",mixed:"mixed.jpg",snack:"snack.jpg"};

@@ -312,6 +312,11 @@
   .boxc .price b{font-size:1.35rem;color:var(--ink);font-family:var(--font-h);letter-spacing:-.02em;}
   .boxc .price s{font-size:.82rem;color:var(--txt2);}
   .empty{grid-column:1/-1;color:var(--txt2);text-align:center;padding:2.2rem 1rem;font-size:.92rem;}
+  /* Пустой каталог до первого партнёра — не «ошибка», а состояние запуска. */
+  .ecat{display:flex;flex-direction:column;align-items:center;gap:.55rem;padding:3rem 1.2rem;}
+  .ecat-t{font-family:var(--font-h);font-size:clamp(1.15rem,1rem+1.1vw,1.6rem);color:var(--txt);margin:0;}
+  .ecat-s{max-width:32ch;margin:0 0 .5rem;line-height:1.5;}
+  .ecat .btn{min-width:min(20rem,88%);text-decoration:none;}
 
   /* skeleton */
   .sk{border-radius:16px;overflow:hidden;background:var(--card);box-shadow:0 0 0 1px var(--border) inset;}
