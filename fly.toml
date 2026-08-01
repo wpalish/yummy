@@ -1,0 +1,41 @@
+# Деплой Yummy на Fly.io
+#   flyctl launch --no-deploy    (создать приложение, имя возьмётся отсюда)
+#   flyctl secrets import < .env.fly
+#   flyctl deploy
+# Подробности и перенос переменных — в DEPLOY-FLY.md
+
+app = "yummy-astana"
+primary_region = "waw"        # Варшава — ближайший к Астане регион Fly
+
+[build]
+  dockerfile = "Dockerfile"
+
+[env]
+  PORT = "8000"
+  # Прод: серверная защита эндпоинтов включена (демо-режим тут недопустим)
+  YUMMY_ENFORCE_AUTH = "1"
+  YUMMY_CORS_ORIGINS = "https://wpalish.github.io"
+  # Публичный адрес фронта — из него собираются ссылки в письмах (сброс пароля,
+  # приглашения). Если не задать, ссылки уедут не туда.
+  YUMMY_PUBLIC_URL = "https://wpalish.github.io/yummy"
+
+[http_service]
+  internal_port = 8000
+  force_https = true
+  # ГЛАВНОЕ ОТЛИЧИЕ ОТ RENDER: машина не засыпает.
+  # Внутри приложения живёт фоновый свипер (снимает протухшие резервы под оплату
+  # раз в 10 минут) — при auto_stop он бы умирал вместе с процессом.
+  auto_stop_machines = false
+  auto_start_machines = true
+  min_machines_running = 1
+
+  [[http_service.checks]]
+    grace_period = "15s"
+    interval = "30s"
+    method = "GET"
+    path = "/health"
+    timeout = "5s"
+
+[[vm]]
+  size = "shared-cpu-1x"
+  memory = "512mb"            # 256mb хватает, но psycopg + пул спокойнее на 512

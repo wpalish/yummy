@@ -1,0 +1,144 @@
+# Переезд с Render на Fly.io
+
+**Зачем:** Render free засыпает и просыпается ~50 секунд. Это уже мешало —
+вебхук об оплате от ApiPay долетел с задержкой в полминуты. На Fly машина не
+засыпает, старт около секунды.
+
+**Render не выключаем**, пока новый адрес не подтвердится. Откат — вернуть
+старый вебхук в ApiPay, приложение на Render продолжает работать.
+
+---
+
+## Шаг 0. Установить flyctl и войти
+
+Это делаете вы — установка и вход в аккаунт.
+
+```bash
+curl -L https://fly.io/install.sh | sh
+export PATH="$HOME/.fly/bin:$PATH"
+flyctl auth signup     # или flyctl auth login, если аккаунт есть
+```
+
+Fly попросит привязать карту даже для бесплатного тарифа. В пределах free
+allowance (одна小 машина shared-cpu-1x) списаний нет.
+
+## Шаг 1. Создать приложение
+
+Из корня репозитория:
+
+```bash
+flyctl launch --no-deploy --copy-config --name yummy-astana --region waw
+```
+
+`--no-deploy` важен: сначала зальём секреты, потом развернём. `--copy-config`
+берёт готовый `fly.toml` из репозитория, а не генерирует свой.
+
+## Шаг 2. Перенести секреты
+
+Значения возьмите из Render → Environment (кнопка-глаз показывает скрытое).
+
+Создайте временный файл `.env.fly` (он в `.gitignore`, в репозиторий не уедет):
+
+```
+DATABASE_URL=postgresql://...          # тот же Supabase — данные переезжают сами
+YUMMY_SECRET_KEY=...                   # ВАЖНО: тот же, иначе все сессии слетят
+YUMMY_CRED_KEY=...                     # ВАЖНО: тот же, иначе не расшифруются 2FA
+YUMMY_ADMIN_EMAILS=alisher.nursain@gmail.com
+YUMMY_PAYMENT_MODE=apipay
+APIPAY_API_KEY=...
+APIPAY_WEBHOOK_SECRET=...
+YUMMY_RESEND_KEY=...
+YUMMY_SMTP_FROM=Yummy <onboarding@resend.dev>
+TELEGRAM_BOT_TOKEN=...
+YUMMY_ORDERS_CHAT_ID=...
+YUMMY_TG_CHANNEL=...
+```
+
+```bash
+flyctl secrets import < .env.fly
+rm .env.fly                            # не оставлять на диске
+```
+
+**Два ключа переносить обязательно теми же значениями:**
+
+- `YUMMY_SECRET_KEY` — подписывает JWT. Сменится → все разлогинятся.
+- `YUMMY_CRED_KEY` — шифрует 2FA-секреты и реквизиты мерчанта. Сменится → 2FA
+  у админа перестанет работать, придётся настраивать заново.
+
+SMTP-переменные (`YUMMY_SMTP_HOST/USER/PASS/PORT`) переносить не нужно — мы на
+Resend по HTTPS, а SMTP оставлен только как фолбэк.
+
+## Шаг 3. Развернуть
+
+```bash
+flyctl deploy
+```
+
+Проверка:
+
+```bash
+curl -s https://yummy-astana.fly.dev/health
+```
+
+Должно вернуть `{"status":"ok", ..., "payment_mode":"apipay"}` и те же цифры
+partners/boxes/orders, что на Render — база-то одна.
+
+## Шаг 4. Переключить вебхук ApiPay ⚠️
+
+**Это шаг, который легко забыть, и оплата тихо перестанет подтверждаться.**
+
+Кабинет ApiPay → Настройки → Подключение → ключ «Yummy сайт» → адрес уведомлений:
+
+```
+https://yummy-astana.fly.dev/webhooks/apipay
+```
+
+Проверить: создать счёт, нажать «Симулировать» → в логах Fly должно появиться
+`audit: apipay paid`. Помните: у Render была задержка 30 секунд, здесь ответ
+приходит сразу.
+
+```bash
+flyctl logs
+```
+
+## Шаг 5. Переключить фронт (когда убедились, что всё работает)
+
+Сейчас GitHub Pages в демо-режиме и в бэкенд не ходит. Если будете переводить
+его на живой бэкенд:
+
+```bash
+YUMMY_PAGES_API_BASE=https://yummy-astana.fly.dev make docs
+git add docs && git commit -m "chore(pages): переключить фронт на Fly" && git push
+```
+
+И добавить новый адрес в CORS, если фронт поедет с другого домена — сейчас в
+`fly.toml` разрешён только `https://wpalish.github.io`.
+
+## Шаг 6. Погасить Render
+
+Только после того, как оплата и почта подтверждены на новом адресе:
+Render → Settings → Suspend (не Delete — на случай отката).
+
+---
+
+## Что проверить после переезда
+
+- [ ] `/health` отдаёт те же цифры, что Render
+- [ ] Вход админом работает (значит `YUMMY_SECRET_KEY` перенесён верно)
+- [ ] 2FA принимает код (значит `YUMMY_CRED_KEY` верный)
+- [ ] Тестовый заказ → инвойс в ApiPay → «Симулировать» → заказ становится `paid`
+- [ ] Сброс пароля приходит на почту
+- [ ] Через 15 минут после неоплаченного заказа резерв снимается — значит свипер
+      жив (на Render он работал, на serverless-платформах не работал бы вовсе)
+
+## Отличия от Render, о которых стоит знать
+
+| | Render free | Fly |
+|---|---|---|
+| Просыпание | ~50 сек | не засыпает (`min_machines_running = 1`) |
+| Фоновый свипер | работает | работает |
+| Исходящий SMTP | заблокирован | разрешён |
+| Автодеплой из git | был настроен | нет, деплой командой `flyctl deploy` |
+
+Автодеплой при желании включается через GitHub Actions — в репозитории уже есть
+workflow, туда добавляется `FLY_API_TOKEN` и шаг `flyctl deploy --remote-only`.
