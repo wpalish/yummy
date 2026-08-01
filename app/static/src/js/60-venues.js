@@ -285,6 +285,9 @@ function successScreen(res){
     <div class="qr">${res.qr_svg}</div>
     <div class="code">${esc(o.code)}</div>
     <p style="font-size:.84rem;color:var(--txt2);margin:.5rem 0">Покажите код или QR на кассе.<br>Забрать: <b style="color:var(--brown)">${win(o.pickup_from,o.pickup_to)}</b></p>
+    ${/* В режиме apipay заказ без оплаты бывает только у заведения на «оплате при
+         получении» — предупреждаем, что деньги нужны с собой. */""}
+    ${APIPAY&&o.payment_status==="not_required"?`<p style="font-size:.84rem;font-weight:700;color:var(--brown);margin:.1rem 0 .5rem">💵 Оплата на кассе при получении — ${money(o.price)}</p>`:""}
     <p style="font-size:.8rem;color:var(--green);font-weight:700;margin:.3rem 0 .6rem">🌱 Вы спасли ~${ECO_KG} кг еды и предотвратили ~${ECO_CO2} кг CO₂</p>
     <a class="btn sec" style="display:block;text-decoration:none;margin-bottom:.5rem" href="${gisUrl(o.partner_name,o.address)}" target="_blank" rel="noopener">🗺 Маршрут в 2ГИС</a>
     <a class="btn sec" style="display:block;text-decoration:none;margin-bottom:.5rem" href="${tgChannelUrl()||"https://t.me/yummy_astana_bot"}" target="_blank" rel="noopener">🔔 Узнавать о новых боксах в Telegram</a>

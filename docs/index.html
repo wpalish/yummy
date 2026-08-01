@@ -1200,6 +1200,8 @@ const KZ={
 "Смотреть боксы":"Бокстарды қарау","☕ Заведения на карте":"☕ Картадағы мекемелер",
 "Список":"Тізім","Карта":"Карта","Все районы":"Барлық аудандар",
 "⚡ Забрать сейчас":"⚡ Қазір алу","♥ Любимые":"♥ Таңдаулылар","✕ Сбросить":"✕ Тазарту",
+"💵 Оплата на месте при получении":"💵 Алу кезінде орнында төлеу",
+"Бокс закрепим за вами. Оплатите на кассе, когда придёте забирать.":"Боксты сізге бекітеміз. Алуға келгенде кассада төлеңіз.",
 "Ничего не нашлось. Попробуй другой район или категорию 🌙":"Ештеңе табылмады. Басқа аудан не санатты көріңіз 🌙",
 "Боксов пока нет — подключаем первые заведения.":"Бокстар әзірге жоқ — алғашқы орындарды қосудамыз.",
 "Мы в Астане только запускаемся. Подпишитесь, и вы узнаете о первых боксах раньше всех.":"Біз Астанада енді іске қосылып жатырмыз. Жазылыңыз, алғашқы бокстар туралы бәрінен бұрын білесіз.",
@@ -2309,13 +2311,16 @@ function renderCheckout(){
       <div class="ckc">
         <h3>Способ оплаты</h3>
         <div class="paym">
-          ${APIPAY?`<label><input type="radio" name="paym" value="kaspi" checked>
+          ${b.pay_on_pickup?`<label><input type="radio" name="paym" value="pickup" checked>
+            <span class="pay-l">💵 Оплата на месте при получении</span></label>`
+          :APIPAY?`<label><input type="radio" name="paym" value="kaspi" checked>
             <span class="pay-l"><span class="kaspi">Kaspi</span> Счёт в приложении</span></label>`
           :`<label><input type="radio" name="paym" value="demo" checked>
             <span class="pay-l">🧪 Демо-оплата пилота</span></label>`}
         </div>
         <p style="font-size:.76rem;color:var(--txt2);margin:.7rem 0 0">
-          ${APIPAY?"Счёт придёт в приложение Kaspi на ваш номер — подтвердите оплату там."
+          ${b.pay_on_pickup?"Бокс закрепим за вами. Оплатите на кассе, когда придёте забирать."
+          :APIPAY?"Счёт придёт в приложение Kaspi на ваш номер — подтвердите оплату там."
                   :"Пилот: оплата тестовая, деньги не списываются. В продакшене — Kaspi."}</p>
       </div>
 
@@ -2334,7 +2339,7 @@ function renderCheckout(){
         <label>Имя <input id="ckName" placeholder="Как к вам обращаться" autocomplete="name" value="${esc(acc.name||"")}" /></label>
         <label>Телефон <input id="ckPhone" placeholder="+7 7XX XXX XX XX" autocomplete="tel" value="${esc(acc.phone||"")}" /></label>
         <span class="ferr" id="ckErr"></span>
-        <button class="btn" id="ckPay" style="margin-top:.6rem">Оплатить ${money(b.price)}</button>
+        <button class="btn" id="ckPay" style="margin-top:.6rem">${b.pay_on_pickup?`Забронировать за ${money(b.price)}`:`Оплатить ${money(b.price)}`}</button>
       </div>
     </div>
 
@@ -2666,6 +2671,9 @@ function successScreen(res){
     <div class="qr">${res.qr_svg}</div>
     <div class="code">${esc(o.code)}</div>
     <p style="font-size:.84rem;color:var(--txt2);margin:.5rem 0">Покажите код или QR на кассе.<br>Забрать: <b style="color:var(--brown)">${win(o.pickup_from,o.pickup_to)}</b></p>
+    ${/* В режиме apipay заказ без оплаты бывает только у заведения на «оплате при
+         получении» — предупреждаем, что деньги нужны с собой. */""}
+    ${APIPAY&&o.payment_status==="not_required"?`<p style="font-size:.84rem;font-weight:700;color:var(--brown);margin:.1rem 0 .5rem">💵 Оплата на кассе при получении — ${money(o.price)}</p>`:""}
     <p style="font-size:.8rem;color:var(--green);font-weight:700;margin:.3rem 0 .6rem">🌱 Вы спасли ~${ECO_KG} кг еды и предотвратили ~${ECO_CO2} кг CO₂</p>
     <a class="btn sec" style="display:block;text-decoration:none;margin-bottom:.5rem" href="${gisUrl(o.partner_name,o.address)}" target="_blank" rel="noopener">🗺 Маршрут в 2ГИС</a>
     <a class="btn sec" style="display:block;text-decoration:none;margin-bottom:.5rem" href="${tgChannelUrl()||"https://t.me/yummy_astana_bot"}" target="_blank" rel="noopener">🔔 Узнавать о новых боксах в Telegram</a>

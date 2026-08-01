@@ -389,10 +389,16 @@ def create_order(payload: OrderCreate, bg: BackgroundTasks,
         raise HTTPException(409, "Боксы закончились")
     # Нет платёжного провайдера → покупка недоступна. Раньше заказ молча
     # становился «оплаченным» и выдавал QR бесплатно — фейковая продажа.
-    if not _DEMO_PAY and not store.can_sell_paid(box.partner_id):
+    # Исключение — пилотный режим «оплата при получении»: деньги берут на кассе,
+    # через Yummy они не идут, поэтому онлайн-эквайринг не нужен. Режим включает
+    # админ вручную по конкретному заведению, сам по себе он не включается.
+    if not _DEMO_PAY and not store.can_sell_paid(box.partner_id) \
+            and not store.pay_on_pickup(box.partner_id):
         raise HTTPException(503, "Оплата пока недоступна — заведение ещё не подключило приём платежей")
 
     store.release_expired_pending()          # снять протухшие резервы под оплату
+    # Мерчант-аккаунт приоритетнее: если заведение уже принимает онлайн-оплату,
+    # флаг pay_on_pickup не должен возвращать его к расчётам на кассе.
     require_payment = store.can_sell_paid(box.partner_id)
     order = store.create_order(
         _new("o"), _order_code(), box, payload.user_name.strip(), payload.user_phone.strip(),
@@ -925,6 +931,24 @@ def list_payment_accounts() -> list[dict]:
         out.append({**a, **store.commission_summary(a["partner_id"]),
                     "rate_bps": store.active_commission_bps(a["partner_id"])})
     return out
+
+
+@app.post("/partners/{partner_id}/pay-on-pickup", tags=["Admin"],
+          dependencies=[Depends(require_role("admin"))])
+def set_pay_on_pickup(partner_id: str, req: HttpRequest, on: bool = True) -> dict:
+    """Пилотный режим «оплата при получении»: бронь онлайн, деньги на кассе.
+
+    Нужен, пока заведение не подключило эквайринг: без этого бокс вообще нельзя
+    купить (503). Деньги через Yummy не проходят — заказ остаётся
+    payment_status='not_required', комиссия не начисляется.
+    Включает только админ и только осознанно: случайно включённый режим означал
+    бы, что заведение отдаёт боксы, не получив онлайн-оплату."""
+    if not store.partner(partner_id):
+        raise HTTPException(404, "Заведение не найдено")
+    store.set_pay_on_pickup(partner_id, on)
+    log.info("audit: pay-on-pickup partner=%s on=%s rid=%s",
+             partner_id, on, getattr(req.state, "request_id", "-"))
+    return {"partner_id": partner_id, "pay_on_pickup": on}
 
 
 @app.post("/partners/{partner_id}/payment-account/suspend", tags=["Admin"],

@@ -124,6 +124,9 @@ class Box(BaseModel):
     pickup_to: str
     description: str
     created_at: datetime = Field(default_factory=_utcnow)
+    # Пилотный режим заведения: бронь онлайн, деньги на кассе при получении.
+    # Фронту нужен, чтобы не звать оплату Kaspi там, где её не будет.
+    pay_on_pickup: bool = False
 
     @computed_field
     @property

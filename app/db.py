@@ -139,6 +139,10 @@ class Store:
                     "ALTER TABLE partners ADD COLUMN IF NOT EXISTS "
                     "is_listed INTEGER NOT NULL DEFAULT 1"
                 )
+                c.execute(
+                    "ALTER TABLE partners ADD COLUMN IF NOT EXISTS "
+                    "pay_on_pickup INTEGER NOT NULL DEFAULT 0"
+                )
             else:
                 cols = {r[1] for r in c.execute("PRAGMA table_info(orders)").fetchall()}
                 if "payment_status" not in cols:
@@ -154,6 +158,10 @@ class Store:
                 if "is_listed" not in pcols:
                     c.execute(
                         "ALTER TABLE partners ADD COLUMN is_listed INTEGER NOT NULL DEFAULT 1"
+                    )
+                if "pay_on_pickup" not in pcols:
+                    c.execute(
+                        "ALTER TABLE partners ADD COLUMN pay_on_pickup INTEGER NOT NULL DEFAULT 0"
                     )
 
     # ------------------------------------------------------------------ #
@@ -234,6 +242,7 @@ class Store:
             value_est=r["value_est"], qty_total=r["qty_total"], qty_left=r["qty_left"],
             pickup_from=r["pickup_from"], pickup_to=r["pickup_to"],
             description=r["description"], created_at=r["created_at"],
+            pay_on_pickup=bool(p["pay_on_pickup"]) if p else False,
         )
 
     def create_box(self, box_id: str, data) -> Box:
@@ -799,6 +808,25 @@ class Store:
         """Партнёр может продавать платные боксы только с активным аккаунтом."""
         a = self.payment_account(partner_id)
         return bool(a and a["status"] == "active" and a["payments_enabled"])
+
+    def pay_on_pickup(self, partner_id: str) -> bool:
+        """Пилотный режим: гость бронирует бокс онлайн и платит на кассе при
+        получении. Деньги через Yummy НЕ проходят, поэтому заказ живёт с
+        payment_status='not_required' и комиссия не начисляется — начислять
+        было бы нечестно, мы этих денег не видели.
+
+        Включается только вручную админом и только пока заведение не подключило
+        приём платежей: как появится мерчант-аккаунт, обычный путь с онлайн-
+        оплатой приоритетнее (см. create_order в main.py)."""
+        with self._lock, self._conn() as c:
+            r = c.execute("SELECT pay_on_pickup FROM partners WHERE id=?", (partner_id,)).fetchone()
+        return bool(r and r["pay_on_pickup"])
+
+    def set_pay_on_pickup(self, partner_id: str, on: bool) -> bool:
+        with self._lock, self._conn() as c:
+            c.execute("UPDATE partners SET pay_on_pickup=? WHERE id=?",
+                      (1 if on else 0, partner_id))
+        return on
 
     def set_commission_rate(self, rid: str, partner_id: str, rate_bps: int) -> int:
         with self._lock, self._conn() as c:

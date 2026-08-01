@@ -19,13 +19,16 @@ function renderCheckout(){
       <div class="ckc">
         <h3>Способ оплаты</h3>
         <div class="paym">
-          ${APIPAY?`<label><input type="radio" name="paym" value="kaspi" checked>
+          ${b.pay_on_pickup?`<label><input type="radio" name="paym" value="pickup" checked>
+            <span class="pay-l">💵 Оплата на месте при получении</span></label>`
+          :APIPAY?`<label><input type="radio" name="paym" value="kaspi" checked>
             <span class="pay-l"><span class="kaspi">Kaspi</span> Счёт в приложении</span></label>`
           :`<label><input type="radio" name="paym" value="demo" checked>
             <span class="pay-l">🧪 Демо-оплата пилота</span></label>`}
         </div>
         <p style="font-size:.76rem;color:var(--txt2);margin:.7rem 0 0">
-          ${APIPAY?"Счёт придёт в приложение Kaspi на ваш номер — подтвердите оплату там."
+          ${b.pay_on_pickup?"Бокс закрепим за вами. Оплатите на кассе, когда придёте забирать."
+          :APIPAY?"Счёт придёт в приложение Kaspi на ваш номер — подтвердите оплату там."
                   :"Пилот: оплата тестовая, деньги не списываются. В продакшене — Kaspi."}</p>
       </div>
 
@@ -44,7 +47,7 @@ function renderCheckout(){
         <label>Имя <input id="ckName" placeholder="Как к вам обращаться" autocomplete="name" value="${esc(acc.name||"")}" /></label>
         <label>Телефон <input id="ckPhone" placeholder="+7 7XX XXX XX XX" autocomplete="tel" value="${esc(acc.phone||"")}" /></label>
         <span class="ferr" id="ckErr"></span>
-        <button class="btn" id="ckPay" style="margin-top:.6rem">Оплатить ${money(b.price)}</button>
+        <button class="btn" id="ckPay" style="margin-top:.6rem">${b.pay_on_pickup?`Забронировать за ${money(b.price)}`:`Оплатить ${money(b.price)}`}</button>
       </div>
     </div>
 

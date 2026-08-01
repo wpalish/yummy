@@ -128,3 +128,59 @@ def test_demo_seed_on_explicit_optout(monkeypatch, tmp_path):
     import app.main as main_mod
     importlib.reload(main_mod)
     assert main_mod._DEMO_SEED is True
+
+
+# --------------------------------------------------------------------------- #
+#  Пилотный режим «оплата при получении»
+# --------------------------------------------------------------------------- #
+def test_pay_on_pickup_allows_booking_without_merchant(monkeypatch, tmp_path):
+    """Флаг открывает бронь без эквайринга — это и есть смысл пилота."""
+    main_mod, store = _app(monkeypatch, tmp_path, payment_mode="apipay")
+    store.set_pay_on_pickup("p1", True)
+    bid = _box(store)
+    c = TestClient(main_mod.app)
+    r = c.post("/orders", json={"box_id": bid, "user_name": "Али", "user_phone": "+77010000000"})
+    assert r.status_code == 201
+    order = r.json()["order"]
+    # Деньги через нас не шли — «оплачено» ставить нельзя ни при каких условиях.
+    assert order["payment_status"] == "not_required"
+    assert r.json()["qr_svg"]                        # код выдачи есть сразу
+    # Комиссию не начисляем: этих денег мы не видели.
+    assert store.commission_summary("p1")["owed_minor"] == 0
+
+
+def test_pay_on_pickup_order_can_be_redeemed(monkeypatch, tmp_path):
+    """Бокс должен реально выдаваться по коду — иначе пилот бессмысленен."""
+    main_mod, store = _app(monkeypatch, tmp_path, payment_mode="apipay")
+    store.set_pay_on_pickup("p1", True)
+    bid = _box(store)
+    c = TestClient(main_mod.app)
+    code = c.post("/orders", json={"box_id": bid, "user_name": "Али",
+                                   "user_phone": "+77010000000"}).json()["order"]["code"]
+    ok, msg, _ = store.redeem(code)
+    assert ok, msg
+
+
+def test_pay_on_pickup_off_still_blocks(monkeypatch, tmp_path):
+    """Защита от фейковой продажи снимается ТОЛЬКО явным флагом."""
+    main_mod, store = _app(monkeypatch, tmp_path, payment_mode="apipay")
+    assert store.pay_on_pickup("p1") is False        # по умолчанию выключено
+    bid = _box(store)
+    c = TestClient(main_mod.app)
+    r = c.post("/orders", json={"box_id": bid, "user_name": "Али", "user_phone": "+77010000000"})
+    assert r.status_code == 503
+    assert store.count()[2] == 0
+
+
+def test_merchant_account_wins_over_pay_on_pickup(monkeypatch, tmp_path):
+    """Забытый флаг не должен вернуть заведение к расчётам на кассе после
+    подключения эквайринга — иначе оплата тихо перестанет быть онлайновой."""
+    main_mod, store = _app(monkeypatch, tmp_path, payment_mode="disabled")
+    store.set_pay_on_pickup("p1", True)
+    store.upsert_payment_account("pa1", "p1", "pub1", "merchant-1", "kaspi")
+    store.set_payment_account_status("p1", "active", payments_enabled=True)
+    bid = _box(store)
+    c = TestClient(main_mod.app)
+    r = c.post("/orders", json={"box_id": bid, "user_name": "Али", "user_phone": "+77010000000"})
+    assert r.status_code == 201
+    assert r.json()["order"]["payment_status"] == "pending"   # ждёт онлайн-оплату
