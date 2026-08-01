@@ -315,3 +315,31 @@ def test_owner_cannot_deactivate_self(env):
     uid = _mk_staff(users, "owner@x.kz", "p1", "owner")
     h = {"Authorization": f"Bearer {create_token(uid, 'partner')}"}
     assert c.post(f"/partners/p1/staff/{uid}/active", headers=h).status_code == 409
+
+
+# --------------------------------------------------------------------------- #
+#  Скрытие заведения из витрины (is_listed)
+# --------------------------------------------------------------------------- #
+def test_unlisted_partner_hidden_from_catalog(tmp_path):
+    """is_listed=0 убирает заведение и его боксы из публичной витрины,
+    но сам партнёр остаётся в БД (заказы/комиссии на него ссылаются)."""
+    from app.db import Store
+    from app.models import BoxCreate
+
+    st = Store(path=str(tmp_path / "t.db"))
+    pid = st.create_partner_for_owner(name="Скрытая", address="ул. 1")
+    st.create_box("bx_hidden", BoxCreate(
+        partner_id=pid, category="bakery", title="Бокс", description="d",
+        price=500, value_est=1500, qty=2,
+        pickup_from="2030-01-01T18:00:00+00:00",
+        pickup_to="2030-01-01T20:00:00+00:00",
+    ))
+    assert any(x.id == pid for x in st.partners())
+    assert len(st.boxes_available()) == 1
+
+    with st._lock, st._conn() as c:
+        c.execute("UPDATE partners SET is_listed=0 WHERE id=?", (pid,))
+
+    assert all(x.id != pid for x in st.partners())      # исчез из витрины
+    assert st.boxes_available() == []                   # боксы тоже
+    assert st.partner(pid) is not None                  # но запись жива

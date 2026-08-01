@@ -135,6 +135,10 @@ class Store:
             if database.POSTGRES:
                 c.execute("ALTER TABLE commission_ledger ADD COLUMN IF NOT EXISTS invoice_id TEXT")
                 c.execute("ALTER TABLE orders ADD COLUMN IF NOT EXISTS invoice_id TEXT")
+                c.execute(
+                    "ALTER TABLE partners ADD COLUMN IF NOT EXISTS "
+                    "is_listed INTEGER NOT NULL DEFAULT 1"
+                )
             else:
                 cols = {r[1] for r in c.execute("PRAGMA table_info(orders)").fetchall()}
                 if "payment_status" not in cols:
@@ -146,13 +150,23 @@ class Store:
                 lcols = {r[1] for r in c.execute("PRAGMA table_info(commission_ledger)").fetchall()}
                 if "invoice_id" not in lcols:
                     c.execute("ALTER TABLE commission_ledger ADD COLUMN invoice_id TEXT")
+                pcols = {r[1] for r in c.execute("PRAGMA table_info(partners)").fetchall()}
+                if "is_listed" not in pcols:
+                    c.execute(
+                        "ALTER TABLE partners ADD COLUMN is_listed INTEGER NOT NULL DEFAULT 1"
+                    )
 
     # ------------------------------------------------------------------ #
     #  Партнёры
     # ------------------------------------------------------------------ #
     def partners(self) -> list[Partner]:
+        """Публичный список заведений. is_listed=0 скрывает карточку из витрины,
+        не удаляя партнёра: заказы, комиссии и доступ владельца в кабинет живут
+        дальше (FK на partners запрещают удаление, да и историю терять нельзя)."""
         with self._lock, self._conn() as c:
-            rows = c.execute("SELECT * FROM partners ORDER BY name").fetchall()
+            rows = c.execute(
+                "SELECT * FROM partners WHERE is_listed=1 ORDER BY name"
+            ).fetchall()
         return [Partner(**dict(r)) for r in rows]
 
     def _partner_row(self, c: sqlite3.Connection, pid: str) -> sqlite3.Row | None:
@@ -243,8 +257,9 @@ class Store:
     def boxes_available(self, district: str | None = None) -> list[Box]:
         with self._lock, self._conn() as c:
             rows = c.execute(
-                "SELECT * FROM boxes WHERE status='active' AND qty_left>0 "
-                "ORDER BY created_at DESC"
+                "SELECT b.* FROM boxes b JOIN partners p ON p.id=b.partner_id "
+                "WHERE b.status='active' AND b.qty_left>0 AND p.is_listed=1 "
+                "ORDER BY b.created_at DESC"
             ).fetchall()
             boxes = [self._box_from_row(c, r) for r in rows]
         if district and district != "all":
