@@ -105,6 +105,35 @@ def draw_lines(d: ImageDraw.ImageDraw, lines, top: float, halo: bool = True) -> 
     return y
 
 
+# Экран телефона во втором плане Veo отрисовал пустым белым — так и просили,
+# потому что интерфейс он рисует нечитаемой кашей. Код брони кладём сами.
+# Границы замерены по кадру построчным сканом, а не на глаз: экран не чисто белый,
+# а светло-серый (~218), и по порогу 225 он вообще не находился. Реальная белая
+# область — x 394–703 (309 px), первая прикидка «367–735» была шире на 60 px, из-за
+# чего подпись упиралась в рамку. Телефон за план смещается на ~14 px — накладка
+# статичная, этого не видно.
+PHONE = (2.35, 3.80)
+SCREEN = (394, 532, 703, 1200)
+
+
+def make_phone_screen() -> Image.Image:
+    img = Image.new("RGBA", (W, H), (0, 0, 0, 0))
+    d = ImageDraw.Draw(img)
+    x0, y0, x1, _ = SCREEN
+    cx = (x0 + x1) / 2
+
+    def centered(text: str, size: int, y: float, color) -> None:
+        f = font(size)
+        bb = d.textbbox((0, 0), text, font=f)
+        d.text((cx - (bb[2] - bb[0]) / 2 - bb[0], y), text, font=f, fill=color)
+
+    centered("Бокс забронирован", 24, y0 + 100, (140, 128, 116))
+    centered("YM-4K7P", 54, y0 + 138, INK)
+    # оранжевая черта под кодом — тот же акцент, что у цены
+    d.rounded_rectangle([cx - 78, y0 + 208, cx + 78, y0 + 215], radius=4, fill=ACCENT)
+    return img
+
+
 def make_title(lines) -> Image.Image:
     """Титр в верхней трети: объекты в CG стоят по центру и ниже."""
     img = Image.new("RGBA", (W, H), (0, 0, 0, 0))
@@ -142,6 +171,7 @@ def main() -> None:
 
         for i, (_, _, lines) in enumerate(TITLES):
             make_title(lines).save(tmp / f"t{i}.png")
+        make_phone_screen().save(tmp / "phone.png")
         end = make_endcard(logo)
         for i in range(int(END_SECONDS * FPS)):
             end.save(tmp / f"e{i:04d}.png")
@@ -154,17 +184,21 @@ def main() -> None:
         ], check=True, capture_output=True)
 
         # 2. основа: апскейл до 1080x1920 + титры по таймингам
+        # порядок входов: экран телефона идёт ПЕРВЫМ слоем — титр должен
+        # ложиться поверх него, а не наоборот
+        overlays = [(str(tmp / "phone.png"), PHONE)]
+        overlays += [(str(tmp / f"t{i}.png"), (a, b))
+                     for i, (a, b, _) in enumerate(TITLES)]
         inputs = [ff, "-y", "-i", str(SRC)]
-        for i in range(len(TITLES)):
-            inputs += ["-i", str(tmp / f"t{i}.png")]
+        for path, _ in overlays:
+            inputs += ["-i", path]
 
         chain = [f"[0:v]scale={W}:{H},fps={FPS},format=rgba[base0]"]
-        for i, (a, b, _) in enumerate(TITLES):
-            src = f"base{i}"
+        for i, (_, (a, b)) in enumerate(overlays):
             chain.append(
-                f"[{src}][{i+1}:v]overlay=0:0:enable='between(t,{a},{b})'[base{i+1}]"
+                f"[base{i}][{i+1}:v]overlay=0:0:enable='between(t,{a},{b})'[base{i+1}]"
             )
-        chain.append(f"[base{len(TITLES)}]format=yuv420p[v]")
+        chain.append(f"[base{len(overlays)}]format=yuv420p[v]")
 
         body = tmp / "body.mp4"
         subprocess.run(inputs + [
