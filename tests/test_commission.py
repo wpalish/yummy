@@ -39,6 +39,8 @@ def test_accrual_and_reversal(store):
     store.upsert_payment_account("pa1", "p1", "pub1", "KASPI-ИП-МАМЫ")
     store.set_payment_account_status("p1", "active", payments_enabled=True)
     assert store.can_sell_paid("p1") is True
+    # Комиссии в модели нет, дефолт = 0 — ставку задаём явно, иначе начислять нечего.
+    store.set_commission_rate("cr1", "p1", 1000)          # 10%
     _box(store, price=1000)
     o = store.create_order("o1", "YM-A", store.box("b1"), "Т", "+7700")
     e = store.accrue_commission("cl1", o)
@@ -80,6 +82,7 @@ def _active(store):
 
 def test_pending_flow_and_confirm(store):
     _active(store)
+    store.set_commission_rate("cr1", "p1", 1000)          # дефолт 0 → задаём явно
     _box(store, price=1000)
     o = store.create_order("o1","YM-A", store.box("b1"),"Т","+7700", require_payment=True)
     assert o.payment_status == "pending"
@@ -119,3 +122,16 @@ def test_release_expired_pending(store):
         c.execute("UPDATE orders SET created_at=? WHERE code='YM-A'", ("2000-01-01T00:00:00+00:00",))
     assert store.release_expired_pending(15) == 1
     assert store.box("b1").qty_left == left + 1  # бокс вернулся
+
+
+def test_no_commission_by_default(store):
+    """Бизнес-правило: Yummy НЕ берёт процент. Без явно заданной ставки
+    начисление должно быть нулевым — иначе включённая онлайн-оплата начала бы
+    тихо копить партнёру долг, которого ему не обещали."""
+    _active(store)
+    _box(store, price=1000)
+    o = store.create_order("o1", "YM-A", store.box("b1"), "Т", "+7700")
+    assert store.active_commission_bps("p1") == 0
+    e = store.accrue_commission("cl1", o)
+    assert e is None or e["commission_minor"] == 0
+    assert store.commission_summary("p1")["owed_minor"] == 0

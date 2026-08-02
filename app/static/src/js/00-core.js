@@ -67,7 +67,6 @@ const ACT = {
   delTpl:          el => delTpl(el.dataset.a1),
   connectPay:      el => connectPay(el.dataset.a1),
   activatePay:     el => activatePay(el.dataset.a1),
-  setRate:         el => setRate(el.dataset.a1),
 };
 document.addEventListener("click", ev => {
   const el = ev.target.closest("[data-act]");

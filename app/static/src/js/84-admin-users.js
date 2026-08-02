@@ -155,14 +155,13 @@ async function renderPayments(){
     return `<div style="padding:.5rem 0;border-bottom:1px solid var(--line)">
       <div style="display:flex;align-items:center;gap:.5rem;flex-wrap:wrap">
         <b style="flex:1;min-width:120px">${esc(p.name)}</b> ${badge} ${ref}
-        <span style="color:var(--txt2)">комиссия ${rate} · долг ${owed}</span></div>
+        <span style="color:var(--txt2)">${a.owed_minor>0?`⚠️ легаси-долг ${owed}`:"комиссии нет"}</span></div>
       <div style="display:flex;gap:.4rem;flex-wrap:wrap;margin-top:.35rem">
         ${st==="none"?`<button class="linkbtn" data-act="connectPay" data-a1="${p.id}">Подключить Kaspi-мерчант</button>`:""}
         ${(st==="pending"||st==="suspended")?`<button class="linkbtn" data-act="activatePay" data-a1="${p.id}">Активировать приём</button>`:""}
         ${st==="active"?`<button class="linkbtn" data-act="suspendPay" data-a1="${p.id}" style="color:var(--red)">Приостановить</button>`:""}
         ${st!=="none"?`<button class="linkbtn" data-act="rotatePay" data-a1="${p.id}" title="Новый webhook-id; опционально новый реквизит">Ротация</button>`:""}
         ${a.owed_minor>0?`<button class="linkbtn" data-act="makeInvoice" data-a1="${p.id}">Выставить счёт (${money(a.owed_tenge)})</button>`:""}
-        <button class="linkbtn" data-act="setRate" data-a1="${p.id}">Ставка комиссии</button>
       </div></div>`;
   }).join("")+renderInvoices(invs,ps);
 }
@@ -170,7 +169,7 @@ function renderInvoices(invs,ps){
   if(!invs.length)return "";
   const pname=Object.fromEntries(ps.map(p=>[p.id,p.name]));
   const st={open:'<span class="tag t-paid">открыт</span>',paid:'<span class="tag t-issued">оплачен</span>',void:'<span class="tag t-expired">аннулирован</span>'};
-  return `<h4 style="margin:.9rem 0 .3rem">Счета за комиссию</h4>`+invs.map(i=>`
+  return `<h4 style="margin:.9rem 0 .3rem">Счета за комиссию (легаси)</h4>`+invs.map(i=>`
     <div class="lrow"><div class="g"><b>${esc(pname[i.partner_id]||i.partner_id)}</b>
       <div style="font-size:.76rem;color:var(--txt2)">${money(Math.floor(i.total_minor/100))} · ${i.entries_count} зак. · ${(i.created_at||"").slice(0,10)}</div></div>
       ${st[i.status]||esc(i.status)}
@@ -221,21 +220,5 @@ window.connectPay=id=>{
 };
 window.activatePay=async id=>{if(!confirm("Активировать приём платежей? Партнёр сможет продавать платные боксы."))return;
   try{await post(`/partners/${id}/payment-account/activate`,{});toast("Приём платежей активен ✓");renderPayments();}catch(e){toast(e.message,true);}};
-window.setRate=id=>{
-  showModal(`<div class="mc"><h3>Ставка комиссии</h3>
-    <label>Комиссия, % (0–50)
-      <input id="crPct" type="number" min="0" max="50" step="0.5" value="10" />
-      <span class="ferr" id="crErr"></span></label>
-    <button class="btn" id="crSave" style="margin-top:.6rem">Сохранить</button>
-    <button class="btn sec" data-act="closeModal" style="margin-top:.5rem">Отмена</button></div>`);
-  $("#crSave").onclick=async()=>{
-    const bps=Math.round(parseFloat($("#crPct").value)*100);
-    if(!(bps>=0&&bps<=5000)){$("#crErr").textContent="Допустимо 0–50%";return;}
-    const b=$("#crSave"); b.disabled=true;
-    try{await post(`/partners/${id}/commission-rule`,{rate_bps:bps});
-      closeModal();toast("Ставка обновлена");renderPayments();}
-    catch(e){$("#crErr").textContent=e.message;b.disabled=false;}
-  };
-};
 window.refund=async id=>{try{await post("/admin/refund/"+id);toast("Возврат оформлен");loadAdmin();}catch(e){toast(e.message,true);}};
 
